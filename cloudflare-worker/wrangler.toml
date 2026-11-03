@@ -14,3 +14,5 @@ DNA_FAIL_MODE = "open"
 # Off switch. Set it here, not in the Cloudflare dashboard: the next deploy
 # replaces dashboard vars with this file's.
 # DNA_ENABLED = "false"
+# Send only this share of requests to D3; each call reports the rate it was drawn at.
+# DNA_SAMPLE_RATE = "0.25"

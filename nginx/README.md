@@ -52,6 +52,7 @@ Lua:
 | `DNA_TIMEOUT_MS`         | number (ms)          | `150`                                 | Hard budget for the decision call.                                            |
 | `DNA_PAYMENT_TIMEOUT_MS` | number (ms)          | `10000`                               | Budget for a request presenting a payment — settlement happens inside it.     |
 | `DNA_ENDPOINT`           | string (URL)         | `https://edge-api.d3.com/v1/decision` | Decision endpoint. Leave unset unless we give you another.                    |
+| `DNA_SAMPLE_RATE`        | number (0.001–1)     | `1`                                   | Share of requests that get a decision call; paying and signed requests always do. Each call reports its rate as `x-d3-sample-rate`. Out of range sends every request. |
 
 ### Earlier names
 
@@ -76,7 +77,9 @@ switches DNA on by itself. A script older than this one ignores
 ## Response shape
 
 Every response carries an `x-d3-edge` header: `disabled`, `pass`,
-`block`, `fail-open`, or `fail-closed`. A blocked request gets a `403`
+`block`, `fail-open`, or `fail-closed` — except one sampled out by
+`DNA_SAMPLE_RATE`, which reaches your upstream untouched, with no
+header. A blocked request gets a `403`
 with a JSON body:
 
 ```json

@@ -99,6 +99,9 @@ routes.
   `alwaysSampleSigned: true` and send
   `curl -sI -H 'signature-input: x' https://www.example.com/` — that
   request is guaranteed a decision call and comes back tagged.
+- Below `1`, each decision call carries `x-d3-sample-rate` — the rate, or
+  `1` for a paying or (with `alwaysSampleSigned`) signed request — so the
+  dashboard can scale counts back up ([protocol](../PROTOCOL.md#sampling)).
 - The snippet makes one call per sampled request — the decision call. There is
   no after-response outcome report (Snippets have no `waitUntil`);
   requests are classified and logged at decision time.

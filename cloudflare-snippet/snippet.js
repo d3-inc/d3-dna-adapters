@@ -19,6 +19,7 @@ const CONFIG = {
   failMode: 'open',
   // Fraction of requests that get a decision call. Unsampled requests return
   // untouched — no call, no x-d3-edge header. A payment is never sampled out.
+  // Below 1, each call reports its rate so D3 can scale the counts back up.
   sampleRate: 1,
   // Call on every request carrying signature headers, whatever sampleRate says.
   alwaysSampleSigned: false,
@@ -133,7 +134,8 @@ export function createSnippet(config) {
       // Still stripped, though: a credential or a browser-check answer must not
       // reach the origin because a draw went the other way, and the stripper
       // returns the request untouched when there is nothing on it.
-      if (!paying && !isSampled(request, config)) return fetch(stripPaymentCredential(request));
+      const sampleRate = drawSampleRate(request, config, paying);
+      if (sampleRate === null) return fetch(stripPaymentCredential(request));
 
       let decision;
       try {
@@ -142,6 +144,8 @@ export function createSnippet(config) {
           headers: {
             'content-type': 'application/json',
             authorization: `Bearer ${apiKey}`,
+            // Absent reads as 1 at the endpoint, so a site that doesn't sample sends nothing new.
+            ...(config.sampleRate < 1 ? { 'x-d3-sample-rate': String(sampleRate) } : {}),
           },
           body: JSON.stringify(await extractPayload(request)),
           signal: AbortSignal.timeout(paying ? config.paymentTimeoutMs : config.timeoutMs),
@@ -175,12 +179,15 @@ export function createSnippet(config) {
   };
 }
 
-function isSampled(request, config) {
-  if (Math.random() < config.sampleRate) return true;
-  return (
-    config.alwaysSampleSigned &&
-    (request.headers.has('signature') || request.headers.has('signature-input'))
-  );
+// null means sampled out. An always-sent request reports 1: it stands only for itself.
+function drawSampleRate(request, config, paying) {
+  if (paying) return 1;
+  if (config.alwaysSampleSigned && isSigned(request)) return 1;
+  return Math.random() < config.sampleRate ? config.sampleRate : null;
+}
+
+function isSigned(request) {
+  return request.headers.has('signature') || request.headers.has('signature-input');
 }
 
 // ── D3 Pay credentials ───────────────────────────────────────────────────────

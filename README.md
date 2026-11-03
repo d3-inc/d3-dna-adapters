@@ -11,7 +11,7 @@ times out, so an outage on our side never takes your site down.
 
 | Directory                                    | What it is                                                                       | Paid routes |
 | -------------------------------------------- | -------------------------------------------------------------------------------- | ----------- |
-| [`cloudflare-snippet/`](./cloudflare-snippet) | A single pasted file for Cloudflare zones — no Worker deploy (paid plans). Traffic sampling built in | Yes |
+| [`cloudflare-snippet/`](./cloudflare-snippet) | A single pasted file for Cloudflare zones — no Worker deploy (paid plans). Traffic sampling built in, reporting its rate to D3 | Yes |
 | [`cloudflare-worker/`](./cloudflare-worker)   | Standalone Worker template fronting a site hosted outside Cloudflare             | Yes |
 | [`caddy/`](./caddy)                           | Config-only recipe for Caddy's built-in `forward_auth` — no plugin, no build     | No |
 | [`nginx/`](./nginx)                           | Access-phase Lua script for OpenResty / nginx with the Lua module                | Yes |

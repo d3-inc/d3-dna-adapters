@@ -23,7 +23,8 @@ export interface SnippetConfig {
    *  A request presenting a payment never falls open, whatever this says. */
   failMode: 'open' | 'closed';
   /** Fraction of requests that get a decision call. Unsampled requests return
-   *  untouched; a request presenting a payment is always sampled. */
+   *  untouched; a request presenting a payment is always sampled. Below 1, each
+   *  call sends `x-d3-sample-rate`: this rate, or `1` for an always-sent request. */
   sampleRate: number;
   /** Call on every request carrying signature headers, whatever sampleRate says. */
   alwaysSampleSigned: boolean;
