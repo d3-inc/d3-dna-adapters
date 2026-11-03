@@ -113,7 +113,7 @@ Change it together with the threshold:
 ```caddyfile
 	@d3_sampled expression `{http.request.uuid} < "4000"`
 	forward_auth @d3_sampled 127.0.0.1:8113 {
-		# ...same block as above, plus:
+		# ...same block as above, with `header_up -x-d3-sample-rate` replaced by:
 		header_up x-d3-sample-rate 0.25
 	}
 ```

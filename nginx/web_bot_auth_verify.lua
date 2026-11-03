@@ -258,6 +258,9 @@ local function strip_credentials_from_upstream()
     ngx.req.clear_header(name)
   end
   ngx.req.clear_header(PERSON_PASS_HEADER)
+  -- A visitor's own verdict, which no return before the overwrite below may pass on.
+  ngx.req.clear_header("X-D3-Tier")
+  ngx.req.clear_header("X-D3-Identity")
 
   if session_cookie ~= nil or person_pass ~= nil then
     local kept = strip_own_cookies(cookie_header)
