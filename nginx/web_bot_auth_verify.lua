@@ -44,6 +44,17 @@ local TIMEOUT_MS          = tonumber(setting("DNA_TIMEOUT_MS", "POLICY_TIMEOUT_M
 local PAYMENT_TIMEOUT_MS  = tonumber(setting("DNA_PAYMENT_TIMEOUT_MS", "POLICY_PAYMENT_TIMEOUT_MS") or "10000")
 local FAIL_MODE           = setting("DNA_FAIL_MODE", "FAIL_MODE") or "open" -- 'open' | 'closed'
 
+-- nil sends every request. Below 0.001 the endpoint would read the reported rate
+-- as 1, so such a value is not a sampling rate either. Drawn at 1/n: the endpoint
+-- counts each call a whole number of times.
+local function sample_rate_setting()
+  local rate = tonumber(setting("DNA_SAMPLE_RATE") or "")
+  if rate == nil or not (rate >= 0.001 and rate < 1) then return nil end
+  return 1 / math.floor(1 / rate + 0.5)
+end
+
+local SAMPLE_RATE         = sample_rate_setting()
+
 -- The on switch, same as every adapter: an endpoint, or a DNA_API_KEY that then
 -- calls the default one. POLICY_ADAPTER_KEY alone stays off: an install that
 -- predates DNA_API_KEY may hold it with the URL unset precisely to stay off.
@@ -237,6 +248,58 @@ end
 
 local paying = presents_payment()
 
+-- Everything of ours off the upstream request: the headers, our two cookies and
+-- our query params. Sampled out or failed open, a request is still no reason to
+-- hand the origin a credential or a browser-check answer.
+--
+-- Unconditional, unlike the budget: an oversized value is not a payment, and it
+-- still must not reach the upstream.
+local function strip_credentials_from_upstream()
+  for name, _ in pairs(PAYMENT_HEADERS) do
+    ngx.req.clear_header(name)
+  end
+  ngx.req.clear_header(PERSON_PASS_HEADER)
+  -- A visitor's own verdict, which no return before the overwrite below may pass on.
+  ngx.req.clear_header("X-D3-Tier")
+  ngx.req.clear_header("X-D3-Identity")
+
+  if session_cookie ~= nil or person_pass ~= nil then
+    local kept = strip_own_cookies(cookie_header)
+    if kept == nil then ngx.req.clear_header("Cookie") else ngx.req.set_header("Cookie", kept) end
+  end
+
+  -- $args, not ngx.req.set_uri_args(): that escapes what it is handed, so a query
+  -- value already carrying a %XX would reach the upstream double-encoded. Both
+  -- clear valid_unparsed_uri, which is what makes proxy_pass rebuild the target.
+  if ngx.var.args ~= nil and string.find(ngx.var.args, "d3pay_", 1, true) ~= nil then
+    ngx.var.args = strip_pay_params(ngx.var.args)
+  end
+end
+
+-- The rate this request is sent at, or nil when it is sampled out. Sampling out
+-- a payment would serve a page someone paid for to everyone free.
+local function draw_sample_rate(rate)
+  if paying or header_value("signature") ~= nil or header_value("signature-input") ~= nil then
+    return 1
+  end
+
+  -- $request_id, not math.random: LuaJIT's generator is unseeded, so every
+  -- worker would draw the same sequence.
+  local draw = tonumber(string.sub(ngx.var.request_id, 1, 8), 16) / 4294967296
+  if draw < rate then return rate end
+  return nil
+end
+
+local sample_rate = nil
+if SAMPLE_RATE ~= nil then
+  sample_rate = draw_sample_rate(SAMPLE_RATE)
+  -- No call and no x-d3-edge header: it costs what the script costs uninstalled.
+  if sample_rate == nil then
+    strip_credentials_from_upstream()
+    return
+  end
+end
+
 -- Overwrite content-digest with the real body's digest — never forward the
 -- client's claim, or a signature over a forged digest gets a "proven" verdict
 -- for a body that was never authenticated. Recompute whenever there's a body
@@ -284,6 +347,7 @@ local res, err = httpc:request_uri(ENDPOINT, {
   headers    = {
     ["Content-Type"]  = "application/json",
     ["Authorization"] = API_KEY and ("Bearer " .. API_KEY) or nil,
+    ["x-d3-sample-rate"] = sample_rate and tostring(sample_rate) or nil,
   },
 })
 
@@ -312,32 +376,6 @@ local function payment_unavailable()
   ngx.header["x-d3-edge"] = "fail-closed"
   ngx.say('{"error":"payment_unavailable"}')
   return ngx.exit(502)
-end
-
--- Everything of ours off the upstream request: the headers, our two cookies and
--- our query params. Defined here because the fail-open return below needs it
--- too — an endpoint we could not reach is no reason to hand the origin a
--- credential or a browser-check answer.
---
--- Unconditional, unlike the budget: an oversized value is not a payment, and it
--- still must not reach the upstream.
-local function strip_credentials_from_upstream()
-  for name, _ in pairs(PAYMENT_HEADERS) do
-    ngx.req.clear_header(name)
-  end
-  ngx.req.clear_header(PERSON_PASS_HEADER)
-
-  if session_cookie ~= nil or person_pass ~= nil then
-    local kept = strip_own_cookies(cookie_header)
-    if kept == nil then ngx.req.clear_header("Cookie") else ngx.req.set_header("Cookie", kept) end
-  end
-
-  -- $args, not ngx.req.set_uri_args(): that escapes what it is handed, so a query
-  -- value already carrying a %XX would reach the upstream double-encoded. Both
-  -- clear valid_unparsed_uri, which is what makes proxy_pass rebuild the target.
-  if ngx.var.args ~= nil and string.find(ngx.var.args, "d3pay_", 1, true) ~= nil then
-    ngx.var.args = strip_pay_params(ngx.var.args)
-  end
 end
 
 -- Enforcement failure must never take the site down, unless opted into

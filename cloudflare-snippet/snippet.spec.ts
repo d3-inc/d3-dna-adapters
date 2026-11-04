@@ -516,6 +516,54 @@ describe('traffic sampling', () => {
     expect(log.policyCalls).toHaveLength(1);
   });
 
+  it('should report the rate a drawn request was sampled at', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.01);
+    const log = stubOutbound({ action: 'pass' });
+    await run(siteRequest(), { sampleRate: 0.25 });
+    expect(log.policyCalls[0].headers.get('x-d3-sample-rate')).toBe('0.25');
+  });
+
+  it('should draw and report a rate as 1/n, no lower than 1/1000', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.0008);
+    const log = stubOutbound({ action: 'pass' });
+    await run(siteRequest(), { sampleRate: 0.0005 });
+    await run(siteRequest(), { sampleRate: 0.6 });
+    expect(log.policyCalls.map((c) => c.headers.get('x-d3-sample-rate'))).toEqual(['0.001', '0.5']);
+  });
+
+  it('should report 1 for a paying request, whatever the rate', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.01);
+    const log = stubOutbound({ action: 'pass' });
+    await run(siteRequest({ headers: { cookie: `__Host-d3pay=${SESSION}` } }), { sampleRate: 0.25 });
+    expect(log.policyCalls[0].headers.get('x-d3-sample-rate')).toBe('1');
+  });
+
+  it('should report 1 for a signed request when alwaysSampleSigned is set', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.01);
+    const log = stubOutbound({ action: 'pass' });
+    await run(siteRequest({ headers: { signature: 'sig1=:x:' } }), {
+      sampleRate: 0.25,
+      alwaysSampleSigned: true,
+    });
+    expect(log.policyCalls[0].headers.get('x-d3-sample-rate')).toBe('1');
+  });
+
+  it('should send no rate header when not sampling', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    await run(siteRequest({ headers: { cookie: `__Host-d3pay=${SESSION}` } }));
+    await run(siteRequest());
+    expect(log.policyCalls).toHaveLength(2);
+    for (const call of log.policyCalls) expect(call.headers.has('x-d3-sample-rate')).toBe(false);
+  });
+
+  it('should never relay a visitor-sent rate', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.01);
+    const log = stubOutbound({ action: 'pass' });
+    await run(siteRequest({ headers: { 'x-d3-sample-rate': '0.001' } }), { sampleRate: 0.5 });
+    expect(log.policyCalls[0].headers.get('x-d3-sample-rate')).toBe('0.5');
+    expect(log.policyCalls[0].payload.headers).not.toHaveProperty('x-d3-sample-rate');
+  });
+
   it('should not exempt signed requests from sampling by default', async () => {
     const log = stubOutbound({ action: 'pass' });
     const res = await run(siteRequest({ headers: { 'signature-input': 'sig1=("@authority")' } }), {

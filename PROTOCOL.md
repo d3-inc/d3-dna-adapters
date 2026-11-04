@@ -288,15 +288,33 @@ set. Replacing the origin's `Set-Cookie` would log the visitor out of
 the site to hand them ours, and replacing its CORS list would revoke a
 browser's access to headers the site deliberately exposed.
 
-### Sampling
+## Sampling
 
-If your adapter samples traffic, a request presenting a payment is
-exempt from the draw. Unsampled, the visitor paid for a page that was
-then served to everybody free.
+An adapter may send only a share of requests; the rest reach the origin
+with no call. D3 scales counts back up only if it knows that share:
 
-(Sampling has this cost anyway: an unsampled request on a priced route
-is served free. That is inherent to ramping, and it argues for full
-coverage once you price anything.)
+- **If you sample, send the rate on every call** — the rate the request
+  was drawn at, e.g. `0.25`. A request sent outside the draw sends `1`.
+- **If you don't sample, send nothing.** Absent reads as `1`.
+- **Draw at 1/n.** The endpoint accepts `0.001` to `1` and reads it as
+  `1 / round(1 / rate)`, so each call counts a whole number of requests;
+  anything else is dropped and read as `1`.
+
+| Dialect                                       | Where the rate rides                                            |
+| --------------------------------------------- | --------------------------------------------------------------- |
+| [Decision `POST`](#the-call)                  | A request header on the `POST`, beside `Authorization`. Not a payload field. |
+| [Forward-auth](#the-forward-auth-dialect)     | `?sample_rate=` on the side-request's URI. Never a header: the proxy copies the visitor's headers onto it. |
+
+Which requests skip the draw:
+
+| Request                                  | Sent             | Why                                                     |
+| ---------------------------------------- | ---------------- | ------------------------------------------------------- |
+| Presenting a payment                     | Always — a must  | Unsampled, someone paid for a page served to everybody free. |
+| Carrying `Signature` / `Signature-Input` | Recommended      | The traffic D3 Edge exists for, at tiny volume.          |
+
+Sampling still costs a site with prices: an unsampled request on a
+priced route is served free. That is inherent to ramping, and it argues
+for full coverage once you price anything.
 
 ## Outcome reports (optional)
 

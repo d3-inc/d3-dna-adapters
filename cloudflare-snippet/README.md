@@ -33,7 +33,7 @@ variables where they exist:
 | `timeoutMs`          | `DNA_TIMEOUT_MS`         | `150`                                 | Hard budget for the decision call.                                                  |
 | `paymentTimeoutMs`   | `DNA_PAYMENT_TIMEOUT_MS` | `10000`                               | Budget for a request presenting a payment — settlement happens inside it.           |
 | `endpoint`           | `DNA_ENDPOINT`           | `https://edge-api.d3.com/v1/decision` | Decision endpoint, not in `CONFIG` by default. Add it only if we give you another.  |
-| `sampleRate`         | —                        | `1`                                   | Fraction of requests that get a decision call. Unsampled requests return untouched. |
+| `sampleRate`         | —                        | `1`                                   | Fraction of requests that get a decision call, as 1/n and at least `0.001`. Unsampled requests return untouched. |
 | `alwaysSampleSigned` | —                        | `false`                               | Call on every request carrying signature headers, whatever `sampleRate` says.       |
 
 A `CONFIG` from an earlier copy of this file still works pasted into this
@@ -99,6 +99,9 @@ routes.
   `alwaysSampleSigned: true` and send
   `curl -sI -H 'signature-input: x' https://www.example.com/` — that
   request is guaranteed a decision call and comes back tagged.
+- Below `1`, each decision call carries `x-d3-sample-rate` — the rate, or
+  `1` for a paying or (with `alwaysSampleSigned`) signed request — so the
+  dashboard can scale counts back up ([protocol](../PROTOCOL.md#sampling)).
 - The snippet makes one call per sampled request — the decision call. There is
   no after-response outcome report (Snippets have no `waitUntil`);
   requests are classified and logged at decision time.
