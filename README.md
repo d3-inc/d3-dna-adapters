@@ -32,12 +32,13 @@ code — so a priced route behind them is served as an ordinary pass, and
 each README says so. The worker template carries whatever
 `@d3-inc/d3-edge-cloudflare-adapter` carries.
 
-The npm SDKs —
-[`@d3-inc/d3-edge-cloudflare-adapter`](https://www.npmjs.com/package/@d3-inc/d3-edge-cloudflare-adapter)
-(wrap an existing Worker, or deploy standalone) and
-[`@d3-inc/d3-edge-vercel-middleware`](https://www.npmjs.com/package/@d3-inc/d3-edge-vercel-middleware) —
-are published from the main D3 Edge repo; this repo holds the adapters
-that aren't npm packages.
+The npm SDKs live in [`packages/`](./packages), beside the recipes:
+
+| Package | npm | What it is |
+| --- | --- | --- |
+| [`cloudflare-adapter/`](./packages/cloudflare-adapter) | [`@d3-inc/d3-edge-cloudflare-adapter`](https://www.npmjs.com/package/@d3-inc/d3-edge-cloudflare-adapter) | Wrap an existing Worker, or deploy it standalone |
+| [`vercel-middleware/`](./packages/vercel-middleware) | [`@d3-inc/d3-edge-vercel-middleware`](https://www.npmjs.com/package/@d3-inc/d3-edge-vercel-middleware) | Vercel Routing Middleware |
+| [`protocol/`](./packages/protocol) | not yet published | The payload, decision and report types both SDKs build on |
 
 Full documentation: [ai.d3.com/docs](https://ai.d3.com/docs). Questions:
 [hello@d3.com](mailto:hello@d3.com).
@@ -45,9 +46,12 @@ Full documentation: [ai.d3.com/docs](https://ai.d3.com/docs). Questions:
 ## Tests
 
 ```sh
-npm install
-npm test
+pnpm install
+pnpm test
 ```
+
+`pnpm test` runs the recipes' tests and each package's suite. CI also runs
+`pnpm format:check`, `pnpm lint`, `pnpm typecheck` and `pnpm build`.
 
 ## License
 
