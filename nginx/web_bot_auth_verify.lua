@@ -45,11 +45,12 @@ local PAYMENT_TIMEOUT_MS  = tonumber(setting("DNA_PAYMENT_TIMEOUT_MS", "POLICY_P
 local FAIL_MODE           = setting("DNA_FAIL_MODE", "FAIL_MODE") or "open" -- 'open' | 'closed'
 
 -- nil sends every request. Below 0.001 the endpoint would read the reported rate
--- as 1, so such a value is not a sampling rate either.
+-- as 1, so such a value is not a sampling rate either. Drawn at 1/n: the endpoint
+-- counts each call a whole number of times.
 local function sample_rate_setting()
   local rate = tonumber(setting("DNA_SAMPLE_RATE") or "")
   if rate == nil or not (rate >= 0.001 and rate < 1) then return nil end
-  return rate
+  return 1 / math.floor(1 / rate + 0.5)
 end
 
 local SAMPLE_RATE         = sample_rate_setting()

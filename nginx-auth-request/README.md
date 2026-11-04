@@ -96,7 +96,7 @@ Bot-auth enforcement here is unaffected.
   `$http_signature`.
 - To ramp by volume, uncomment the `split_clients` recipe in
   [`d3-edge.conf`](./d3-edge.conf): an unsampled request passes without
-  a call, and each sampled call states its rate in `x-d3-sample-rate`
+  a call, and each sampled call states its rate on the subrequest URI
   ([protocol](../PROTOCOL.md#sampling)). Keep the percentage and the
   rate equal.
 - Verify server-side: `curl -sI -H 'signature-input: x'

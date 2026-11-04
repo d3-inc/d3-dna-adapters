@@ -294,19 +294,17 @@ An adapter may send only a share of requests; the rest reach the origin
 with no call. D3 scales counts back up only if it knows that share
 (ADR 0071):
 
-- **If you sample, send `x-d3-sample-rate` on every call** — the rate
-  the request was drawn at, e.g. `0.25`. A request sent outside the draw
-  sends `1`.
+- **If you sample, send the rate on every call** — the rate the request
+  was drawn at, e.g. `0.25`. A request sent outside the draw sends `1`.
 - **If you don't sample, send nothing.** Absent reads as `1`.
-- **Recipes overwrite any inbound `x-d3-sample-rate`**, never forward
-  it. A visitor who sets their own would rescale the site's counts.
-- The endpoint accepts `0.001` to `1`. Anything else is dropped and
-  read as `1`.
+- **Draw at 1/n.** The endpoint accepts `0.001` to `1` and reads it as
+  `1 / round(1 / rate)`, so each call counts a whole number of requests;
+  anything else is dropped and read as `1`.
 
 | Dialect                                       | Where the rate rides                                            |
 | --------------------------------------------- | --------------------------------------------------------------- |
 | [Decision `POST`](#the-call)                  | A request header on the `POST`, beside `Authorization`. Not a payload field. |
-| [Forward-auth](#the-forward-auth-dialect)     | A header the recipe sets on the side-request, beside `x-d3-adapter-key`. |
+| [Forward-auth](#the-forward-auth-dialect)     | `?sample_rate=` on the side-request's URI. Never a header: the proxy copies the visitor's headers onto it. |
 
 Which requests skip the draw:
 

@@ -98,11 +98,11 @@ no state, no per-request cost beyond the random bytes Caddy already
 generates. An unsampled request skips the call entirely: no decision,
 nothing logged, no `x-d3-edge` header.
 
-Every sampled call states its rate in `x-d3-sample-rate`, so the
-dashboard can scale counts back up ([protocol](../PROTOCOL.md#sampling)).
-Change it together with the threshold:
+Every sampled call states its rate in the `uri`, so the dashboard can
+scale counts back up ([protocol](../PROTOCOL.md#sampling)). Change it
+together with the threshold:
 
-| Threshold | Share sent | `x-d3-sample-rate` |
+| Threshold | Share sent | `sample_rate`      |
 | --------- | ---------- | ------------------ |
 | `ffff`    | ~100%      | `1`                |
 | `8000`    | 50%        | `0.5`              |
@@ -113,8 +113,8 @@ Change it together with the threshold:
 ```caddyfile
 	@d3_sampled expression `{http.request.uuid} < "4000"`
 	forward_auth @d3_sampled 127.0.0.1:8113 {
-		# ...same block as above, with `header_up -x-d3-sample-rate` replaced by:
-		header_up x-d3-sample-rate 0.25
+		# ...same block as above, with the rate on the uri:
+		uri /v1/forward-auth?sample_rate=0.25
 	}
 ```
 

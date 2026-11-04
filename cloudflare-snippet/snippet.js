@@ -179,14 +179,12 @@ export function createSnippet(config) {
   };
 }
 
-// The endpoint reads a reported rate below this as 1, so a smaller one is drawn at it instead.
-const MIN_SAMPLE_RATE = 0.001;
-
 // null means sampled out. An always-sent request reports 1: it stands only for itself.
 function drawSampleRate(request, config, paying) {
   if (paying) return 1;
   if (config.alwaysSampleSigned && isSigned(request)) return 1;
-  const rate = config.sampleRate > 0 ? Math.max(config.sampleRate, MIN_SAMPLE_RATE) : config.sampleRate;
+  // 1/n, at most 1/1000: the endpoint counts a call a whole number of times and reads a rate below 0.001 as 1.
+  const rate = config.sampleRate > 0 ? 1 / Math.min(Math.round(1 / config.sampleRate), 1000) : config.sampleRate;
   return Math.random() < rate ? rate : null;
 }
 

@@ -523,11 +523,12 @@ describe('traffic sampling', () => {
     expect(log.policyCalls[0].headers.get('x-d3-sample-rate')).toBe('0.25');
   });
 
-  it('should draw and report a rate below the endpoint floor at the floor', async () => {
+  it('should draw and report a rate as 1/n, no lower than 1/1000', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.0008);
     const log = stubOutbound({ action: 'pass' });
     await run(siteRequest(), { sampleRate: 0.0005 });
-    expect(log.policyCalls[0].headers.get('x-d3-sample-rate')).toBe('0.001');
+    await run(siteRequest(), { sampleRate: 0.6 });
+    expect(log.policyCalls.map((c) => c.headers.get('x-d3-sample-rate'))).toEqual(['0.001', '0.5']);
   });
 
   it('should report 1 for a paying request, whatever the rate', async () => {

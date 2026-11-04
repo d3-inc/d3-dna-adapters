@@ -52,7 +52,7 @@ Lua:
 | `DNA_TIMEOUT_MS`         | number (ms)          | `150`                                 | Hard budget for the decision call.                                            |
 | `DNA_PAYMENT_TIMEOUT_MS` | number (ms)          | `10000`                               | Budget for a request presenting a payment — settlement happens inside it.     |
 | `DNA_ENDPOINT`           | string (URL)         | `https://edge-api.d3.com/v1/decision` | Decision endpoint. Leave unset unless we give you another.                    |
-| `DNA_SAMPLE_RATE`        | number (0.001–1)     | `1`                                   | Share of requests that get a decision call; paying and signed requests always do. Each call reports its rate as `x-d3-sample-rate`. Out of range sends every request. |
+| `DNA_SAMPLE_RATE`        | number (0.001–1, 1/n) | `1`                                   | Share of requests that get a decision call; paying and signed requests always do. Each call reports its rate as `x-d3-sample-rate`. Out of range sends every request. |
 
 ### Earlier names
 

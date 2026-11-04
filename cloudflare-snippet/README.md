@@ -33,7 +33,7 @@ variables where they exist:
 | `timeoutMs`          | `DNA_TIMEOUT_MS`         | `150`                                 | Hard budget for the decision call.                                                  |
 | `paymentTimeoutMs`   | `DNA_PAYMENT_TIMEOUT_MS` | `10000`                               | Budget for a request presenting a payment — settlement happens inside it.           |
 | `endpoint`           | `DNA_ENDPOINT`           | `https://edge-api.d3.com/v1/decision` | Decision endpoint, not in `CONFIG` by default. Add it only if we give you another.  |
-| `sampleRate`         | —                        | `1`                                   | Fraction of requests that get a decision call, at least `0.001`. Unsampled requests return untouched. |
+| `sampleRate`         | —                        | `1`                                   | Fraction of requests that get a decision call, as 1/n and at least `0.001`. Unsampled requests return untouched. |
 | `alwaysSampleSigned` | —                        | `false`                               | Call on every request carrying signature headers, whatever `sampleRate` says.       |
 
 A `CONFIG` from an earlier copy of this file still works pasted into this
