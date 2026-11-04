@@ -292,7 +292,7 @@ browser's access to headers the site deliberately exposed.
 
 An adapter may send only a share of requests; the rest reach the origin
 with no call. D3 scales counts back up only if it knows that share
-(ADR 0071):
+([ADR 0071](https://github.com/d3-inc/d3-edge/blob/develop/docs/adr/0071-adapters-report-their-sample-rate.md)):
 
 - **If you sample, send the rate on every call** — the rate the request
   was drawn at, e.g. `0.25`. A request sent outside the draw sends `1`.
