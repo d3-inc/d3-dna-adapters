@@ -1,2 +1,1 @@
-# Every change needs a code owner, and .github/ holds the workflows that will publish to npm.
-* @kaisung
+* @kaisung @isingh @datsfilipe @yandrushchak
