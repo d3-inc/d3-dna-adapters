@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+
+# Native/postinstall deps that are allowed to run build scripts.
+onlyBuiltDependencies:
+  - esbuild
+  - workerd

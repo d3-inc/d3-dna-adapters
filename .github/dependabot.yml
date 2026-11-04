@@ -1,0 +1,48 @@
+version: 2
+
+updates:
+  # One root lockfile covers packages/*. The worker template under
+  # cloudflare-worker/ installs the published SDK on a customer's account and is
+  # not part of the workspace.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps-dev)
+    groups:
+      dev-tooling:
+        applies-to: version-updates
+        dependency-type: development
+        patterns:
+          - '*'
+      runtime-minor-patch:
+        applies-to: version-updates
+        dependency-type: production
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+
+  # Actions are pinned by commit SHA; this moves the pin and its version comment together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: ci(deps)
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - '*'

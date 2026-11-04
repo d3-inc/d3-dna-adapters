@@ -1,0 +1,5 @@
+# The workerd config the test suite boots (vitest.config.ts). Not a deployment:
+# a site runs this package from its own Worker, as the README shows.
+name = "dna-cloudflare-adapter-test"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"

@@ -1,0 +1,48 @@
+{
+  "name": "@d3-inc/d3-dna-protocol",
+  "version": "0.9.0",
+  "description": "The DNA wire contract: the payload, decision and report both sides speak, and the adapter helpers built on them. No server logic.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/d3-inc/d3-dna-adapters.git",
+    "directory": "packages/protocol"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "dependencies": {
+    "@logtape/logtape": "^2.3.0"
+  },
+  "devDependencies": {
+    "@logtape/testing": "^2.3.0",
+    "tsup": "^9.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.12"
+  }
+}
