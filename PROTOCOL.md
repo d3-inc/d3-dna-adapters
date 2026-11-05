@@ -37,16 +37,16 @@ requests that present a payment.
 
 ## Request
 
-| Field       | Type                  | Required | Meaning                                                                       |
-| ----------- | --------------------- | -------- | ----------------------------------------------------------------------------- |
-| `method`    | string                | yes      | The agent's HTTP method.                                                      |
-| `url`       | string                | yes      | Request target: path plus query, e.g. `/search?q=1`. Not an absolute URL.     |
-| `host`      | string                | yes      | The `Host` / authority the agent addressed.                                   |
-| `headers`   | object                | yes      | Lowercase-keyed subset of the agent's headers — see below.                     |
-| `requestId` | string (≤64)          | no       | Your correlation id. Links this decision to an outcome report and to logs.     |
-| `ip`        | string                | no       | The agent's IP. Used for fingerprint matching, then hashed or dropped.        |
-| `timestamp` | ISO-8601 or epoch sec | no       | When you observed the request. Informational.                                 |
-| `adapterSet`| positive integer      | no       | What you do with the answer — see **Declaring what you can do**. Absent means nothing. |
+| Field        | Type                  | Required | Meaning                                                                                |
+| ------------ | --------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `method`     | string                | yes      | The agent's HTTP method.                                                               |
+| `url`        | string                | yes      | Request target: path plus query, e.g. `/search?q=1`. Not an absolute URL.              |
+| `host`       | string                | yes      | The `Host` / authority the agent addressed.                                            |
+| `headers`    | object                | yes      | Lowercase-keyed subset of the agent's headers — see below.                             |
+| `requestId`  | string (≤64)          | no       | Your correlation id. Links this decision to an outcome report and to logs.             |
+| `ip`         | string                | no       | The agent's IP. Used for fingerprint matching, then hashed or dropped.                 |
+| `timestamp`  | ISO-8601 or epoch sec | no       | When you observed the request. Informational.                                          |
+| `adapterSet` | positive integer      | no       | What you do with the answer — see **Declaring what you can do**. Absent means nothing. |
 
 `url` carries the query because signatures may cover `@query`; strip
 nothing. `host` must be the authority the agent used, not your origin's
@@ -70,12 +70,12 @@ An adapter that enforces [paid routes](#paid-routes) forwards four more
 groups, each with a length past which the value is dropped rather than
 sent:
 
-| Header                                                     | Cap    | Why                                             |
-| ---------------------------------------------------------- | ------ | ----------------------------------------------- |
-| `accept`                                                    | 256    | Agent or browser — picks the `402` or the `302`  |
-| `sec-fetch-mode`, `sec-fetch-dest`, `upgrade-insecure-requests` | 32 | The same, for a navigating browser              |
-| `payment-signature`, `x-payment`                            | 4096   | x402, two names because v2 renamed the header   |
-| `payment-authorization`                                     | 128    | A D3 Pay handoff or session, for a cookie-less agent |
+| Header                                                          | Cap  | Why                                                  |
+| --------------------------------------------------------------- | ---- | ---------------------------------------------------- |
+| `accept`                                                        | 256  | Agent or browser — picks the `402` or the `302`      |
+| `sec-fetch-mode`, `sec-fetch-dest`, `upgrade-insecure-requests` | 32   | The same, for a navigating browser                   |
+| `payment-signature`, `x-payment`                                | 4096 | x402, two names because v2 renamed the header        |
+| `payment-authorization`                                         | 128  | A D3 Pay handoff or session, for a cookie-less agent |
 
 Plus `d3pay-session`, which is not a client header at all — see
 [the credential](#the-credential).
@@ -85,7 +85,7 @@ Plus `d3pay-session`, which is not a client header at all — see
 RFC 9421 signatures cover headers, never body bytes. A signed request
 binds its body only indirectly, through an RFC 9530 `Content-Digest`
 header that the signature covers. So the digest the client sends is a
-*claim*: relaying it verbatim would let a tampered body verify.
+_claim_: relaying it verbatim would let a tampered body verify.
 
 An adapter computes the digest itself over the bytes it actually
 received, and overwrites whatever the client claimed:
@@ -106,14 +106,14 @@ agent traffic.
 
 `200` with a JSON decision:
 
-| Field          | Type                          | Meaning                                                       |
-| -------------- | ----------------------------- | ------------------------------------------------------------- |
-| `action`       | `"pass"` \| `"block"`         | What to do. The only field an adapter must handle.             |
-| `policyAction` | `"allow"`/`"block"`/`"log-only"` | What the matched rule asked for. `log-only` yields `pass`. |
-| `ruleId`       | string                        | The rule that decided. Absent when the org default decided.   |
-| `verdict`      | object                        | How the agent was classified — see below.                     |
-| `failOpen`     | boolean                       | Set when the endpoint itself fell back rather than evaluating. |
-| `payment`      | object                        | An answer to send instead of reaching the origin — [paid routes](#paid-routes). |
+| Field          | Type                             | Meaning                                                                         |
+| -------------- | -------------------------------- | ------------------------------------------------------------------------------- |
+| `action`       | `"pass"` \| `"block"`            | What to do. The only field an adapter must handle.                              |
+| `policyAction` | `"allow"`/`"block"`/`"log-only"` | What the matched rule asked for. `log-only` yields `pass`.                      |
+| `ruleId`       | string                           | The rule that decided. Absent when the org default decided.                     |
+| `verdict`      | object                           | How the agent was classified — see below.                                       |
+| `failOpen`     | boolean                          | Set when the endpoint itself fell back rather than evaluating.                  |
+| `payment`      | object                           | An answer to send instead of reaching the origin — [paid routes](#paid-routes). |
 
 Treat any `action` that is neither `pass` nor `block` as a failure and
 apply your fail mode. Do not invent a default.
@@ -123,12 +123,12 @@ apply your fail mode. Do not invent a default.
 Rich, and mostly for logging and response headers rather than
 enforcement. The fields adapters generally surface:
 
-| Field      | Meaning                                                                            |
-| ---------- | ---------------------------------------------------------------------------------- |
-| `tier`     | `proven` \| `claimed` \| `derived` \| `spoofed` \| `unverified`, strongest first.  |
-| `identity` | Canonical agent name when known, else the claimed `Signature-Agent` hostname.      |
-| `reason`   | `ok`, or why verification did not reach `proven` (`expired`, `unknown-key`, …).    |
-| `purpose`  | The purposes we assert this agent serves.                                          |
+| Field      | Meaning                                                                           |
+| ---------- | --------------------------------------------------------------------------------- |
+| `tier`     | `proven` \| `claimed` \| `derived` \| `spoofed` \| `unverified`, strongest first. |
+| `identity` | Canonical agent name when known, else the claimed `Signature-Agent` hostname.     |
+| `reason`   | `ok`, or why verification did not reach `proven` (`expired`, `unknown-key`, …).   |
+| `purpose`  | The purposes we assert this agent serves.                                         |
 
 Unsigned traffic is classified, not rejected: no signature means a
 `derived`, `spoofed`, or `unverified` verdict, and policy decides from
@@ -189,12 +189,12 @@ A payment rides in one of three places, and an adapter that reads only
 some of them is wrong in a way that is hard to see — the missing case
 gets the hot-path budget, overruns it, and comes back a block:
 
-| Where                                         | Shape                                        |
-| --------------------------------------------- | -------------------------------------------- |
-| `Payment-Authorization: Payment <token>`      | ≤128 chars. For an agent with no cookie jar.  |
-| `Payment-Signature` / `X-Payment`             | ≤4096 chars. x402.                            |
-| `Cookie: __Host-d3pay=<token>`                | ≤64 chars. The site's own first-party cookie. |
-| `?d3pay_handoff=<id>.<sig>` on the URL        | 22 base64url chars, `.`, 43 more. A redemption. |
+| Where                                    | Shape                                           |
+| ---------------------------------------- | ----------------------------------------------- |
+| `Payment-Authorization: Payment <token>` | ≤128 chars. For an agent with no cookie jar.    |
+| `Payment-Signature` / `X-Payment`        | ≤4096 chars. x402.                              |
+| `Cookie: __Host-d3pay=<token>`           | ≤64 chars. The site's own first-party cookie.   |
+| `?d3pay_handoff=<id>.<sig>` on the URL   | 22 base64url chars, `.`, 43 more. A redemption. |
 
 The cookie is forwarded **by name, as a header of our own**:
 `d3pay-session: <value>`. The raw `Cookie` header is the site's and
@@ -217,8 +217,8 @@ it, so the endpoint will not start one unless you say you can.
 full. Send nothing if you honour none — that is the safe answer, and the
 one the endpoint assumes.
 
-| Revision | You assert that you                                                                                                                                    |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Revision | You assert that you                                                                                                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1        | forward `Cookie: __Host-d3person` as `d3pay-person`; append the answer's `Set-Cookie` to the origin's response rather than replacing it; and strip `d3pay_browser` from the URL before the origin |
 
 All or nothing. A copy of this repository that drops any one of the three
@@ -242,9 +242,9 @@ someone who just paid.
 
 | Field     | Meaning                                                            |
 | --------- | ------------------------------------------------------------------ |
-| `status`  | Answer with this instead of reaching the origin. Absent ⇒ pass on.  |
-| `headers` | Headers to put on the answer, or on the origin's response.          |
-| `body`    | Already serialized. Ignored when `status` is absent.                |
+| `status`  | Answer with this instead of reaching the origin. Absent ⇒ pass on. |
+| `headers` | Headers to put on the answer, or on the origin's response.         |
+| `body`    | Already serialized. Ignored when `status` is absent.               |
 
 Send it verbatim, plus `cache-control: no-store` and your `x-d3-edge`
 tag. Two rules the adapter owns:
@@ -364,9 +364,9 @@ there is no adapter code to send one.
 
 The status code is the whole answer:
 
-| Status | Meaning                                                                                                             |
-| ------ | -------------------------------------------------------------------------------------------------------------------- |
-| `200`  | Continue. `x-d3-edge: pass` — or `x-d3-edge: fail-open` plus an `x-d3-reason` when the endpoint fell back (see below). |
+| Status | Meaning                                                                                                                                                                                                                  |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `200`  | Continue. `x-d3-edge: pass` — or `x-d3-edge: fail-open` plus an `x-d3-reason` when the endpoint fell back (see below).                                                                                                   |
 | `403`  | Deny. The JSON block body from [What an adapter must do](#what-an-adapter-must-do), plus `x-d3-rule-id` / `x-d3-tier` headers — nginx discards a deny body; Caddy, Traefik, and Envoy return it to the visitor verbatim. |
 
 Nothing else is ever returned on purpose. In particular, **a dead,

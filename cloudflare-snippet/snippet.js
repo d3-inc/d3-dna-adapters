@@ -29,7 +29,7 @@ const DEFAULT_ENDPOINT = 'https://edge-api.d3.com/v1/decision';
 export default createSnippet(CONFIG);
 
 // Headers forwarded to the policy worker — the same allowlist the Worker
-// adapter uses (extractPayload in @d3-inc/d3-edge-core).
+// adapter uses (extractPayload in packages/protocol).
 const FORWARDED_HEADERS = [
   'signature',
   'signature-input',
@@ -156,6 +156,7 @@ export function createSnippet(config) {
         // The page is priced and the charge may already have landed, so
         // falling open here would serve a paid page free.
         if (paying) return paymentUnavailableResponse();
+
         // Enforcement failure must never take the site down, unless opted in.
         if (config.failMode === 'closed') return blockResponse({}, 'fail-closed');
         // Stripped on the way out too: an endpoint we could not reach is no
@@ -178,8 +179,7 @@ export function createSnippet(config) {
 function isSampled(request, config) {
   if (Math.random() < config.sampleRate) return true;
   return (
-    config.alwaysSampleSigned &&
-    (request.headers.has('signature') || request.headers.has('signature-input'))
+    config.alwaysSampleSigned && (request.headers.has('signature') || request.headers.has('signature-input'))
   );
 }
 

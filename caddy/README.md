@@ -31,7 +31,7 @@ Stock Caddy 2. Nothing else.
 
 Enforcement breaking must never take your site down — but `forward_auth`
 returns any upstream error straight to the visitor, which is fail-
-*closed*. The recipe's local gateway hop is what inverts that:
+_closed_. The recipe's local gateway hop is what inverts that:
 `forward_auth` talks to `127.0.0.1:8113`, which proxies to the real
 endpoint with a hard 500 ms budget, and its `handle_errors` block turns
 a dead, unreachable, or hung endpoint into `200` + `x-d3-edge:
@@ -90,7 +90,7 @@ only signed agent traffic (tiny volume, the traffic D3 Edge exists for):
 	}
 ```
 
-Or ramp by volume — send a fixed fraction of *all* traffic to the
+Or ramp by volume — send a fixed fraction of _all_ traffic to the
 endpoint. `{http.request.uuid}` is a per-request UUIDv4, and lowercase
 hex sorts the same lexicographically as numerically, so comparing it
 against a 4-hex-digit threshold passes a uniform `threshold / 65536` —

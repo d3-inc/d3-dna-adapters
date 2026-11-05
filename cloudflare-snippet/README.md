@@ -73,7 +73,7 @@ credential:
   because settlement happens inside that call.
 - **A paying request never falls open.** Whatever `failMode` says, a
   failed decision call on a request carrying a credential answers `502
-  {"error":"payment_unavailable"}`. The page is priced and the charge
+{"error":"payment_unavailable"}`. The page is priced and the charge
   may already have landed; serving it free is the one wrong answer.
 - **A paying request is never left to the sample draw.** `sampleRate`
   does not apply to it — unsampled, someone would have paid for a page

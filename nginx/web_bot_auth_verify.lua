@@ -66,7 +66,7 @@ if not ENDPOINT then
 end
 
 -- Headers forwarded to the policy worker — the same allowlist the other
--- adapters use (extractPayload in @d3-inc/d3-edge-core).
+-- adapters use (extractPayload in packages/protocol).
 local FORWARDED_HEADERS = {
   "signature", "signature-input", "signature-agent", "user-agent",
   "content-digest",

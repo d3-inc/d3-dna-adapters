@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import stylistic from '@stylistic/eslint-plugin';
 import { defineConfig } from 'eslint/config';
+import globals from 'globals';
 import ts from 'typescript-eslint';
 
 // The rules d3-dna lints this code with, less import-x: its rules here only warned,
@@ -40,5 +41,10 @@ export default defineConfig(
       ],
       'no-param-reassign': ['error', { props: false }],
     },
+  },
+  {
+    // Pasted as plain JS into Cloudflare Snippets, which run on the Workers runtime.
+    files: ['cloudflare-snippet/snippet.js'],
+    languageOptions: { globals: globals.serviceworker },
   }
 );

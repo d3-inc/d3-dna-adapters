@@ -1,7 +1,7 @@
 /**
  * The pay credentials as they travel: header and cookie names, their caps, the
  * URL params, and the readers that parse them. Session signing and the KV
- * records stay in `@d3-inc/d3-edge-core` — nothing here holds a secret.
+ * records stay in the policy worker, so nothing here holds a secret.
  */
 
 /** MPP's credential header: the adapters forward it under its cap and keep it from the origin, and the worker reads nothing in it. */

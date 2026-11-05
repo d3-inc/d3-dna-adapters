@@ -95,6 +95,6 @@ Bot-auth enforcement here is unaffected.
   with signed traffic only by wrapping it in a `map` on
   `$http_signature`.
 - Verify server-side: `curl -sI -H 'signature-input: x'
-  https://example.com/` and watch the request appear in your
+https://example.com/` and watch the request appear in your
   [dashboard](https://dashboard.d3.com) — a passed response looks
   exactly like your site without the recipe.
