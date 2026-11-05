@@ -1,5 +1,6 @@
 // registry-check.yml: flags an npm version no reviewed release put there, and an old repo name a repo has taken.
-import { historyOf, packument, verifiedProvenance } from './registry.ts';
+import { verifiedProvenance } from './provenance.ts';
+import { historyOf, packument } from './registry.ts';
 import { reviewedLinesHolding } from './release-plan.ts';
 import {
   HAND_PUBLISHED,
