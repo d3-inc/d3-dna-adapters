@@ -25,6 +25,8 @@ export {
   PERSON_PASS_MAX_LENGTH,
   handoffFetchUrl,
   handoffFromUrl,
+  OWN_COOKIES,
+  cookiesOf,
   presentsPayCredential,
   readCookie,
   readSessionCookie,
@@ -47,18 +49,54 @@ export {
 export type { Logger, LogLevel } from './logging/logger';
 
 export {
+  DNA_CREDENTIAL_HEADERS,
+  edgeRequestPresentsPayment,
   PAYMENT_HEADERS,
   PAYMENT_HEADER_CAPS,
   X402_MAX_PAYMENT_HEADER_LENGTH,
   X402_PAYMENT_HEADERS,
   X402_PAYMENT_HEADER_V1,
   X402_PAYMENT_HEADER_V2,
+  base64Utf8,
   hasPaymentHeader,
   requestPresentsPayment,
   stripPaymentHeaders,
 } from './x402/payment-header';
 
 export { DEFAULT_DNA_ENDPOINT, readAdapterSettings } from './adapter/adapter-settings';
+export {
+  FORWARDED_MAX_TOTAL_LENGTH,
+  FORWARDED_VALUE_MAX_LENGTH,
+  NO_EXCLUSIONS,
+  parseExclusionList,
+} from './adapter/forward-all';
+export type { ForwardExclusions } from './adapter/forward-all';
+export {
+  CARRIES_MCP_SINCE,
+  FORWARDED_MAX_COOKIES,
+  FORWARDED_MAX_NAMES,
+  FORWARDS_ALL_SINCE,
+  MCP_DNA_KEY_HEADER,
+  MCP_METHOD_HEADER,
+  MCP_NAME_HEADER,
+  NEVER_FORWARDED_HEADERS,
+} from './adapter/forwarding.constants';
+export {
+  MCP_DNA_KEY_META,
+  MCP_KEY_ARGUMENT,
+  MCP_X402_PAYMENT_META,
+  mcpOriginRequest,
+  oversizedCallNamesCredential,
+  recordableName,
+  recordedMcpCall,
+} from './adapter/mcp';
+export type { McpCarriage } from './adapter/mcp';
+export {
+  McpKeyArgumentMemory,
+  MCP_KEY_ARGUMENT_MEMORY_MS,
+  unreadableCallResponse,
+  withMcpResult,
+} from './adapter/mcp-response';
 export type { AdapterSettingName, AdapterSettings, SettingLookup } from './adapter/adapter-settings';
 export {
   DEFAULT_PAYMENT_TIMEOUT_MS,
@@ -82,8 +120,9 @@ export {
   FORWARDED_HEADER_SET,
   HINT_HEADERS,
   NAVIGATION_HEADERS,
+  extractEdgeRequest,
   extractPayload,
   sha256ContentDigest,
 } from './adapter/extract';
-export type { ExtractOptions } from './adapter/extract';
+export type { EdgeRequest, ExtractOptions } from './adapter/extract';
 export { debugHeadersOf } from './adapter/debug-headers';

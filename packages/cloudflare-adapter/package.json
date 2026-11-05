@@ -1,6 +1,6 @@
 {
   "name": "@d3-inc/d3-edge-cloudflare-adapter",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "The DNA middleware for Cloudflare Workers, deployed in front of the protected site: extract → policy decision → enforce, fail-open.",
   "license": "Apache-2.0",
   "type": "module",

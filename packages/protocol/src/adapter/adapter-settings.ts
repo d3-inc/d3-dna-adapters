@@ -1,3 +1,4 @@
+import { parseExclusionList, type ForwardExclusions } from './forward-all';
 import { DEFAULT_PAYMENT_TIMEOUT_MS, DEFAULT_POLICY_TIMEOUT_MS } from './http-policy-client';
 
 export const DEFAULT_DNA_ENDPOINT = 'https://edge-api.d3.com/v1/decision';
@@ -12,6 +13,8 @@ const ADAPTER_SETTING_NAMES = {
   timeoutMs: ['DNA_TIMEOUT_MS', 'POLICY_TIMEOUT_MS'],
   paymentTimeoutMs: ['DNA_PAYMENT_TIMEOUT_MS', 'POLICY_PAYMENT_TIMEOUT_MS'],
   debugLogRawPayload: ['DNA_DEBUG_LOG_RAW_PAYLOAD', 'DEBUG_LOG_RAW_PAYLOAD'],
+  excludeHeaders: ['DNA_EXCLUDE_HEADERS'],
+  excludeCookies: ['DNA_EXCLUDE_COOKIES'],
 } as const;
 
 type SettingNames = typeof ADAPTER_SETTING_NAMES;
@@ -28,6 +31,8 @@ export interface AdapterSettings {
   timeoutMs: number;
   paymentTimeoutMs: number;
   debugLogRawPayload: boolean;
+  /** Comma-separated in the environment; header names compare lowercase, cookie names as sent. */
+  exclude: ForwardExclusions;
 }
 
 interface FoundSetting {
@@ -63,6 +68,10 @@ export function readAdapterSettings(...sources: SettingLookup[]): AdapterSetting
     timeoutMs: positiveNumber(read(names.timeoutMs), DEFAULT_POLICY_TIMEOUT_MS),
     paymentTimeoutMs: positiveNumber(read(names.paymentTimeoutMs), DEFAULT_PAYMENT_TIMEOUT_MS),
     debugLogRawPayload: read(debugNames) === 'true',
+    exclude: {
+      headers: parseExclusionList(read(names.excludeHeaders), { lowercase: true }),
+      cookies: parseExclusionList(read(names.excludeCookies), { lowercase: false }),
+    },
   };
 }
 

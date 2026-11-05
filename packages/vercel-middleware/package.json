@@ -1,6 +1,6 @@
 {
   "name": "@d3-inc/d3-edge-vercel-middleware",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "The DNA middleware for Vercel Routing Middleware: extract → policy decision → pass/block, fail-open.",
   "license": "Apache-2.0",
   "type": "module",
