@@ -90,6 +90,31 @@ describe('withD3Mcp', () => {
     expect(paying.handled).toHaveLength(0);
   });
 
+  it('refuses a call too large to read that names a credential, without deciding or running the route', async () => {
+    const h = harness({ action: 'pass' });
+    const res = await withD3Mcp(
+      h.handler,
+      CONFIG,
+      h.deps
+    )(call({ name: 'a', pad: 'x'.repeat(1_048_576), _meta: { 'dna.d3.com/key': 'dna_k_1' } }));
+
+    expect(res.status).toBe(413);
+    expect(h.decisions).toHaveLength(0);
+    expect(h.handled).toHaveLength(0);
+  });
+
+  it('falls open when the only credential was a lifted key past its cap', async () => {
+    const h = harness('throw');
+    const res = await withD3Mcp(
+      h.handler,
+      CONFIG,
+      h.deps
+    )(call({ name: 'a', _meta: { 'dna.d3.com/key': 'k'.repeat(5000) } }));
+
+    expect(res.headers.get('x-d3-edge')).toBe('fail-open');
+    expect(((await h.handled[0].json()) as { params: unknown }).params).toEqual({ name: 'a' });
+  });
+
   it("hands the route its own request type and Next's second argument, even after a strip", async () => {
     class NextLikeRequest extends Request {}
     const seen: { request: Request; context: unknown }[] = [];

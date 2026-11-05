@@ -1,4 +1,5 @@
 import { MCP_KEY_ARGUMENT } from './mcp';
+import { privateCacheControl } from './payment-response';
 
 /** How long a host's `mcpKeyArgument` holds after the decision that carried it (ADR 0081 decision 4). */
 export const MCP_KEY_ARGUMENT_MEMORY_MS = 5 * 60_000;
@@ -18,6 +19,21 @@ export const MCP_KEY_ARGUMENT_SCHEMA = {
 
 /** They describe the origin's bytes, which a rewrite changes: a digest or validator left on would be wrong. */
 const REPRESENTATION_HEADERS = ['content-length', 'content-digest', 'repr-digest', 'content-md5', 'etag'];
+
+/**
+ * The answer to an MCP call too large to read that names one of our
+ * credentials: the adapter can neither strip it nor let the origin see it.
+ */
+export function unreadableCallResponse(): Response {
+  return new Response(JSON.stringify({ error: 'mcp_call_too_large' }), {
+    status: 413,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-d3-edge': 'fail-closed',
+    },
+  });
+}
 
 /** Per isolate: whether each host's site turned the key argument on, as the last decision said. */
 export class McpKeyArgumentMemory {
@@ -70,6 +86,8 @@ export async function withMcpResult(response: Response, edits: McpResultEdits): 
 
   const headers = new Headers(response.headers);
   for (const name of REPRESENTATION_HEADERS) headers.delete(name);
+  // A receipt is one payer's: no shared cache may hold it, whether or not the instruction carried headers too.
+  if (meta) headers.set('cache-control', privateCacheControl(headers.get('cache-control')));
   return new Response(rewritten, { status: response.status, statusText: response.statusText, headers });
 }
 

@@ -24,14 +24,34 @@ export interface ForwardedRequest {
   droppedUnlisted: { headers: boolean; cookies: boolean };
 }
 
-/** A comma-separated setting as names; blanks and repeats dropped. */
+/** A comma-separated setting as names; blanks and repeats dropped. Never capped: a name cut here would be forwarded. */
 export function parseExclusionList(raw: string | undefined, { lowercase }: { lowercase: boolean }): string[] {
   const names = (raw ?? '')
     .split(',')
     .map((name) => name.trim())
     .filter((name) => name.length > 0)
     .map((name) => (lowercase ? name.toLowerCase() : name));
-  return [...new Set(names)].slice(0, FORWARDED_MAX_NAMES);
+  return [...new Set(names)];
+}
+
+/**
+ * The exclusions as the payload echoes them: each list capped, and a kind past
+ * its cap flagged, so the worker reads every unlisted name of it as withheld.
+ */
+export function echoedExclusions(exclude: ForwardExclusions): {
+  excluded: { headers: string[]; cookies: string[] };
+  overflow: { headers: boolean; cookies: boolean };
+} {
+  return {
+    excluded: {
+      headers: exclude.headers.slice(0, FORWARDED_MAX_NAMES),
+      cookies: exclude.cookies.slice(0, FORWARDED_MAX_NAMES),
+    },
+    overflow: {
+      headers: exclude.headers.length > FORWARDED_MAX_NAMES,
+      cookies: exclude.cookies.length > FORWARDED_MAX_NAMES,
+    },
+  };
 }
 
 interface Candidate {

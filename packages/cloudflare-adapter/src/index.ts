@@ -5,15 +5,16 @@ import {
   configureEdgeLogging,
   createHttpPolicyClient,
   edgeLogger,
+  edgeRequestPresentsPayment,
   extractEdgeRequest,
   McpKeyArgumentMemory,
   mcpOriginRequest,
   readAdapterSettings,
-  requestPresentsPayment,
   pathOf,
   paymentEdgeMode,
   sendReport,
   stripPaymentHeaders,
+  unreadableCallResponse,
   withMcpResult,
   withPaymentHeaders,
   type BuiltAnswer,
@@ -74,8 +75,8 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
     });
     // Presence of a credential is all the adapter needs to tell the two budgets
     // apart, and it never decodes one (ADR 0032 decision 1); one lifted from an
-    // MCP call's body counts as one in a header.
-    const paying = requestPresentsPayment(request) || Object.keys(mcp?.lifted ?? {}).length > 0;
+    // MCP call's body counts when the payload carries it.
+    const paying = edgeRequestPresentsPayment(request, payload);
     const client = createHttpPolicyClient(
       {
         url: policy.url,
@@ -126,6 +127,8 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
       reportOutcome(mode, response, { answer: builtAnswerOf(response).catch(() => undefined) });
     const reportProxied = (mode: EdgeMode, response: Response, originLatencyMs: number): Response =>
       reportOutcome(mode, response, { originLatencyMs });
+
+    if (mcp?.unreadableCredential) return reportBuilt('fail-closed', unreadableCallResponse());
 
     let decision: ClientDecision;
     // I/O unfreezes the Workers clock, so Date.now() advances across the fetch.

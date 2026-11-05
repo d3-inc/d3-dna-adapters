@@ -85,7 +85,8 @@ read them, minus three sets:
 A value without a cap of its own stops at 2048 chars, and those values
 together at 16 384; past either, the longest go first and each is named in
 `droppedHeaders` or `droppedCookies`. Past 128 names a list stops and
-`droppedUnlisted` says so. The endpoint reads these values for rules and
+`droppedUnlisted` says so; an exclusion list past 128 is echoed capped, with
+`droppedUnlisted` set, and every name on it is still withheld. The endpoint reads these values for rules and
 does not store them.
 
 An adapter that enforces [paid routes](#paid-routes) forwards four more
@@ -222,6 +223,11 @@ gets the hot-path budget, overruns it, and comes back a block:
 The cookie is forwarded **by name, as a header of our own**:
 `d3pay-session: <value>`. The raw `Cookie` header is the site's and
 never travels.
+
+An MCP call too large to read (over 1 MiB) whose body names one of these
+`_meta` keys or the `dna_account_key` argument cannot be stripped, so it is
+answered `413 { "error": "mcp_call_too_large" }` and reaches neither the
+endpoint nor the origin.
 
 Presence is checked against the caps and nothing else. A value past its
 cap is not a payment.

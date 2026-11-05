@@ -3,10 +3,27 @@ import { PAYMENT_AUTHORIZATION_MAX_LENGTH, PAY_SESSION_MAX_LENGTH } from '../pay
 import {
   X402_MAX_PAYMENT_HEADER_LENGTH,
   base64Utf8,
+  edgeRequestPresentsPayment,
   hasPaymentHeader,
   requestPresentsPayment,
   stripPaymentHeaders,
 } from './payment-header';
+
+describe('edgeRequestPresentsPayment', () => {
+  const plain = new Request('https://ai.d3.com/mcp', { method: 'POST' });
+
+  it('counts a lifted credential the payload carries, and not one dropped past its cap', () => {
+    expect(edgeRequestPresentsPayment(plain, { headers: { 'payment-authorization': 'Payment k' } })).toBe(
+      true
+    );
+    expect(edgeRequestPresentsPayment(plain, { headers: {} })).toBe(false);
+  });
+
+  it('counts a credential on the request itself', () => {
+    const paying = new Request('https://ai.d3.com/mcp', { headers: { 'payment-signature': 'abc' } });
+    expect(edgeRequestPresentsPayment(paying, { headers: {} })).toBe(true);
+  });
+});
 
 describe('base64Utf8', () => {
   it('encodes a name btoa alone would throw on', () => {

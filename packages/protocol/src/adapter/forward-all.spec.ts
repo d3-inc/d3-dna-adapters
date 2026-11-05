@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   FORWARDED_MAX_TOTAL_LENGTH,
   FORWARDED_VALUE_MAX_LENGTH,
+  echoedExclusions,
   forwardAll,
   NO_EXCLUSIONS,
   parseExclusionList,
 } from './forward-all';
-import { MCP_DNA_KEY_HEADER, NEVER_FORWARDED_HEADERS } from './forwarding.constants';
+import { FORWARDED_MAX_NAMES, MCP_DNA_KEY_HEADER, NEVER_FORWARDED_HEADERS } from './forwarding.constants';
 
 const NO_CAPS = new Map<string, number>();
 
@@ -135,5 +136,25 @@ describe('parseExclusionList', () => {
     expect(parseExclusionList('Sid,sid', { lowercase: false })).toEqual(['Sid', 'sid']);
     expect(parseExclusionList(undefined, { lowercase: true })).toEqual([]);
     expect(parseExclusionList('', { lowercase: true })).toEqual([]);
+  });
+
+  it('keeps every name past the wire cap, so none of them is forwarded', () => {
+    const names = Array.from({ length: FORWARDED_MAX_NAMES + 2 }, (_, i) => `x-secret-${i}`);
+    const parsed = parseExclusionList(names.join(','), { lowercase: true });
+    expect(parsed).toHaveLength(FORWARDED_MAX_NAMES + 2);
+
+    const last = names[names.length - 1];
+    const sent = forwardAll(new Headers({ [last]: 'k' }), { headers: parsed, cookies: [] }, NO_CAPS);
+    expect(sent.headers[last]).toBeUndefined();
+  });
+});
+
+describe('echoedExclusions', () => {
+  it('caps each echoed list and flags the kind that overflowed', () => {
+    const headers = Array.from({ length: FORWARDED_MAX_NAMES + 1 }, (_, i) => `x-${i}`);
+    const echo = echoedExclusions({ headers, cookies: ['sid'] });
+    expect(echo.excluded.headers).toHaveLength(FORWARDED_MAX_NAMES);
+    expect(echo.excluded.cookies).toEqual(['sid']);
+    expect(echo.overflow).toEqual({ headers: true, cookies: false });
   });
 });

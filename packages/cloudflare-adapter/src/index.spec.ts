@@ -872,6 +872,43 @@ describe('forwarding and MCP carriage (ADR 0081)', () => {
     });
   });
 
+  it('refuses a call too large to read that names a credential, before deciding or reaching the origin', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    const res = await run(
+      mcpCall({ name: 'get_report', pad: 'x'.repeat(1_048_576), _meta: { 'dna.d3.com/key': 'dna_k_1' } })
+    );
+    expect(res.status).toBe(413);
+    expect(res.headers.get('x-d3-edge')).toBe('fail-closed');
+    expect(log.policyCalls).toHaveLength(0);
+    expect(log.originCalls).toHaveLength(0);
+  });
+
+  it('gives a lifted key past its cap no payment budget, so a failed decision falls open without it', async () => {
+    const log = stubOutbound({ status: 500 }, '{}', { 'content-type': 'application/json' });
+    const res = await run(mcpCall({ name: 'get_report', _meta: { 'dna.d3.com/key': 'k'.repeat(5000) } }));
+    expect(res.headers.get('x-d3-edge')).toBe('fail-open');
+    expect(((await log.originCalls[0].json()) as { params: unknown }).params).toEqual({ name: 'get_report' });
+  });
+
+  it('keeps a lifted key from DNA when the site excludes the header', async () => {
+    const log = stubOutbound({ action: 'pass' }, '{}', { 'content-type': 'application/json' });
+    await run(mcpCall({ name: 'get_report', _meta: { 'dna.d3.com/key': 'dna_k_1' } }), {
+      DNA_EXCLUDE_HEADERS: 'payment-authorization',
+    });
+    expect(log.policyCalls[0].payload.headers['payment-authorization']).toBeUndefined();
+    expect(((await log.originCalls[0].json()) as { params: unknown }).params).toEqual({ name: 'get_report' });
+  });
+
+  it('keeps a receipt out of shared caches when only the result carries it', async () => {
+    stubOutbound(
+      { action: 'pass', payment: { meta: { 'dna.d3.com/receipt': { status: 'success' } } } },
+      JSON.stringify({ jsonrpc: '2.0', id: 42, result: {} }),
+      { 'content-type': 'application/json', 'cache-control': 'public, max-age=300' }
+    );
+    const res = await run(mcpCall({ name: 'get_report' }));
+    expect(res.headers.get('cache-control')).toBe('private, max-age=300');
+  });
+
   it("adds the receipt to the origin's JSON result", async () => {
     const meta = { 'dna.d3.com/receipt': { status: 'success', charged: 1000 } };
     stubOutbound(

@@ -50,6 +50,7 @@ export type { Logger, LogLevel } from './logging/logger';
 
 export {
   DNA_CREDENTIAL_HEADERS,
+  edgeRequestPresentsPayment,
   PAYMENT_HEADERS,
   PAYMENT_HEADER_CAPS,
   X402_MAX_PAYMENT_HEADER_LENGTH,
@@ -85,11 +86,17 @@ export {
   MCP_KEY_ARGUMENT,
   MCP_X402_PAYMENT_META,
   mcpOriginRequest,
+  oversizedCallNamesCredential,
   recordableName,
   recordedMcpCall,
 } from './adapter/mcp';
 export type { McpCarriage } from './adapter/mcp';
-export { McpKeyArgumentMemory, MCP_KEY_ARGUMENT_MEMORY_MS, withMcpResult } from './adapter/mcp-response';
+export {
+  McpKeyArgumentMemory,
+  MCP_KEY_ARGUMENT_MEMORY_MS,
+  unreadableCallResponse,
+  withMcpResult,
+} from './adapter/mcp-response';
 export type { AdapterSettingName, AdapterSettings, SettingLookup } from './adapter/adapter-settings';
 export {
   DEFAULT_PAYMENT_TIMEOUT_MS,

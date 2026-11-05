@@ -319,6 +319,17 @@ describe('extractPayload by revision', () => {
     expect(payload.excluded).toEqual({ headers: ['x-api-key'], cookies: ['sid'] });
   });
 
+  it('flags headers as unlisted when the exclusions outgrow the echo', async () => {
+    const names = Array.from({ length: 130 }, (_, i) => `x-secret-${i}`);
+    const payload = await extractPayload(request({ 'x-secret-129': 'k' }), {
+      adapterSet: 2,
+      exclude: { headers: names, cookies: [] },
+    });
+    expect(payload.headers['x-secret-129']).toBeUndefined();
+    expect(payload.excluded!.headers).toHaveLength(128);
+    expect(payload.droppedUnlisted).toEqual({ headers: true, cookies: false });
+  });
+
   it('echoes nothing when the site excludes nothing', async () => {
     expect((await extractPayload(request(), { adapterSet: 2 })).excluded).toBeUndefined();
   });
@@ -344,6 +355,26 @@ describe('extractPayload by revision', () => {
     expect(three.payload.mcp).toEqual({ method: 'tools/call', tool: 'get_report', source: 'body' });
     expect(three.payload.headers['payment-authorization']).toBe('Payment dna_k_1');
     expect(JSON.parse(three.mcp!.originBody!).params).toEqual({ name: 'get_report' });
+  });
+
+  it('withholds a lifted credential the site excludes, and still strips it from the body', async () => {
+    const call = new Request('https://ai.d3.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'get_report', _meta: { 'dna.d3.com/key': 'dna_k_1' } },
+      }),
+    });
+    const { payload, mcp } = await extractEdgeRequest(call, {
+      adapterSet: 3,
+      exclude: { headers: ['payment-authorization'], cookies: [] },
+    });
+    expect(payload.headers['payment-authorization']).toBeUndefined();
+    expect(payload.excluded?.headers).toEqual(['payment-authorization']);
+    expect(JSON.parse(mcp!.originBody!).params).toEqual({ name: 'get_report' });
   });
 
   it('keeps a payment header the client sent over one lifted from the body', async () => {

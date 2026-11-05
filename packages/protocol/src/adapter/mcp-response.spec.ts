@@ -9,6 +9,16 @@ import {
 } from './mcp-response';
 import { buildPaymentResponse } from './payment-response';
 
+describe('withMcpResult and caches', () => {
+  it('makes a receipted result private, even when the instruction carried no headers', async () => {
+    const origin = new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), {
+      headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=60' },
+    });
+    const out = await withMcpResult(origin, { method: 'tools/call', meta: { r: 1 }, keyArgument: false });
+    expect(out.headers.get('cache-control')).toBe('private, max-age=60');
+  });
+});
+
 const jsonRpc = (result: unknown, init: ResponseInit = {}) =>
   new Response(JSON.stringify({ jsonrpc: '2.0', id: 7, result }), {
     headers: { 'content-type': 'application/json', 'content-length': '999' },

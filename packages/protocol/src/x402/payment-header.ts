@@ -1,4 +1,5 @@
 import { MCP_DNA_KEY_HEADER } from '../adapter/forwarding.constants';
+import type { RequestPayload } from '../types';
 import {
   PAYMENT_AUTHORIZATION_HEADER,
   PAYMENT_AUTHORIZATION_MAX_LENGTH,
@@ -76,6 +77,19 @@ const ORIGIN_STRIPPED_HEADERS: readonly string[] = [
  */
 export function requestPresentsPayment(request: Request): boolean {
   return hasPaymentHeader(request.headers) || handoffFromUrl(request.url) !== null;
+}
+
+/**
+ * Whether an extracted request pays, for the budget and the fail-closed answer:
+ * a credential on the request, or one lifted from an MCP call that the payload
+ * carries under its cap. A lifted value past its cap or excluded never reaches
+ * the worker, so it buys nothing.
+ */
+export function edgeRequestPresentsPayment(
+  request: Request,
+  payload: Pick<RequestPayload, 'headers'>
+): boolean {
+  return requestPresentsPayment(request) || hasPaymentHeader(payload.headers);
 }
 
 /**

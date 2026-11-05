@@ -13,7 +13,7 @@ import { PURPOSE_HEADERS } from '../purpose';
 import type { HandshakeAttestation, NetworkFacts, RequestPayload } from '../types';
 import { PAYMENT_HEADER_CAPS, X402_PAYMENT_HEADERS } from '../x402/payment-header';
 import { debugHeadersOf } from './debug-headers';
-import { forwardAll, NO_EXCLUSIONS, type ForwardExclusions } from './forward-all';
+import { echoedExclusions, forwardAll, NO_EXCLUSIONS, type ForwardExclusions } from './forward-all';
 import { CARRIES_MCP_SINCE, FORWARDS_ALL_SINCE } from './forwarding.constants';
 import { liftedPaymentToForward, mcpCarriageOf, type McpCarriage } from './mcp';
 
@@ -160,12 +160,22 @@ export async function extractEdgeRequest(request: Request, opts: ExtractOptions 
 
   const mcp = revision >= CARRIES_MCP_SINCE ? mcpCarriageOf(request, body, exclude.headers) : null;
   for (const [name, value] of Object.entries(liftedPaymentToForward(request.headers, mcp?.lifted ?? {}))) {
+    // The site's exclusion binds a lifted credential as it binds the header; the origin loses it either way.
+    if (exclude.headers.includes(name)) continue;
+
     const cap = HEADER_LENGTH_CAPS.get(name);
     if (cap !== undefined && value.length > cap) droppedHeaders.push(name);
     else headers[name] = value;
   }
 
   const hasExclusions = exclude.headers.length > 0 || exclude.cookies.length > 0;
+  const echo = echoedExclusions(exclude);
+  const unlisted = forwardsAll
+    ? {
+        headers: droppedUnlisted.headers || echo.overflow.headers,
+        cookies: droppedUnlisted.cookies || echo.overflow.cookies,
+      }
+    : droppedUnlisted;
   const payload: RequestPayload = {
     ip: opts.ip,
     handshake: opts.handshake,
@@ -181,10 +191,8 @@ export async function extractEdgeRequest(request: Request, opts: ExtractOptions 
     headers,
     ...(forwardsAll ? { cookies } : {}),
     ...(droppedCookies.length > 0 ? { droppedCookies } : {}),
-    ...(droppedUnlisted.headers || droppedUnlisted.cookies ? { droppedUnlisted } : {}),
-    ...(forwardsAll && hasExclusions
-      ? { excluded: { headers: [...exclude.headers], cookies: [...exclude.cookies] } }
-      : {}),
+    ...(unlisted.headers || unlisted.cookies ? { droppedUnlisted: unlisted } : {}),
+    ...(forwardsAll && hasExclusions ? { excluded: echo.excluded } : {}),
     ...(mcp?.facts ? { mcp: mcp.facts } : {}),
     ...(opts.debugHeaders
       ? { debugHeaders: debugHeadersOf(entriesOf(request.headers), exclude.headers) }

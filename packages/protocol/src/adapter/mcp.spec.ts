@@ -5,11 +5,41 @@ import {
   MCP_BODY_MAX_BYTES,
   mcpCarriageOf,
   mcpOriginRequest,
+  oversizedCallNamesCredential,
   readJsonRpcRequest,
   recordedMcpCall,
 } from './mcp';
 
 const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).buffer as ArrayBuffer;
+
+describe('oversizedCallNamesCredential', () => {
+  const call = (meta: Record<string, unknown>, padding = MCP_BODY_MAX_BYTES) =>
+    encode({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { pad: 'x'.repeat(padding), _meta: meta },
+    });
+
+  it('flags a call too large to read that names any credential key', () => {
+    for (const meta of [{ 'dna.d3.com/key': 'k' }, { 'x402/payment': {} }]) {
+      expect(oversizedCallNamesCredential('POST', 'application/json', call(meta))).toBe(true);
+    }
+
+    const argument = encode({
+      params: { arguments: { dna_account_key: 'k' }, pad: 'x'.repeat(MCP_BODY_MAX_BYTES) },
+    });
+    expect(oversizedCallNamesCredential('POST', 'application/json', argument)).toBe(true);
+  });
+
+  it('leaves alone a large body that names none, one small enough to read, and a non-JSON POST', () => {
+    expect(oversizedCallNamesCredential('POST', 'application/json', call({ trace: 't' }))).toBe(false);
+    expect(
+      oversizedCallNamesCredential('POST', 'application/json', call({ 'dna.d3.com/key': 'k' }, 10))
+    ).toBe(false);
+    expect(oversizedCallNamesCredential('POST', 'text/plain', call({ 'dna.d3.com/key': 'k' }))).toBe(false);
+  });
+});
 const JSON_TYPE = 'application/json';
 
 const call = (params: Record<string, unknown>, method = 'tools/call') => ({

@@ -43,6 +43,8 @@ export interface McpCarriage {
   lifted: Record<string, string>;
   /** The body the origin gets in place of the client's; null when nothing was taken out of it. */
   originBody: string | null;
+  /** Too large to read, yet naming one of our credentials: it cannot be stripped, so it must not reach the origin. */
+  unreadableCredential: boolean;
 }
 
 /** One JSON-RPC request in a JSON POST body; null for a batch, a response, a notification without a method, or anything else. */
@@ -72,6 +74,44 @@ export function readJsonRpcRequest(
     method: parsed.method,
     ...(isRecord(parsed.params) ? { params: parsed.params } : {}),
   };
+}
+
+/** Each `_meta` key and the argument that can carry a credential, as the JSON names them. */
+const CREDENTIAL_KEYS: readonly Uint8Array[] = [
+  MCP_X402_PAYMENT_META,
+  MCP_DNA_KEY_META,
+  MCP_KEY_ARGUMENT,
+].map((key) => new TextEncoder().encode(JSON.stringify(key)));
+
+/**
+ * A JSON POST past `MCP_BODY_MAX_BYTES` whose bytes name a credential key. A
+ * byte search, not a parse, so the cost the cap avoids stays avoided; a key
+ * hidden behind JSON escapes is the client hiding its own credential.
+ */
+export function oversizedCallNamesCredential(
+  method: string,
+  contentType: string | null,
+  body: ArrayBuffer
+): boolean {
+  if (method !== 'POST' || !isJsonType(contentType) || body.byteLength <= MCP_BODY_MAX_BYTES) return false;
+
+  const bytes = new Uint8Array(body);
+  return CREDENTIAL_KEYS.some((key) => includesBytes(bytes, key));
+}
+
+function includesBytes(haystack: Uint8Array, needle: Uint8Array): boolean {
+  const last = haystack.length - needle.length;
+  for (
+    let at = haystack.indexOf(needle[0]);
+    at !== -1 && at <= last;
+    at = haystack.indexOf(needle[0], at + 1)
+  ) {
+    let i = 1;
+    while (i < needle.length && haystack[at + i] === needle[i]) i += 1;
+    if (i === needle.length) return true;
+  }
+
+  return false;
 }
 
 function isJsonType(contentType: string | null): boolean {
@@ -202,7 +242,12 @@ export function mcpCarriageOf(
     lifted[PAYMENT_AUTHORIZATION_HEADER] = `Payment ${mirrored}`;
   }
 
-  return { rpc, facts, lifted, originBody };
+  const unreadableCredential = oversizedCallNamesCredential(
+    request.method,
+    request.headers.get('content-type'),
+    body
+  );
+  return { rpc, facts, lifted, originBody, unreadableCredential };
 }
 
 /**

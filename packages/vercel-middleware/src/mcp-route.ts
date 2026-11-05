@@ -4,14 +4,15 @@ import {
   builtAnswerOf,
   createHttpPolicyClient,
   edgeLogger,
+  edgeRequestPresentsPayment,
   extractEdgeRequest,
   McpKeyArgumentMemory,
   mcpOriginRequest,
   pathOf,
   paymentEdgeMode,
-  requestPresentsPayment,
   sendReport,
   stripPaymentHeaders,
+  unreadableCallResponse,
   withMcpResult,
   withPaymentHeaders,
   type BuiltAnswer,
@@ -64,7 +65,7 @@ export function withD3Mcp<R extends Request, A extends unknown[]>(
     });
     const requestId = crypto.randomUUID();
     payload.requestId = requestId;
-    const paying = requestPresentsPayment(request) || Object.keys(mcp?.lifted ?? {}).length > 0;
+    const paying = edgeRequestPresentsPayment(request, payload);
     const client = createHttpPolicyClient(
       { url: endpoint, bearer: cfg.apiKey, timeoutMs: paying ? cfg.paymentTimeoutMs : cfg.timeoutMs },
       deps.fetchImpl
@@ -110,6 +111,8 @@ export function withD3Mcp<R extends Request, A extends unknown[]>(
         response,
         builtAnswerOf(response).catch(() => undefined)
       );
+
+    if (mcp?.unreadableCredential) return reportBuilt('fail-closed', unreadableCallResponse());
 
     let decision: ClientDecision;
     try {
