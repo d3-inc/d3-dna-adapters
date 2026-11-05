@@ -1,6 +1,6 @@
 {
   "name": "@d3-inc/d3-dna-protocol",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "The DNA wire contract: the payload, decision and report both sides speak, and the adapter helpers built on them. No server logic.",
   "license": "Apache-2.0",
   "type": "module",

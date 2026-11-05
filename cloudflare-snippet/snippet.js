@@ -3,7 +3,7 @@
 // scope it with a snippet rule. See README.md in this directory; docs:
 // https://ai.d3.com/docs/sdks/cloudflare#paste-a-snippet
 // Snippets cannot import packages, so this file is self-contained — it
-// mirrors the Worker adapter (@d3-inc/d3-edge-cloudflare-adapter).
+// mirrors the Worker adapter (@d3-inc/d3-dna-cloudflare-adapter).
 
 const CONFIG = {
   // Your org's API key (dashboard → API keys). The only setting DNA needs.
