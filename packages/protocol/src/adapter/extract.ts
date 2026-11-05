@@ -13,6 +13,9 @@ import { PURPOSE_HEADERS } from '../purpose';
 import type { HandshakeAttestation, NetworkFacts, RequestPayload } from '../types';
 import { PAYMENT_HEADER_CAPS, X402_PAYMENT_HEADERS } from '../x402/payment-header';
 import { debugHeadersOf } from './debug-headers';
+import { echoedExclusions, forwardAll, NO_EXCLUSIONS, type ForwardExclusions } from './forward-all';
+import { CARRIES_MCP_SINCE, FORWARDS_ALL_SINCE } from './forwarding.constants';
+import { liftedPaymentToForward, mcpCarriageOf, type McpCarriage } from './mcp';
 
 // The staple pair plus the Method-B DPoP proof. `Authorization` is never forwarded:
 // `ath` binds a token the worker must not see.
@@ -46,16 +49,19 @@ export const FORWARDED_HEADER_SET = 2;
 /**
  * Revision of what the caller does with our answer, not a package version.
  * 1 forwards `__Host-d3person` as `d3pay-person`, appends our `Set-Cookie` to
- * the origin's response, and strips `d3pay_browser` before the origin.
+ * the origin's response, and strips `d3pay_browser` before the origin. 2
+ * forwards every header and cookie but the site's exclusions. 3 lifts an MCP
+ * call's payment, strips it before the origin, and answers JSON-RPC.
  *
  * Never stamped here, unlike `FORWARDED_HEADER_SET`: it describes the caller's
  * own response path, which `extractPayload` cannot see, so the caller passes it
  * (ADR 0068 decision 2).
  */
-export const ADAPTER_SET = 1;
+export const ADAPTER_SET = 3;
 
 /**
- * Headers forwarded to the policy worker. Fixed allowlist: the signature
+ * Headers forwarded below revision 2, and all the worker keeps of a payload's
+ * headers in its debug copy. The signature
  * headers, UA for fingerprinting, purpose claims, content-digest for body
  * coverage, the ANS staple, the payment headers and `accept`. A signature
  * covering a header outside this set comes back `missing-headers` (unverified)
@@ -103,26 +109,37 @@ export interface ExtractOptions {
   network?: NetworkFacts;
   /** `ADAPTER_SET` when the caller honours that revision; absent means it does not (ADR 0068). */
   adapterSet?: number;
+  /** Names the site keeps back, from revision 2 on. */
+  exclude?: ForwardExclusions;
+}
+
+export interface EdgeRequest {
+  payload: RequestPayload;
+  /** Revision 3 only: the MCP call, and what to take out of it before the origin. */
+  mcp: McpCarriage | null;
 }
 
 /** Platform-agnostic: the caller supplies the client IP via `opts.ip` (design doc §4.3). */
 export async function extractPayload(request: Request, opts: ExtractOptions = {}): Promise<RequestPayload> {
+  return (await extractEdgeRequest(request, opts)).payload;
+}
+
+/** `extractPayload`, plus what a revision 3 adapter needs to answer an MCP call. */
+export async function extractEdgeRequest(request: Request, opts: ExtractOptions = {}): Promise<EdgeRequest> {
   const url = new URL(request.url);
+  const revision = opts.adapterSet ?? 0;
+  const exclude = opts.exclude ?? NO_EXCLUSIONS;
+  const forwardsAll = revision >= FORWARDS_ALL_SINCE;
 
-  const headers: Record<string, string> = {};
-  const droppedHeaders: string[] = [];
-  for (const name of FORWARDED_HEADERS) {
-    const value = request.headers.get(name);
-    if (value === null) continue;
-
-    const cap = HEADER_LENGTH_CAPS.get(name);
-    if (cap !== undefined && value.length > cap) {
-      droppedHeaders.push(name);
-      continue;
-    }
-
-    headers[name] = value;
-  }
+  const forwarded = forwardsAll
+    ? forwardAll(request.headers, exclude, HEADER_LENGTH_CAPS)
+    : {
+        ...allowlisted(request.headers),
+        cookies: {},
+        droppedCookies: [],
+        droppedUnlisted: { headers: false, cookies: false },
+      };
+  const { headers, droppedHeaders, cookies, droppedCookies, droppedUnlisted } = forwarded;
 
   // Our two cookies by name, each as a header of its own; the `Cookie` header itself is the site's and stays there.
   const cookie = request.headers.get('cookie');
@@ -141,7 +158,25 @@ export async function extractPayload(request: Request, opts: ExtractOptions = {}
     headers['content-digest'] = await sha256ContentDigest(body);
   }
 
-  return {
+  const mcp = revision >= CARRIES_MCP_SINCE ? mcpCarriageOf(request, body, exclude.headers) : null;
+  for (const [name, value] of Object.entries(liftedPaymentToForward(request.headers, mcp?.lifted ?? {}))) {
+    // The site's exclusion binds a lifted credential as it binds the header; the origin loses it either way.
+    if (exclude.headers.includes(name)) continue;
+
+    const cap = HEADER_LENGTH_CAPS.get(name);
+    if (cap !== undefined && value.length > cap) droppedHeaders.push(name);
+    else headers[name] = value;
+  }
+
+  const hasExclusions = exclude.headers.length > 0 || exclude.cookies.length > 0;
+  const echo = echoedExclusions(exclude);
+  const unlisted = forwardsAll
+    ? {
+        headers: droppedUnlisted.headers || echo.overflow.headers,
+        cookies: droppedUnlisted.cookies || echo.overflow.cookies,
+      }
+    : droppedUnlisted;
+  const payload: RequestPayload = {
     ip: opts.ip,
     handshake: opts.handshake,
     network: opts.network,
@@ -154,8 +189,36 @@ export async function extractPayload(request: Request, opts: ExtractOptions = {}
     host: url.host,
     timestamp: new Date().toISOString(),
     headers,
-    ...(opts.debugHeaders ? { debugHeaders: debugHeadersOf(entriesOf(request.headers)) } : {}),
+    ...(forwardsAll ? { cookies } : {}),
+    ...(droppedCookies.length > 0 ? { droppedCookies } : {}),
+    ...(unlisted.headers || unlisted.cookies ? { droppedUnlisted: unlisted } : {}),
+    ...(forwardsAll && hasExclusions ? { excluded: echo.excluded } : {}),
+    ...(mcp?.facts ? { mcp: mcp.facts } : {}),
+    ...(opts.debugHeaders
+      ? { debugHeaders: debugHeadersOf(entriesOf(request.headers), exclude.headers) }
+      : {}),
   };
+  return { payload, mcp };
+}
+
+/** Below revision 2: the fixed list, each header under its cap. */
+function allowlisted(source: Headers): { headers: Record<string, string>; droppedHeaders: string[] } {
+  const headers: Record<string, string> = {};
+  const droppedHeaders: string[] = [];
+  for (const name of FORWARDED_HEADERS) {
+    const value = source.get(name);
+    if (value === null) continue;
+
+    const cap = HEADER_LENGTH_CAPS.get(name);
+    if (cap !== undefined && value.length > cap) {
+      droppedHeaders.push(name);
+      continue;
+    }
+
+    headers[name] = value;
+  }
+
+  return { headers, droppedHeaders };
 }
 
 /** `Headers` iterates only under `dom.iterable`, which not every adapter's lib has. */

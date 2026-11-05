@@ -23,6 +23,10 @@ export interface D3MiddlewareConfig {
   /** Forward every request header but the credentials, for the worker's request
    *  record (kept only under its own DEBUG_LOG_RAW_PAYLOAD). Off in production. */
   debugLogRawPayload?: boolean;
+  /** Request headers kept back from DNA; every other header is forwarded (ADR 0081). */
+  excludeHeaders?: string | string[];
+  /** Cookies kept back from DNA by name; every other cookie is forwarded. */
+  excludeCookies?: string | string[];
   /** @deprecated `endpoint`. Unlike `apiKey`, the old key names need this set to switch DNA on. */
   policyWorkerUrl?: string;
   /** @deprecated `apiKey` */
@@ -49,8 +53,14 @@ function configLookup(config: D3MiddlewareConfig): SettingLookup {
     DNA_TIMEOUT_MS: config.timeoutMs?.toString(),
     DNA_PAYMENT_TIMEOUT_MS: config.paymentTimeoutMs?.toString(),
     DNA_DEBUG_LOG_RAW_PAYLOAD: config.debugLogRawPayload?.toString(),
+    DNA_EXCLUDE_HEADERS: listSetting(config.excludeHeaders),
+    DNA_EXCLUDE_COOKIES: listSetting(config.excludeCookies),
   };
   return (name) => byName[name];
+}
+
+function listSetting(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value.join(',') : value;
 }
 
 export function resolveConfig(config: D3MiddlewareConfig = {}): AdapterSettings {

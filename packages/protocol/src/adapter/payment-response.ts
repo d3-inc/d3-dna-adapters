@@ -41,14 +41,58 @@ export function paymentEdgeMode(status: number): EdgeMode {
   return 'fail-closed';
 }
 
-/** Only for an instruction that HAS a status; without one, see `withPaymentHeaders`. */
-export function buildPaymentResponse(payment: PaymentInstruction, edgeMode: string): Response {
+/**
+ * Only for an instruction that HAS a status; without one, see `withPaymentHeaders`.
+ * `rpcId` is the call's id, for a `json-rpc` instruction a revision 3 adapter answers;
+ * undefined when the adapter read no call.
+ */
+export function buildPaymentResponse(
+  payment: PaymentInstruction,
+  edgeMode: string,
+  rpcId?: string | number | null
+): Response {
+  // Without a call to answer (a notification, a batch, a body the adapter could not read) it is the plain answer.
+  if (payment.bodyKind === 'json-rpc' && rpcId !== undefined) {
+    return jsonRpcResponse(payment, edgeMode, rpcId);
+  }
+
   const status = payment.status ?? 502;
   return new Response(payment.body ?? null, {
     status,
     headers: {
       // A redirect carries no body, and a JSON type on it misleads the client that follows it.
       ...(isRedirect(status) ? {} : { 'content-type': 'application/json; charset=utf-8' }),
+      'cache-control': 'no-store',
+      ...headerSafePaymentHeaders(payment.headers),
+      'x-d3-edge': edgeMode,
+    },
+  });
+}
+
+/**
+ * The MCP binding answers in band: a 200 carrying the result, whatever status
+ * the instruction names. A result that is not JSON is the money gate failing
+ * closed, as any instruction the adapter cannot render is.
+ */
+function jsonRpcResponse(
+  payment: PaymentInstruction,
+  edgeMode: string,
+  id: string | number | null
+): Response {
+  let result: unknown;
+  try {
+    result = JSON.parse(payment.body ?? '');
+  } catch {
+    return buildPaymentResponse(
+      { status: 502, body: JSON.stringify({ error: 'payment_unavailable' }) },
+      'fail-closed'
+    );
+  }
+
+  return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), {
+    status: 200,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
       ...headerSafePaymentHeaders(payment.headers),
       'x-d3-edge': edgeMode,

@@ -88,18 +88,23 @@ file lives in
 [d3-dna-adapters](https://github.com/d3-inc/d3-dna-adapters/tree/main/cloudflare-snippet),
 tested there.
 
-## What reaches the origin
+## What reaches DNA, and the origin
 
-Only two cookies leave the site for the policy worker, each under its own
-header: `__Host-d3pay` (a DNA session) and `__Host-d3person` (a browser-check
-pass). On an enforced pass the origin sees neither, nor a `d3pay_handoff`,
-`d3pay_check` or `d3pay_browser` query parameter: the adapter strips them before
-the fetch and appends `Set-Cookie` and `Payment-Receipt` to the response on the
-way back.
+From 0.10.0 every request header and cookie reaches DNA so rules can read them,
+except `Authorization`, `Proxy-Authorization` and anything listed in
+`DNA_EXCLUDE_HEADERS` or `DNA_EXCLUDE_COOKIES`. DNA reads them
+for rules and doesn't store them. Our two cookies
+travel under their own headers: `__Host-d3pay` (a DNA session) and
+`__Host-d3person` (a browser-check pass).
 
-Three paths never strip, and hand the origin the request as it arrived: DNA
-switched off (passthrough), an ACME challenge, and fail-open after the
-policy call fails.
+The origin sees neither cookie, nor a payment header, nor a payment in an MCP
+call's `_meta`, nor a `d3pay_handoff`, `d3pay_check` or `d3pay_browser` query
+parameter: the adapter strips them before the fetch, on a pass and on
+fail-open, and appends `Set-Cookie` and `Payment-Receipt` to the response on the
+way back, plus the receipt under `_meta` in an MCP result.
+
+Two paths hand the origin the request as it arrived: DNA switched off
+(passthrough) and an ACME challenge.
 
 The policy call carries what Cloudflare saw of the connection, from `request.cf`
 on every plan: ASN and organisation, country, HTTP protocol, TLS version and

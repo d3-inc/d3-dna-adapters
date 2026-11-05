@@ -1,10 +1,10 @@
 import {
-  ADAPTER_SET,
   buildPaymentResponse,
   builtAnswerOf,
   createHttpPolicyClient,
   edgeLogger,
   extractPayload,
+  FORWARDS_ALL_SINCE,
   requestPresentsPayment,
   pathOf,
   paymentEdgeMode,
@@ -14,15 +14,14 @@ import {
   type BuiltAnswer,
   type ClientDecision,
   type EdgeMode,
-  type NetworkFacts,
 } from '@d3-inc/d3-dna-protocol';
 import {
-  geolocation as vercelGeolocation,
   ipAddress as vercelIpAddress,
   next as vercelNext,
   rewrite as vercelRewrite,
   waitUntil as vercelWaitUntil,
 } from '@vercel/functions';
+import { blockResponse, networkFactsFromVercel, paymentUnavailableResponse } from './answers';
 import { resolveConfig, type D3MiddlewareConfig } from './env';
 
 const log = edgeLogger('vercel-middleware');
@@ -74,8 +73,10 @@ export function createD3Middleware(config?: D3MiddlewareConfig, deps: Middleware
       ip: ipFn(request),
       network: networkFactsFromVercel(request),
       debugHeaders: cfg.debugLogRawPayload,
-      // This middleware honours the revision: core's cookie forwarding, strip and merge all ride with it.
-      adapterSet: ADAPTER_SET,
+      // `next()` cannot replace the body nor see the origin's answer, so the MCP carriage is
+      // `withD3Mcp`'s on its own route; the forwarding is this one's.
+      adapterSet: FORWARDS_ALL_SINCE,
+      exclude: cfg.exclude,
     });
     const requestId = crypto.randomUUID();
     payload.requestId = requestId;
@@ -157,36 +158,4 @@ export function createD3Middleware(config?: D3MiddlewareConfig, deps: Middleware
     const continued = clean.url === request.url ? nextFn(init) : rewriteFn(clean.url, init);
     return reportOutcome('pass', withPaymentHeaders(continued, decision.payment));
   };
-}
-
-function blockResponse(decision: ClientDecision, mode: string): Response {
-  return new Response(
-    JSON.stringify({
-      blocked: true,
-      ruleId: decision.ruleId,
-      tier: decision.verdict?.tier,
-      identity: decision.verdict?.identity,
-    }),
-    {
-      status: 403,
-      headers: { 'content-type': 'application/json; charset=utf-8', 'x-d3-edge': mode },
-    }
-  );
-}
-
-function paymentUnavailableResponse(): Response {
-  return new Response(JSON.stringify({ error: 'payment_unavailable' }), {
-    status: 502,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
-      'x-d3-edge': 'fail-closed',
-    },
-  });
-}
-
-/** Vercel exposes the country and nothing of the connection; `geolocation()` reads the `x-vercel-ip-country` header. */
-function networkFactsFromVercel(request: Request): NetworkFacts | undefined {
-  const country = vercelGeolocation(request).country;
-  return country ? { country } : undefined;
 }

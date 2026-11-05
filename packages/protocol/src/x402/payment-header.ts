@@ -1,3 +1,5 @@
+import { MCP_DNA_KEY_HEADER } from '../adapter/forwarding.constants';
+import type { RequestPayload } from '../types';
 import {
   PAYMENT_AUTHORIZATION_HEADER,
   PAYMENT_AUTHORIZATION_MAX_LENGTH,
@@ -22,6 +24,25 @@ export const X402_PAYMENT_HEADER_V1 = 'x-payment';
 
 export const X402_PAYMENT_HEADERS = [X402_PAYMENT_HEADER_V2, X402_PAYMENT_HEADER_V1] as const;
 
+/** Every header that carries one of our credentials on the payload. */
+export const DNA_CREDENTIAL_HEADERS: readonly string[] = [
+  PAYMENT_AUTHORIZATION_HEADER,
+  PAY_SESSION_HEADER,
+  PERSON_PASS_HEADER,
+  ...X402_PAYMENT_HEADERS,
+];
+
+/**
+ * `btoa` throws above U+00FF, so a token naming itself `Tether₮` would 500 the
+ * challenge. The provider's own encoder has that bug; do not copy it.
+ */
+export function base64Utf8(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
 /**
  * Base64 of a 132-char signature plus six short fields, so this is generous by
  * an order of magnitude. It is what stops an oversized blob being decoded at
@@ -39,11 +60,15 @@ export const PAYMENT_HEADER_CAPS: ReadonlyMap<string, number> = new Map([
 export const PAYMENT_HEADERS: readonly string[] = [...PAYMENT_HEADER_CAPS.keys()];
 
 /**
- * Also the browser-check pass, which is a credential the origin must never see
- * but not a payment: keeping it out of `PAYMENT_HEADER_CAPS` is what stops it
- * buying the payment timeout budget.
+ * Also the browser-check pass and the mirrored DNA key, credentials the origin
+ * must never see but not payments: keeping them out of `PAYMENT_HEADER_CAPS` is
+ * what stops them buying the payment timeout budget.
  */
-const ORIGIN_STRIPPED_HEADERS: readonly string[] = [...PAYMENT_HEADERS, PERSON_PASS_HEADER];
+const ORIGIN_STRIPPED_HEADERS: readonly string[] = [
+  ...PAYMENT_HEADERS,
+  PERSON_PASS_HEADER,
+  MCP_DNA_KEY_HEADER,
+];
 
 /**
  * A payment in any of the three places one can ride: a header, our cookie, or a
@@ -52,6 +77,19 @@ const ORIGIN_STRIPPED_HEADERS: readonly string[] = [...PAYMENT_HEADERS, PERSON_P
  */
 export function requestPresentsPayment(request: Request): boolean {
   return hasPaymentHeader(request.headers) || handoffFromUrl(request.url) !== null;
+}
+
+/**
+ * Whether an extracted request pays, for the budget and the fail-closed answer:
+ * a credential on the request, or one lifted from an MCP call that the payload
+ * carries under its cap. A lifted value past its cap or excluded never reaches
+ * the worker, so it buys nothing.
+ */
+export function edgeRequestPresentsPayment(
+  request: Request,
+  payload: Pick<RequestPayload, 'headers'>
+): boolean {
+  return requestPresentsPayment(request) || hasPaymentHeader(payload.headers);
 }
 
 /**
