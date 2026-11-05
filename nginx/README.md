@@ -44,14 +44,14 @@ The script reads these from the environment nginx starts with — each
 one needs its `env` line in the main context, or nginx hides it from
 Lua:
 
-| Variable                 | Type                 | Default                               | What it does                                                                  |
-| ------------------------ | -------------------- | ------------------------------------- | ----------------------------------------------------------------------------- |
+| Variable                 | Type                 | Default                               | What it does                                                                                             |
+| ------------------------ | -------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `DNA_API_KEY`            | string               | unset                                 | Your org's key, bearer for the decision call. **Unset means pure passthrough**: the script does nothing. |
-| `DNA_ENABLED`            | `"false"`            | unset                                 | `false` turns DNA off without removing the key. Any other value leaves it on. |
-| `DNA_FAIL_MODE`          | `"open" \| "closed"` | `open`                                | `open`: pass traffic when the call fails. `closed`: block instead.            |
-| `DNA_TIMEOUT_MS`         | number (ms)          | `150`                                 | Hard budget for the decision call.                                            |
-| `DNA_PAYMENT_TIMEOUT_MS` | number (ms)          | `10000`                               | Budget for a request presenting a payment — settlement happens inside it.     |
-| `DNA_ENDPOINT`           | string (URL)         | `https://edge-api.d3.com/v1/decision` | Decision endpoint. Leave unset unless we give you another.                    |
+| `DNA_ENABLED`            | `"false"`            | unset                                 | `false` turns DNA off without removing the key. Any other value leaves it on.                            |
+| `DNA_FAIL_MODE`          | `"open" \| "closed"` | `open`                                | `open`: pass traffic when the call fails. `closed`: block instead.                                       |
+| `DNA_TIMEOUT_MS`         | number (ms)          | `150`                                 | Hard budget for the decision call.                                                                       |
+| `DNA_PAYMENT_TIMEOUT_MS` | number (ms)          | `10000`                               | Budget for a request presenting a payment — settlement happens inside it.                                |
+| `DNA_ENDPOINT`           | string (URL)         | `https://edge-api.d3.com/v1/decision` | Decision endpoint. Leave unset unless we give you another.                                               |
 
 ### Earlier names
 
@@ -105,7 +105,7 @@ presents a credential:
   inside that call.
 - **A paying request never falls open.** Whatever `DNA_FAIL_MODE` says, a
   failed decision call on a request carrying a credential answers `502
-  {"error":"payment_unavailable"}`. The page is priced and the charge may
+{"error":"payment_unavailable"}`. The page is priced and the charge may
   already have landed; serving it free is the one wrong answer.
 - **Your upstream never sees a credential.** The payment headers are
   cleared, our cookie is taken out of `Cookie` (yours are left alone),

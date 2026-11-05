@@ -729,7 +729,7 @@ describe('paid routes', () => {
 });
 
 // extractPayload / sha256ContentDigest tests live in
-// packages/core/src/adapter/extract.spec.ts (logic moved to core).
+// packages/protocol/src/adapter/extract.spec.ts.
 
 describe('DNA at the adapter', () => {
   const PAY_HEADERS = { 'payment-authorization': 'Payment ' + 'a'.repeat(43) };

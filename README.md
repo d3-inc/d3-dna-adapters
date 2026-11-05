@@ -9,13 +9,13 @@ metadata, ask your D3 Edge policy endpoint for a decision, then pass the
 request through or answer `403` — failing open if the call errors or
 times out, so an outage on our side never takes your site down.
 
-| Directory                                    | What it is                                                                       | Paid routes |
-| -------------------------------------------- | -------------------------------------------------------------------------------- | ----------- |
-| [`cloudflare-snippet/`](./cloudflare-snippet) | A single pasted file for Cloudflare zones — no Worker deploy (paid plans). Traffic sampling built in | Yes |
-| [`cloudflare-worker/`](./cloudflare-worker)   | Standalone Worker template fronting a site hosted outside Cloudflare             | Yes |
-| [`caddy/`](./caddy)                           | Config-only recipe for Caddy's built-in `forward_auth` — no plugin, no build     | No |
-| [`nginx/`](./nginx)                           | Access-phase Lua script for OpenResty / nginx with the Lua module                | Yes |
-| [`nginx-auth-request/`](./nginx-auth-request) | Config-only recipe for stock nginx via `auth_request` — no Lua required          | No |
+| Directory                                     | What it is                                                                                           | Paid routes |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------- |
+| [`cloudflare-snippet/`](./cloudflare-snippet) | A single pasted file for Cloudflare zones — no Worker deploy (paid plans). Traffic sampling built in | Yes         |
+| [`cloudflare-worker/`](./cloudflare-worker)   | Standalone Worker template fronting a site hosted outside Cloudflare                                 | Yes         |
+| [`caddy/`](./caddy)                           | Config-only recipe for Caddy's built-in `forward_auth` — no plugin, no build                         | No          |
+| [`nginx/`](./nginx)                           | Access-phase Lua script for OpenResty / nginx with the Lua module                                    | Yes         |
+| [`nginx-auth-request/`](./nginx-auth-request) | Config-only recipe for stock nginx via `auth_request` — no Lua required                              | No          |
 
 All of them speak one contract, specified in
 [`PROTOCOL.md`](./PROTOCOL.md): the decision payload, the response, the
@@ -34,11 +34,11 @@ each README says so. The worker template carries whatever
 
 The npm SDKs live in [`packages/`](./packages), beside the recipes:
 
-| Package | npm | What it is |
-| --- | --- | --- |
-| [`cloudflare-adapter/`](./packages/cloudflare-adapter) | [`@d3-inc/d3-edge-cloudflare-adapter`](https://www.npmjs.com/package/@d3-inc/d3-edge-cloudflare-adapter) | Wrap an existing Worker, or deploy it standalone |
-| [`vercel-middleware/`](./packages/vercel-middleware) | [`@d3-inc/d3-edge-vercel-middleware`](https://www.npmjs.com/package/@d3-inc/d3-edge-vercel-middleware) | Vercel Routing Middleware |
-| [`protocol/`](./packages/protocol) | not yet published | The payload, decision and report types both SDKs build on |
+| Package                                                | npm                                                                                                      | What it is                                                |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| [`cloudflare-adapter/`](./packages/cloudflare-adapter) | [`@d3-inc/d3-edge-cloudflare-adapter`](https://www.npmjs.com/package/@d3-inc/d3-edge-cloudflare-adapter) | Wrap an existing Worker, or deploy it standalone          |
+| [`vercel-middleware/`](./packages/vercel-middleware)   | [`@d3-inc/d3-edge-vercel-middleware`](https://www.npmjs.com/package/@d3-inc/d3-edge-vercel-middleware)   | Vercel Routing Middleware                                 |
+| [`protocol/`](./packages/protocol)                     | not yet published                                                                                        | The payload, decision and report types both SDKs build on |
 
 Full documentation: [ai.d3.com/docs](https://ai.d3.com/docs). Questions:
 [hello@d3.com](mailto:hello@d3.com).

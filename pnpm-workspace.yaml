@@ -5,3 +5,10 @@ packages:
 onlyBuiltDependencies:
   - esbuild
   - workerd
+
+# Each clears an advisory `pnpm audit` reported. pnpm 11 reads overrides only from this file.
+overrides:
+  'minimatch@>=10.0.0 <11.0.1': ^11.0.1
+  'sharp@<0.35.5': ^0.35.5
+  'undici@<7.30.1': ^7.30.1
+  'zod@>=4.0.0 <4.6.6': ^4.6.7

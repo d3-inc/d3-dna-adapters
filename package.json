@@ -6,26 +6,20 @@
   "packageManager": "pnpm@10.34.4",
   "scripts": {
     "test": "vitest run && pnpm -r test",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm -r typecheck && tsc --noEmit",
     "build": "pnpm -r build",
-    "lint": "eslint packages",
-    "format:check": "prettier --check \"packages/**/*.{ts,mjs,json}\" \"*.{mjs,ts,json}\""
+    "lint": "eslint .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "^26.6.6",
     "eslint": "^10.13.0",
+    "globals": "^17.14.0",
     "prettier": "3.9.6",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.12"
-  },
-  "pnpm": {
-    "overrides": {
-      "minimatch@>=10.0.0 <11.0.1": "^11.0.1",
-      "sharp@<0.35.5": "^0.35.5",
-      "undici@<7.30.1": "^7.30.1",
-      "zod@>=4.0.0 <4.6.6": "^4.6.7"
-    }
   }
 }

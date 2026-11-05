@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import snippetDefault, { createSnippet, dnaEndpoint, type SnippetConfig } from './snippet.js';
 
-// Mirrors ClientDecision / RequestPayload from @d3-inc/d3-edge-core — inlined
-// so this repo has no dependency beyond vitest.
+// Mirrors ClientDecision / RequestPayload in packages/protocol/src/types.ts,
+// inlined so the recipe tests need nothing from packages/.
 interface Verdict {
   verified: boolean;
   tier: string;
@@ -567,13 +567,13 @@ describe('snippet-specific behavior', () => {
     expect(log.policyCalls).toHaveLength(0);
   });
 
-  it('should send an earlier CONFIG\'s adapterKey as the bearer', async () => {
+  it("should send an earlier CONFIG's adapterKey as the bearer", async () => {
     const log = stubOutbound({ action: 'pass' });
     await run(siteRequest(), { apiKey: undefined, policyWorkerUrl: POLICY_URL, adapterKey: KEY });
     expect(log.policyCalls[0].headers.get('authorization')).toBe(`Bearer ${KEY}`);
   });
 
-  it('should not let an empty apiKey hide an earlier CONFIG\'s adapterKey', async () => {
+  it("should not let an empty apiKey hide an earlier CONFIG's adapterKey", async () => {
     const log = stubOutbound({ action: 'pass' });
     await run(siteRequest(), { apiKey: '', policyWorkerUrl: POLICY_URL, adapterKey: KEY });
     expect(log.policyCalls[0].headers.get('authorization')).toBe(`Bearer ${KEY}`);
