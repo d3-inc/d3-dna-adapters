@@ -2,10 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { PAYMENT_AUTHORIZATION_MAX_LENGTH, PAY_SESSION_MAX_LENGTH } from '../pay-session';
 import {
   X402_MAX_PAYMENT_HEADER_LENGTH,
+  base64Utf8,
   hasPaymentHeader,
   requestPresentsPayment,
   stripPaymentHeaders,
 } from './payment-header';
+
+describe('base64Utf8', () => {
+  it('encodes a name btoa alone would throw on', () => {
+    // A token names itself, so a non-ASCII one is a 500 waiting to happen.
+    expect(() => btoa('Tether₮')).toThrow();
+    expect(base64Utf8('Tether₮')).toBe('VGV0aGVy4oKu');
+  });
+
+  it('round-trips through the decoder a caller would use', () => {
+    const value = JSON.stringify({ name: 'Tether₮' });
+    const decoded = new TextDecoder().decode(
+      Uint8Array.from(atob(base64Utf8(value)), (c) => c.charCodeAt(0))
+    );
+    expect(decoded).toBe(value);
+  });
+});
 
 const SESSION = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
@@ -114,6 +131,16 @@ describe('stripPaymentHeaders', () => {
       })
     );
     expect(stripped.headers.get('d3pay-person')).toBeNull();
+    expect(stripped.headers.get('user-agent')).toBe('agent');
+  });
+
+  it('removes the mirrored DNA key, which a revision 2 middleware also passes', () => {
+    const stripped = stripPaymentHeaders(
+      new Request('https://ai.d3.com/mcp', {
+        headers: { 'mcp-param-dna-key': 'dna_k_1', 'user-agent': 'agent' },
+      })
+    );
+    expect(stripped.headers.get('mcp-param-dna-key')).toBeNull();
     expect(stripped.headers.get('user-agent')).toBe('agent');
   });
 

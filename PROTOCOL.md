@@ -37,16 +37,21 @@ requests that present a payment.
 
 ## Request
 
-| Field        | Type                  | Required | Meaning                                                                                |
-| ------------ | --------------------- | -------- | -------------------------------------------------------------------------------------- |
-| `method`     | string                | yes      | The agent's HTTP method.                                                               |
-| `url`        | string                | yes      | Request target: path plus query, e.g. `/search?q=1`. Not an absolute URL.              |
-| `host`       | string                | yes      | The `Host` / authority the agent addressed.                                            |
-| `headers`    | object                | yes      | Lowercase-keyed subset of the agent's headers — see below.                             |
-| `requestId`  | string (≤64)          | no       | Your correlation id. Links this decision to an outcome report and to logs.             |
-| `ip`         | string                | no       | The agent's IP. Used for fingerprint matching, then hashed or dropped.                 |
-| `timestamp`  | ISO-8601 or epoch sec | no       | When you observed the request. Informational.                                          |
-| `adapterSet` | positive integer      | no       | What you do with the answer — see **Declaring what you can do**. Absent means nothing. |
+| Field                              | Type                            | Required | Meaning                                                                                |
+| ---------------------------------- | ------------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `method`                           | string                          | yes      | The agent's HTTP method.                                                               |
+| `url`                              | string                          | yes      | Request target: path plus query, e.g. `/search?q=1`. Not an absolute URL.              |
+| `host`                             | string                          | yes      | The `Host` / authority the agent addressed.                                            |
+| `headers`                          | object                          | yes      | Lowercase-keyed subset of the agent's headers — see below.                             |
+| `requestId`                        | string (≤64)                    | no       | Your correlation id. Links this decision to an outcome report and to logs.             |
+| `ip`                               | string                          | no       | The agent's IP. Used for fingerprint matching, then hashed or dropped.                 |
+| `timestamp`                        | ISO-8601 or epoch sec           | no       | When you observed the request. Informational.                                          |
+| `adapterSet`                       | positive integer                | no       | What you do with the answer — see **Declaring what you can do**. Absent means nothing. |
+| `cookies`                          | object                          | no       | From revision 2: every cookie by name — see **Forwarding everything**.                 |
+| `droppedHeaders`, `droppedCookies` | string[]                        | no       | Names sent but dropped for length.                                                     |
+| `droppedUnlisted`                  | `{ headers, cookies }` booleans | no       | More drops than a list holds: any unlisted name may have been sent.                    |
+| `excluded`                         | `{ headers, cookies }` string[] | no       | The names the site keeps back, so they read as withheld, not absent.                   |
+| `mcp`                              | `{ method?, tool?, source }`    | no       | From revision 3: the MCP call, read from the body or the `Mcp-*` headers.              |
 
 `url` carries the query because signatures may cover `@query`; strip
 nothing. `host` must be the authority the agent used, not your origin's
@@ -62,9 +67,26 @@ signature  signature-input  signature-agent  user-agent
 content-digest  sec-purpose  x-purpose  purpose
 ```
 
-Forwarding more is harmless but pointless; forwarding fewer breaks
-verification. Do not forward cookies, `authorization`, or anything else
-the agent sent — the endpoint has no use for them.
+Forwarding fewer breaks verification. Below revision 2, forward nothing
+else: no cookies, no `authorization`.
+
+### Forwarding everything
+
+From revision 2 an adapter forwards every header and cookie so rules can
+read them, minus three sets:
+
+- **Never sent:** `authorization`, `proxy-authorization`, `cookie` (cookies
+  go by name in `cookies`), the hop headers, `mcp-param-dna-key`, and the
+  platform's own credentials (`x-vercel-oidc-token`, `cf-access-*`).
+- **The site's exclusions:** `DNA_EXCLUDE_HEADERS` and `DNA_EXCLUDE_COOKIES`,
+  echoed by name in `excluded`.
+- **Our two cookies,** which ride headers of their own (below).
+
+A value without a cap of its own stops at 2048 chars, and those values
+together at 16 384; past either, the longest go first and each is named in
+`droppedHeaders` or `droppedCookies`. Past 128 names a list stops and
+`droppedUnlisted` says so. The endpoint reads these values for rules and
+does not store them.
 
 An adapter that enforces [paid routes](#paid-routes) forwards four more
 groups, each with a length past which the value is dropped rather than
@@ -189,18 +211,17 @@ A payment rides in one of three places, and an adapter that reads only
 some of them is wrong in a way that is hard to see — the missing case
 gets the hot-path budget, overruns it, and comes back a block:
 
-| Where                                    | Shape                                           |
-| ---------------------------------------- | ----------------------------------------------- |
-| `Payment-Authorization: Payment <token>` | ≤128 chars. For an agent with no cookie jar.    |
-| `Payment-Signature` / `X-Payment`        | ≤4096 chars. x402.                              |
-| `Cookie: __Host-d3pay=<token>`           | ≤64 chars. The site's own first-party cookie.   |
-| `?d3pay_handoff=<id>.<sig>` on the URL   | 22 base64url chars, `.`, 43 more. A redemption. |
+| Where                                    | Shape                                                                                                                                               |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Payment-Authorization: Payment <token>` | ≤4096 chars. For an agent with no cookie jar.                                                                                                       |
+| `Payment-Signature` / `X-Payment`        | ≤4096 chars. x402.                                                                                                                                  |
+| `Cookie: __Host-d3pay=<token>`           | ≤64 chars. The site's own first-party cookie.                                                                                                       |
+| `?d3pay_handoff=<id>.<sig>` on the URL   | 22 base64url chars, `.`, 43 more. A redemption.                                                                                                     |
+| An MCP call's `_meta`, from revision 3   | `x402/payment` (forwarded base64 as `payment-signature`) or `dna.d3.com/key` (as `payment-authorization`). Removed from the body before the origin. |
 
 The cookie is forwarded **by name, as a header of our own**:
 `d3pay-session: <value>`. The raw `Cookie` header is the site's and
-never travels — this is the one exception to "do not forward cookies"
-above, and it is not really one, because what leaves is a single value
-the visitor obtained from us.
+never travels.
 
 Presence is checked against the caps and nothing else. A value past its
 cap is not a payment.
@@ -220,6 +241,8 @@ one the endpoint assumes.
 | Revision | You assert that you                                                                                                                                                                               |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1        | forward `Cookie: __Host-d3person` as `d3pay-person`; append the answer's `Set-Cookie` to the origin's response rather than replacing it; and strip `d3pay_browser` from the URL before the origin |
+| 2        | all of 1, and [forward everything](#forwarding-everything) but the never-sent, the site's exclusions and our two cookies                                                                          |
+| 3        | all of 2, and lift an MCP call's payment out of `_meta`, strip it before the origin, answer a `json-rpc` instruction, and put `meta` and the key argument on a JSON-RPC result                    |
 
 All or nothing. A copy of this repository that drops any one of the three
 must not claim `1` — the cost falls on that site's own visitors, who get
@@ -240,11 +263,13 @@ someone who just paid.
 
 `decision.payment` is an instruction, not a decision to make:
 
-| Field     | Meaning                                                            |
-| --------- | ------------------------------------------------------------------ |
-| `status`  | Answer with this instead of reaching the origin. Absent ⇒ pass on. |
-| `headers` | Headers to put on the answer, or on the origin's response.         |
-| `body`    | Already serialized. Ignored when `status` is absent.               |
+| Field      | Meaning                                                                                        |
+| ---------- | ---------------------------------------------------------------------------------------------- |
+| `status`   | Answer with this instead of reaching the origin. Absent ⇒ pass on.                             |
+| `headers`  | Headers to put on the answer, or on the origin's response.                                     |
+| `body`     | Already serialized. Ignored when `status` is absent.                                           |
+| `bodyKind` | `json-rpc`: answer `200` with `{ jsonrpc, id, result: body }`, `id` from the call. Revision 3. |
+| `meta`     | On a pass, merged into a JSON-RPC result's `_meta`: the receipt. Revision 3.                   |
 
 Send it verbatim, plus `cache-control: no-store` and your `x-d3-edge`
 tag. Two rules the adapter owns:

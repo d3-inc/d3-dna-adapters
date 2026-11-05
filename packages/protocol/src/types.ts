@@ -96,6 +96,15 @@ export interface RequestPayload {
   secure?: boolean;
   /** Forwarded headers the adapter dropped for length: present on the wire, so their absence is the cap's, not the visitor's. */
   droppedHeaders?: string[];
+  /** From revision 2: every cookie but the site's exclusions and our two; never stored. */
+  cookies?: Record<string, string>;
+  droppedCookies?: string[];
+  /** More drops than a list holds: any unlisted name of that kind may have been sent. */
+  droppedUnlisted?: { headers: boolean; cookies: boolean };
+  /** The names the site keeps back, echoed so the worker reads them as withheld rather than absent. */
+  excluded?: { headers: string[]; cookies: string[] };
+  /** From revision 3; `source: 'headers'` is the client's own `Mcp-*` claim, not a call the adapter read. */
+  mcp?: { method?: string; tool?: string; source: 'body' | 'headers' };
 }
 
 /**
@@ -298,6 +307,10 @@ export interface PaymentInstruction {
   headers?: Record<string, string>;
   /** Already serialized. Ignored when `status` is absent. */
   body?: string;
+  /** `json-rpc`: `body` is a result a revision 3 adapter answers as 200 with the call's `id`. */
+  bodyKind?: 'json-rpc';
+  /** Added to a JSON-RPC result's `_meta` by a revision 3 adapter: the receipt. */
+  meta?: Record<string, unknown>;
 }
 
 /** The decision returned to the inner worker by a PolicyClient. */
@@ -309,6 +322,8 @@ export interface ClientDecision {
   /** True when the decision is a fail-open fallback, not a policy evaluation. */
   failOpen?: boolean;
   payment?: PaymentInstruction;
+  /** The site offers the DNA key as a tool argument: a revision 3 adapter adds it to `tools/list` and lifts it from calls. */
+  mcpKeyArgument?: boolean;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { ADAPTER_SET, type ClientDecision, type ResponseReport } from '@d3-inc/d3-dna-protocol';
+import { FORWARDS_ALL_SINCE, type ClientDecision, type ResponseReport } from '@d3-inc/d3-dna-protocol';
 import { describe, expect, it } from 'vitest';
 import type { D3MiddlewareConfig } from './env';
 import { createD3Middleware, type MiddlewareDeps } from './middleware';
@@ -89,8 +89,34 @@ describe('createD3Middleware', () => {
       url: '/page?x=1',
       host: 'ai.d3.com',
       ip: '203.0.113.7',
-      adapterSet: ADAPTER_SET,
+      adapterSet: FORWARDS_ALL_SINCE,
     });
+  });
+
+  it('forwards every header and cookie but what the config keeps back, and echoes it', async () => {
+    const h = harness({ action: 'pass' });
+    await createD3Middleware(
+      { ...BASE_CONFIG, excludeHeaders: ['X-Api-Key'], excludeCookies: 'sid' },
+      h.deps
+    )(
+      new Request('https://ai.d3.com/page', {
+        headers: {
+          'user-agent': 'GPTBot/1.0',
+          'x-api-key': 'k',
+          'x-partner': 'acme',
+          cookie: 'sid=s; plan=pro',
+        },
+      })
+    );
+    const body = h.policyCalls[0].body as {
+      headers: Record<string, string>;
+      cookies: unknown;
+      excluded: unknown;
+    };
+    expect(body.headers['x-partner']).toBe('acme');
+    expect(body.headers['x-api-key']).toBeUndefined();
+    expect(body.cookies).toEqual({ plan: 'pro' });
+    expect(body.excluded).toEqual({ headers: ['x-api-key'], cookies: ['sid'] });
   });
 
   it('forwards every header but the credentials as debugHeaders only when configured', async () => {

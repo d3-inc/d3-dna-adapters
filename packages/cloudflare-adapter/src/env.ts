@@ -22,6 +22,10 @@ export interface Env {
   /** "true" forwards every request header but the credentials, for the request record
    *  (kept only under the policy worker's own flag). Unset in production. */
   DNA_DEBUG_LOG_RAW_PAYLOAD?: string;
+  /** Request headers kept back from DNA, comma-separated; every other header is forwarded (ADR 0081). */
+  DNA_EXCLUDE_HEADERS?: string;
+  /** Cookies kept back from DNA by name, comma-separated; every other cookie is forwarded. */
+  DNA_EXCLUDE_COOKIES?: string;
   /** @deprecated DNA_ENDPOINT. Unlike DNA_API_KEY, the old key names need this set to switch DNA on. */
   POLICY_WORKER_URL?: string;
   /** @deprecated DNA_API_KEY */

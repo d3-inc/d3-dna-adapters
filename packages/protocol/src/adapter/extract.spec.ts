@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { ANS_ARTIFACT_MAX_BASE64_LENGTH } from '../ans';
 import { PAYMENT_AUTHORIZATION_MAX_LENGTH } from '../pay-session';
 import { X402_MAX_PAYMENT_HEADER_LENGTH } from '../x402/payment-header';
-import { ACCEPT_MAX_LENGTH, extractPayload, FORWARDED_HEADER_SET, sha256ContentDigest } from './extract';
+import {
+  ACCEPT_MAX_LENGTH,
+  extractEdgeRequest,
+  extractPayload,
+  FORWARDED_HEADER_SET,
+  sha256ContentDigest,
+} from './extract';
 
 describe('extractPayload', () => {
   it('should forward only the allowlisted headers', async () => {
@@ -272,5 +278,116 @@ describe('client hints and the header-set stamp (ADR 0060)', () => {
     // Named as dropped, so the tells read it as present-but-unreadable, never as the visitor's absence.
     expect(payload.droppedHeaders).toContain('accept-language');
     expect(payload.headerSet).toBe(FORWARDED_HEADER_SET);
+  });
+});
+
+describe('extractPayload by revision', () => {
+  const request = (headers: Record<string, string> = {}) =>
+    new Request('https://ai.d3.com/', {
+      headers: {
+        'user-agent': 'Bot/1',
+        'x-partner': 'acme',
+        'x-api-key': 'k',
+        authorization: 'Bearer t',
+        cookie: 'plan=pro; sid=s; __Host-d3pay=' + 'a'.repeat(43),
+        ...headers,
+      },
+    });
+
+  it('keeps the allowlist and sends no cookies below revision 2', async () => {
+    const payload = await extractPayload(request(), {
+      adapterSet: 1,
+      exclude: { headers: ['x-api-key'], cookies: [] },
+    });
+    expect(Object.keys(payload.headers).sort()).toEqual(['d3pay-session', 'user-agent']);
+    expect(payload.cookies).toBeUndefined();
+    expect(payload.excluded).toBeUndefined();
+  });
+
+  it('forwards every header and cookie at revision 2, minus the exclusions, which it echoes', async () => {
+    const payload = await extractPayload(request(), {
+      adapterSet: 2,
+      exclude: { headers: ['x-api-key'], cookies: ['sid'] },
+    });
+    expect(payload.headers).toMatchObject({ 'user-agent': 'Bot/1', 'x-partner': 'acme' });
+    expect(payload.headers['x-api-key']).toBeUndefined();
+    expect(payload.headers.authorization).toBeUndefined();
+    expect(payload.headers.cookie).toBeUndefined();
+    // Our session cookie still rides its own header.
+    expect(payload.headers['d3pay-session']).toBe('a'.repeat(43));
+    expect(payload.cookies).toEqual({ plan: 'pro' });
+    expect(payload.excluded).toEqual({ headers: ['x-api-key'], cookies: ['sid'] });
+  });
+
+  it('echoes nothing when the site excludes nothing', async () => {
+    expect((await extractPayload(request(), { adapterSet: 2 })).excluded).toBeUndefined();
+  });
+
+  it('reads no MCP call below revision 3, and lifts its payment at 3', async () => {
+    const mcp = () =>
+      new Request('https://ai.d3.com/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'get_report', _meta: { 'dna.d3.com/key': 'dna_k_1' } },
+        }),
+      });
+    const two = await extractEdgeRequest(mcp(), { adapterSet: 2 });
+    expect(two.mcp).toBeNull();
+    expect(two.payload.mcp).toBeUndefined();
+    expect(two.payload.headers['payment-authorization']).toBeUndefined();
+
+    const three = await extractEdgeRequest(mcp(), { adapterSet: 3 });
+    expect(three.payload.mcp).toEqual({ method: 'tools/call', tool: 'get_report', source: 'body' });
+    expect(three.payload.headers['payment-authorization']).toBe('Payment dna_k_1');
+    expect(JSON.parse(three.mcp!.originBody!).params).toEqual({ name: 'get_report' });
+  });
+
+  it('keeps a payment header the client sent over one lifted from the body', async () => {
+    const call = new Request('https://ai.d3.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'payment-authorization': 'Payment from-header' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { _meta: { 'dna.d3.com/key': 'from-body' } },
+      }),
+    });
+    const { payload } = await extractEdgeRequest(call, { adapterSet: 3 });
+    expect(payload.headers['payment-authorization']).toBe('Payment from-header');
+  });
+
+  it('never reads an excluded Mcp-* mirror, even when the body is not one call', async () => {
+    const batch = new Request('https://ai.d3.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'mcp-method': 'tools/call', 'mcp-name': 'secret-tool' },
+      body: '[]',
+    });
+    const { payload } = await extractEdgeRequest(batch, {
+      adapterSet: 3,
+      exclude: { headers: ['mcp-name'], cookies: [] },
+    });
+    expect(payload.mcp).toEqual({ method: 'tools/call', source: 'headers' });
+    expect(JSON.stringify(payload)).not.toContain('secret-tool');
+  });
+
+  it('keeps an x-payment header over an x402 payment in the body: the two names are one credential', async () => {
+    const call = new Request('https://ai.d3.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-payment': 'eyJ2MSI6dHJ1ZX0=' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { _meta: { 'x402/payment': {} } },
+      }),
+    });
+    const { payload } = await extractEdgeRequest(call, { adapterSet: 3 });
+    expect(payload.headers['x-payment']).toBe('eyJ2MSI6dHJ1ZX0=');
+    expect(payload.headers['payment-signature']).toBeUndefined();
   });
 });

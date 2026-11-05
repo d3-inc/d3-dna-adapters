@@ -5,13 +5,16 @@ import {
   configureEdgeLogging,
   createHttpPolicyClient,
   edgeLogger,
-  extractPayload,
+  extractEdgeRequest,
+  McpKeyArgumentMemory,
+  mcpOriginRequest,
   readAdapterSettings,
   requestPresentsPayment,
   pathOf,
   paymentEdgeMode,
   sendReport,
   stripPaymentHeaders,
+  withMcpResult,
   withPaymentHeaders,
   type BuiltAnswer,
   type ClientDecision,
@@ -27,6 +30,8 @@ export type { Env } from './env';
 
 configureEdgeLogging();
 const log = edgeLogger('cloudflare-adapter');
+
+const keyArgument = new McpKeyArgumentMemory();
 
 type FetchHandler<E extends Env> = NonNullable<ExportedHandler<E>['fetch']>;
 
@@ -53,29 +58,34 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
       return withEdgeHeader(response, 'pass');
     }
 
-    const client = createHttpPolicyClient(
-      {
-        url: policy.url,
-        bearer: policy.bearer,
-        // Presence of a credential is all the adapter needs to tell the two
-        // budgets apart, and it never decodes one (ADR 0032 decision 1).
-        timeoutMs: requestPresentsPayment(request) ? settings.paymentTimeoutMs : settings.timeoutMs,
-      },
-      policy.fetch
-    );
-
     // Cloudflare-specific, so core stays platform-free: the client IP comes from
     // cf-connecting-ip, and the client certificate and connection facts from the
     // handshake this zone terminated (never from a header — see ExtractOptions).
     const cf = (request as Request<unknown, IncomingRequestCfProperties>).cf;
-    const payload = await extractPayload(request, {
+    const host = new URL(request.url).host;
+    const { payload, mcp } = await extractEdgeRequest(request, {
       ip: request.headers.get('cf-connecting-ip') ?? undefined,
       handshake: handshakeFromTlsClientAuth(cf?.tlsClientAuth),
       network: networkFactsFromCf(cf),
       debugHeaders: settings.debugLogRawPayload,
-      // This adapter honours the revision: core's cookie forwarding, strip and merge all ride with it.
+      // This adapter honours every revision: the forwarding, the MCP lift, strip and answer.
       adapterSet: ADAPTER_SET,
+      exclude: settings.exclude,
     });
+    // Presence of a credential is all the adapter needs to tell the two budgets
+    // apart, and it never decodes one (ADR 0032 decision 1); one lifted from an
+    // MCP call's body counts as one in a header.
+    const paying = requestPresentsPayment(request) || Object.keys(mcp?.lifted ?? {}).length > 0;
+    const client = createHttpPolicyClient(
+      {
+        url: policy.url,
+        bearer: policy.bearer,
+        timeoutMs: paying ? settings.paymentTimeoutMs : settings.timeoutMs,
+      },
+      policy.fetch
+    );
+    // The origin never sees a credential: not in a header, a cookie, the URL, or an MCP call's body.
+    const forOrigin = () => mcpOriginRequest(stripPaymentHeaders(request), mcp);
     const requestId = crypto.randomUUID();
     payload.requestId = requestId;
 
@@ -120,7 +130,6 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
     let decision: ClientDecision;
     // I/O unfreezes the Workers clock, so Date.now() advances across the fetch.
     const policyStart = Date.now();
-    const paying = requestPresentsPayment(request);
     try {
       decision = await client.getDecision(payload);
     } catch (err) {
@@ -138,16 +147,12 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
 
       // Stripped here too: an endpoint we could not reach is no reason to hand
       // the origin a credential, or put a browser-check answer in its access log.
-      const { response, originLatencyMs } = await timedOriginFetch(
-        originFetch,
-        stripPaymentHeaders(request),
-        env,
-        ctx
-      );
+      const { response, originLatencyMs } = await timedOriginFetch(originFetch, forOrigin(), env, ctx);
       return reportProxied('fail-open', withEdgeHeader(response, 'fail-open'), originLatencyMs);
     }
 
     log.info('policy-call', { elapsedMs: Date.now() - policyStart, action: decision.action });
+    if (decision.mcpKeyArgument !== undefined) keyArgument.remember(host, decision.mcpKeyArgument);
 
     if (decision.action === 'block') {
       return reportBuilt('block', blockResponse(decision, 'block'));
@@ -158,18 +163,20 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
     // cost ADR 0032 records rather than hides.
     if (decision.payment?.status !== undefined) {
       const mode = paymentEdgeMode(decision.payment.status);
-      return reportBuilt(mode, buildPaymentResponse(decision.payment, mode));
+      return reportBuilt(mode, buildPaymentResponse(decision.payment, mode, mcp?.rpc?.id));
     }
 
     // The origin sees the receipt on its response and never the credential.
-    const { response, originLatencyMs } = await timedOriginFetch(
-      originFetch,
-      stripPaymentHeaders(request),
-      env,
-      ctx
-    );
-    // A settled payment carries its receipt onto the origin's own response.
-    const passed = withPaymentHeaders(withEdgeHeader(response, 'pass'), decision.payment);
+    const { response, originLatencyMs } = await timedOriginFetch(originFetch, forOrigin(), env, ctx);
+    // A settled payment carries its receipt onto the origin's own response, and into an MCP result's `_meta`.
+    const receipted = withPaymentHeaders(withEdgeHeader(response, 'pass'), decision.payment);
+    const passed = mcp?.rpc
+      ? await withMcpResult(receipted, {
+          method: mcp.rpc.method,
+          meta: decision.payment?.meta,
+          keyArgument: keyArgument.isOn(host),
+        })
+      : receipted;
     return reportProxied('pass', passed, originLatencyMs);
   };
 }

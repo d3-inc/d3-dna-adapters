@@ -6,6 +6,8 @@ configureEdgeLogging();
 export { configureEdgeLogging };
 export { createD3Middleware } from './middleware';
 export type { MiddlewareDeps } from './middleware';
+export { withD3Mcp } from './mcp-route';
+export type { McpRouteDeps } from './mcp-route';
 export type { D3MiddlewareConfig } from './env';
 
 /**

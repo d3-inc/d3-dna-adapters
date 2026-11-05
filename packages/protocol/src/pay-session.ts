@@ -7,7 +7,8 @@
 /** MPP's credential header: the adapters forward it under its cap and keep it from the origin, and the worker reads nothing in it. */
 export const PAYMENT_AUTHORIZATION_HEADER = 'payment-authorization';
 
-export const PAYMENT_AUTHORIZATION_MAX_LENGTH = 128;
+/** MPP's credentials (ADR 0055 decision 3) run to a few KB; a DNA account key needs far less. */
+export const PAYMENT_AUTHORIZATION_MAX_LENGTH = 4096;
 
 /** `__Host-` pins the cookie to the site's origin: no `Domain`, `Path=/`, `Secure`. */
 export const PAY_SESSION_COOKIE = '__Host-d3pay';
@@ -144,7 +145,24 @@ export function readSessionCookie(cookieHeader: string | null): string | null {
   return readCookie(cookieHeader, PAY_SESSION_COOKIE);
 }
 
-const OWN_COOKIES: readonly string[] = [PAY_SESSION_COOKIE, PERSON_PASS_COOKIE];
+/** Every cookie in a `Cookie` header as `[name, value]`, in order, names read as `readCookie` reads them. */
+export function cookiesOf(cookieHeader: string | null): [string, string][] {
+  if (!cookieHeader) return [];
+
+  const out: [string, string][] = [];
+  for (const pair of cookieHeader.split(';')) {
+    const eq = pair.indexOf('=');
+    if (eq === -1) continue;
+
+    const name = cookieName(pair);
+    if (name !== '') out.push([name, pair.slice(eq + 1).trim()]);
+  }
+
+  return out;
+}
+
+/** Ours, never the site's: each rides a header of its own, and neither reaches the origin. */
+export const OWN_COOKIES: readonly string[] = [PAY_SESSION_COOKIE, PERSON_PASS_COOKIE];
 
 /**
  * Names are compared the way `readCookie` reads them, never as a `name=`

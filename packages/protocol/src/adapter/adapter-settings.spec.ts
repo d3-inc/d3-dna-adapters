@@ -75,6 +75,7 @@ describe('readAdapterSettings', () => {
       paymentTimeoutMs: 9000,
       failMode: 'closed',
       debugLogRawPayload: true,
+      exclude: { headers: [], cookies: [] },
     });
   });
 
@@ -112,6 +113,21 @@ describe('readAdapterSettings', () => {
       paymentTimeoutMs: 4000,
       failMode: 'open',
       debugLogRawPayload: false,
+      exclude: { headers: [], cookies: [] },
+    });
+  });
+
+  it('should read the exclusions as names: headers lowercase, cookies as sent, blanks and repeats dropped', () => {
+    const s = readAdapterSettings(
+      from({
+        DNA_EXCLUDE_HEADERS: ' X-Api-Key, ,x-api-key,X-Partner ',
+        DNA_EXCLUDE_COOKIES: 'SessionId, cart,SessionId',
+      })
+    );
+    expect(s.exclude).toEqual({ headers: ['x-api-key', 'x-partner'], cookies: ['SessionId', 'cart'] });
+    expect(readAdapterSettings(from({ DNA_EXCLUDE_HEADERS: '' })).exclude).toEqual({
+      headers: [],
+      cookies: [],
     });
   });
 

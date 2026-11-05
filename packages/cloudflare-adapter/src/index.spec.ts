@@ -181,8 +181,9 @@ describe('fail-open (§8: enforcement failure must never take the site down)', (
     await run(request(), { DNA_DEBUG_LOG_RAW_PAYLOAD: 'true' });
     const sent = on.policyCalls[0].payload;
     expect(sent.debugHeaders).toEqual({ 'user-agent': 'GPTBot/1.0', 'x-custom': 'v' });
-    // The verifier's input is the allowlist either way.
-    expect(Object.keys(sent.headers)).toEqual(['user-agent']);
+    // Revision 2 forwards the rest either way, but never `authorization` nor the raw `Cookie`.
+    expect(Object.keys(sent.headers).sort()).toEqual(['user-agent', 'x-custom']);
+    expect(sent.cookies).toEqual({ session: 'secret' });
   });
 
   it('should pass traffic when the policy call exceeds its timeout budget', async () => {
@@ -820,5 +821,153 @@ describe('DNA at the adapter', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('x-d3-edge')).toBe('fail-open');
     expect(log.originCalls).toHaveLength(1);
+  });
+});
+
+describe('forwarding and MCP carriage (ADR 0081)', () => {
+  const mcpCall = (params: Record<string, unknown>, method = 'tools/call', host = 'mcp.example') =>
+    new Request(`https://${host}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'user-agent': 'Agent/1' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 42, method, params }),
+    }) as IncomingRequest;
+
+  it('declares revision 3, forwards every header and cookie, and keeps back what the site lists', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    await run(
+      siteRequest({
+        headers: {
+          'user-agent': 'GPTBot/1.0',
+          'x-partner': 'acme',
+          'x-api-key': 'k',
+          cookie: 'plan=pro; sid=s',
+        },
+      }),
+      { DNA_EXCLUDE_HEADERS: 'X-Api-Key', DNA_EXCLUDE_COOKIES: 'sid' }
+    );
+    const sent = log.policyCalls[0].payload;
+    expect(sent.adapterSet).toBe(ADAPTER_SET);
+    expect(ADAPTER_SET).toBe(3);
+    expect(sent.headers['x-partner']).toBe('acme');
+    expect(sent.headers['x-api-key']).toBeUndefined();
+    expect(sent.cookies).toEqual({ plan: 'pro' });
+    expect(sent.excluded).toEqual({ headers: ['x-api-key'], cookies: ['sid'] });
+  });
+
+  it("lifts a call's payment for the decision and never lets it reach the origin", async () => {
+    const log = stubOutbound({ action: 'pass' }, '{}', { 'content-type': 'application/json' });
+    await run(mcpCall({ name: 'get_report', _meta: { 'dna.d3.com/key': 'dna_k_1' } }));
+
+    const sent = log.policyCalls[0].payload;
+    expect(sent.mcp).toEqual({ method: 'tools/call', tool: 'get_report', source: 'body' });
+    expect(sent.headers['payment-authorization']).toBe('Payment dna_k_1');
+
+    const origin = log.originCalls[0];
+    expect(origin.headers.get('payment-authorization')).toBeNull();
+    expect(await origin.json()).toEqual({
+      jsonrpc: '2.0',
+      id: 42,
+      method: 'tools/call',
+      params: { name: 'get_report' },
+    });
+  });
+
+  it("adds the receipt to the origin's JSON result", async () => {
+    const meta = { 'dna.d3.com/receipt': { status: 'success', charged: 1000 } };
+    stubOutbound(
+      { action: 'pass', payment: { headers: { 'payment-receipt': 'e30=' }, meta } },
+      JSON.stringify({ jsonrpc: '2.0', id: 42, result: { content: [] } }),
+      { 'content-type': 'application/json' }
+    );
+    const res = await run(mcpCall({ name: 'get_report' }));
+    expect(res.headers.get('payment-receipt')).toBe('e30=');
+    expect(await res.json()).toEqual({ jsonrpc: '2.0', id: 42, result: { content: [], _meta: meta } });
+  });
+
+  it("answers a json-rpc instruction itself, with the call's id", async () => {
+    const result = { isError: true, structuredContent: { x402Version: 2 } };
+    const log = stubOutbound({
+      action: 'pass',
+      payment: { status: 402, bodyKind: 'json-rpc', body: JSON.stringify(result) },
+    });
+    const res = await run(mcpCall({ name: 'get_report' }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-d3-edge')).toBe('payment-required');
+    expect(await res.json()).toEqual({ jsonrpc: '2.0', id: 42, result });
+    expect(log.originCalls).toHaveLength(0);
+  });
+
+  it('offers the key argument on tools/list once a decision for the host says the site turned it on', async () => {
+    type ToolList = { result: { tools: { inputSchema?: { properties?: object } }[] } };
+    const host = 'key-argument.example';
+    const tools = JSON.stringify({ jsonrpc: '2.0', id: 42, result: { tools: [{ name: 'a' }] } });
+    stubOutbound({ action: 'pass', mcpKeyArgument: true }, tools, { 'content-type': 'application/json' });
+    const listed = await run(mcpCall({}, 'tools/list', host));
+    expect(((await listed.json()) as ToolList).result.tools[0].inputSchema?.properties).toHaveProperty(
+      'dna_account_key'
+    );
+
+    // The argument is the payment now, and leaves the call before the origin.
+    const log = stubOutbound({ action: 'pass' }, '{}', { 'content-type': 'application/json' });
+    await run(mcpCall({ name: 'a', arguments: { q: 'x', dna_account_key: 'dna_k_2' } }, 'tools/call', host));
+    expect(log.policyCalls[0].payload.headers['payment-authorization']).toBe('Payment dna_k_2');
+    expect(
+      ((await log.originCalls[0].json()) as { params: { arguments: unknown } }).params.arguments
+    ).toEqual({ q: 'x' });
+
+    stubOutbound({ action: 'pass', mcpKeyArgument: false }, tools, { 'content-type': 'application/json' });
+    const off = await run(mcpCall({}, 'tools/list', host));
+    expect(((await off.json()) as ToolList).result.tools[0]).toEqual({ name: 'a' });
+  });
+
+  it('takes the key argument out of the call even on an isolate that has not heard the site switch', async () => {
+    const log = stubOutbound({ action: 'pass' }, '{}', { 'content-type': 'application/json' });
+    await run(
+      mcpCall(
+        { name: 'a', arguments: { q: 'x', dna_account_key: 'dna_k_cold' } },
+        'tools/call',
+        'cold.example'
+      )
+    );
+    expect(log.policyCalls[0].payload.headers['payment-authorization']).toBe('Payment dna_k_cold');
+    const sent = (await log.originCalls[0].json()) as { params: { arguments: unknown } };
+    expect(sent.params.arguments).toEqual({ q: 'x' });
+  });
+
+  it("keeps Cloudflare's own request facts on a call whose body it rewrote", async () => {
+    const log = stubOutbound({ action: 'pass' }, '{}', { 'content-type': 'application/json' });
+    const paid = new Request('https://mcp.example/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { _meta: { 'dna.d3.com/key': 'k' } },
+      }),
+      cf: { country: 'DE' },
+    } as RequestInit) as IncomingRequest;
+    const wrapped = withD3Edge<Env>({
+      fetch: async (request) => {
+        const facts = (request as IncomingRequest).cf;
+        return Response.json({ country: facts?.country ?? null });
+      },
+    });
+    const ctx = createExecutionContext();
+    const res = await wrapped.fetch!(paid, BASE_ENV, ctx);
+    const body = await res.json();
+    await waitOnExecutionContext(ctx);
+    expect(body).toEqual({ country: 'DE' });
+    expect(log.policyCalls[0].payload.headers['payment-authorization']).toBe('Payment k');
+  });
+
+  it('never falls open on a payment lifted from the body', async () => {
+    stubOutbound('hang');
+    const res = await run(mcpCall({ name: 'a', _meta: { 'dna.d3.com/key': 'k' } }), {
+      DNA_TIMEOUT_MS: '20',
+      DNA_PAYMENT_TIMEOUT_MS: '20',
+    });
+    expect(res.status).toBe(502);
+    expect(res.headers.get('x-d3-edge')).toBe('fail-closed');
   });
 });
