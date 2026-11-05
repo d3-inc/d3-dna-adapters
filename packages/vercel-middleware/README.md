@@ -1,4 +1,4 @@
-# @d3-inc/d3-edge-vercel-middleware
+# @d3-inc/d3-dna-vercel-middleware
 
 The [DNA](https://ai.d3.com) middleware for Vercel, as Routing Middleware. On
 every request it extracts the signature headers, user agent, and IP, asks the DNA policy endpoint for a decision, and passes or blocks
@@ -8,14 +8,17 @@ outage never takes down your site.
 ## Install
 
 ```sh
-npm i @d3-inc/d3-edge-vercel-middleware
+npm i @d3-inc/d3-dna-vercel-middleware
 ```
+
+Versions up to 0.8.0 were published as `@d3-inc/d3-edge-vercel-middleware`. To switch, change the package
+name in `package.json` and in your import; nothing else changes.
 
 ## Usage
 
 ```ts
 // middleware.ts (project root)
-import { createD3Middleware, config } from '@d3-inc/d3-edge-vercel-middleware';
+import { createD3Middleware, config } from '@d3-inc/d3-dna-vercel-middleware';
 
 export default createD3Middleware();
 export { config };

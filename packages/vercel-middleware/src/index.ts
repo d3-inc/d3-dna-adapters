@@ -16,7 +16,7 @@ export type { D3MiddlewareConfig } from './env';
  * site can re-export this or provide its own.
  *
  *   // middleware.ts (site root)
- *   import { createD3Middleware, config } from '@d3-inc/d3-edge-vercel-middleware';
+ *   import { createD3Middleware, config } from '@d3-inc/d3-dna-vercel-middleware';
  *   export default createD3Middleware();
  *   export { config };
  */

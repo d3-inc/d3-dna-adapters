@@ -29,16 +29,20 @@ half of that contract: a site prices a route, and the adapter answers
 `402` until the visitor's agent presents a credential. The two
 forward-auth recipes cannot carry it — their whole answer is a status
 code — so a priced route behind them is served as an ordinary pass, and
-each README says so. The worker template carries whatever
-`@d3-inc/d3-edge-cloudflare-adapter` carries.
+each README says so. The worker template carries whatever the Cloudflare
+adapter it installs carries.
 
 The npm SDKs live in [`packages/`](./packages), beside the recipes:
 
-| Package                                                | npm                                                                                                      | What it is                                                |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| [`cloudflare-adapter/`](./packages/cloudflare-adapter) | [`@d3-inc/d3-edge-cloudflare-adapter`](https://www.npmjs.com/package/@d3-inc/d3-edge-cloudflare-adapter) | Wrap an existing Worker, or deploy it standalone          |
-| [`vercel-middleware/`](./packages/vercel-middleware)   | [`@d3-inc/d3-edge-vercel-middleware`](https://www.npmjs.com/package/@d3-inc/d3-edge-vercel-middleware)   | Vercel Routing Middleware                                 |
-| [`protocol/`](./packages/protocol)                     | not yet published                                                                                        | The payload, decision and report types both SDKs build on |
+| Package                                                | npm                                                                                                    | What it is                                                |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| [`cloudflare-adapter/`](./packages/cloudflare-adapter) | [`@d3-inc/d3-dna-cloudflare-adapter`](https://www.npmjs.com/package/@d3-inc/d3-dna-cloudflare-adapter) | Wrap an existing Worker, or deploy it standalone          |
+| [`vercel-middleware/`](./packages/vercel-middleware)   | [`@d3-inc/d3-dna-vercel-middleware`](https://www.npmjs.com/package/@d3-inc/d3-dna-vercel-middleware)   | Vercel Routing Middleware                                 |
+| [`protocol/`](./packages/protocol)                     | [`@d3-inc/d3-dna-protocol`](https://www.npmjs.com/package/@d3-inc/d3-dna-protocol)                     | The payload, decision and report types both SDKs build on |
+
+The SDKs took these names at 0.10.0. Earlier versions are
+`@d3-inc/d3-edge-cloudflare-adapter` and `@d3-inc/d3-edge-vercel-middleware`, which
+get no new versions.
 
 Full documentation: [ai.d3.com/docs](https://ai.d3.com/docs). Questions:
 [hello@d3.com](mailto:hello@d3.com).
@@ -52,6 +56,22 @@ pnpm test
 
 `pnpm test` runs the recipes' tests and each package's suite. CI also runs
 `pnpm format:check`, `pnpm lint`, `pnpm typecheck` and `pnpm build`.
+
+## Releases
+
+CI publishes all three packages at one version from a tag on `main`, with npm
+provenance naming this repo and `publish.yml`:
+
+- `vX.Y.Z-next.N` publishes a prerelease to `next`, which only
+  `npm i <package>@next` installs.
+- `vX.Y.Z` publishes to `latest`.
+- A fix for an older line is tagged on a `release/X.Y` branch and publishes
+  under `release-X.Y`.
+
+Each run waits for a reviewer other than the person who tagged it. Each name's
+first version, 0.10.0, is published by hand from that tag's CI tarballs, because
+npm attaches a trusted publisher only to a package that already exists.
+Provenance starts at 0.10.1.
 
 ## License
 

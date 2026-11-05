@@ -1,4 +1,4 @@
-# @d3-inc/d3-edge-cloudflare-adapter
+# @d3-inc/d3-dna-cloudflare-adapter
 
 The [DNA](https://ai.d3.com) middleware for Cloudflare Workers. In front of
 your site, it extracts the signature headers, user agent, and IP from each
@@ -9,8 +9,11 @@ never takes down your site.
 ## Install
 
 ```sh
-npm i @d3-inc/d3-edge-cloudflare-adapter
+npm i @d3-inc/d3-dna-cloudflare-adapter
 ```
+
+Versions up to 0.9.0 were published as `@d3-inc/d3-edge-cloudflare-adapter`. To switch, change the package
+name in `package.json` and in your import; nothing else changes.
 
 ## Usage — your site is already a Worker
 
@@ -18,7 +21,7 @@ Wrap your existing handler. One line, no second worker, no route changes:
 
 ```ts
 // src/index.ts
-import { withD3Edge } from '@d3-inc/d3-edge-cloudflare-adapter';
+import { withD3Edge } from '@d3-inc/d3-dna-cloudflare-adapter';
 
 export default withD3Edge({
   async fetch(request, env, ctx) {
@@ -41,7 +44,7 @@ as a standalone worker on a zone route:
 
 ```ts
 // src/index.ts
-import worker from '@d3-inc/d3-edge-cloudflare-adapter';
+import worker from '@d3-inc/d3-dna-cloudflare-adapter';
 
 export default worker;
 ```
