@@ -1,3 +1,5 @@
+import { VISITOR_ID_HEADER } from '../pay-session';
+
 /** The first `ADAPTER_SET` that forwards every header and cookie instead of the allowlist (ADR 0081 decision 6). */
 export const FORWARDS_ALL_SINCE = 2;
 
@@ -39,6 +41,9 @@ export const NEVER_FORWARDED_HEADERS: ReadonlySet<string> = new Set([
   'proxy-authorization',
   'cookie',
   MCP_DNA_KEY_HEADER,
+  // Ours to set from the cookie, never the client's to assert: a client naming a
+  // stranger's visitor id would have the next redemption link it to their account.
+  VISITOR_ID_HEADER,
   'x-vercel-oidc-token',
   'cf-access-jwt-assertion',
   'cf-access-client-id',
