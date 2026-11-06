@@ -233,6 +233,25 @@ describe('extractPayload navigation headers and the pay cookie', () => {
     expect(long.headers['d3pay-person']).toBeUndefined();
   });
 
+  it('forwards the visitor id under its own name, and only under its cap', async () => {
+    const id = ['v'.repeat(22), '1760000000000', 's'.repeat(43)].join('.');
+    const payload = await extractPayload(
+      new Request('https://x.example/premium', {
+        headers: { cookie: `__Secure-d3visitor=${id}; theme=dark` },
+      })
+    );
+    expect(payload.headers['d3-visitor']).toBe(id);
+    // The site's own cookies still reach the origin; ours never do.
+    expect(payload.headers.cookie).toBeUndefined();
+
+    const long = await extractPayload(
+      new Request('https://x.example/premium', {
+        headers: { cookie: `__Secure-d3visitor=${'a'.repeat(97)}` },
+      })
+    );
+    expect(long.headers['d3-visitor']).toBeUndefined();
+  });
+
   it('drops an oversized navigation header and an oversized cookie value', async () => {
     const payload = await extractPayload(
       new Request('https://x.example/premium', {

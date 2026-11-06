@@ -7,6 +7,9 @@ import {
   PERSON_PASS_COOKIE,
   PERSON_PASS_HEADER,
   PERSON_PASS_MAX_LENGTH,
+  VISITOR_ID_COOKIE,
+  VISITOR_ID_HEADER,
+  VISITOR_ID_MAX_LENGTH,
   readCookie,
 } from '../pay-session';
 import { PURPOSE_HEADERS } from '../purpose';
@@ -51,13 +54,14 @@ export const FORWARDED_HEADER_SET = 2;
  * 1 forwards `__Host-d3person` as `d3pay-person`, appends our `Set-Cookie` to
  * the origin's response, and strips `d3pay_browser` before the origin. 2
  * forwards every header and cookie but the site's exclusions. 3 lifts an MCP
- * call's payment, strips it before the origin, and answers JSON-RPC.
+ * call's payment, strips it before the origin, and answers JSON-RPC. 4 forwards
+ * the visitor id by name and keeps it from the origin.
  *
  * Never stamped here, unlike `FORWARDED_HEADER_SET`: it describes the caller's
  * own response path, which `extractPayload` cannot see, so the caller passes it
  * (ADR 0068 decision 2).
  */
-export const ADAPTER_SET = 3;
+export const ADAPTER_SET = 4;
 
 /**
  * Headers forwarded below revision 2, and all the worker keeps of a payload's
@@ -145,6 +149,7 @@ export async function extractEdgeRequest(request: Request, opts: ExtractOptions 
   const cookie = request.headers.get('cookie');
   forwardCookie(headers, cookie, PAY_SESSION_COOKIE, PAY_SESSION_HEADER, PAY_SESSION_MAX_LENGTH);
   forwardCookie(headers, cookie, PERSON_PASS_COOKIE, PERSON_PASS_HEADER, PERSON_PASS_MAX_LENGTH);
+  forwardCookie(headers, cookie, VISITOR_ID_COOKIE, VISITOR_ID_HEADER, VISITOR_ID_MAX_LENGTH);
 
   // Overwrite content-digest with the real body's digest so a tampered body
   // fails verification downstream. Do it whenever there's a body OR a claimed
