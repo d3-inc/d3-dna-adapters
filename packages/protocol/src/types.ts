@@ -175,11 +175,13 @@ export interface Verdict {
   verifiedBy?: VerificationMethod;
   /** Source list behind a fingerprint-based verdict (proven-by-ip-range, derived, spoofed). */
   botSource?: string;
-  /** Canonical agent name when known, else the signature-agent FQDN. */
+  /** Canonical agent name when known, else the signature-agent FQDN. Never set on `spoofed`: a refuted name is not an identity. */
   identity?: string;
   identitySource?: IdentitySource;
   /** Pre-canonicalization matched name; only set when projection changed it. */
   rawIdentity?: string;
+  /** Set only on `spoofed`: the canonical agent whose name the request used. */
+  impersonating?: string;
   /** OUR answer: the purposes we assert this bot serves (ADR 0001 §3/§4). Empty ⇒ no curated answer (rendered `unknown`). */
   purpose?: Purpose[];
   /** Confidence in our answer, stored raw; the identity floor is applied at matching/render time (§2b/§3). */
