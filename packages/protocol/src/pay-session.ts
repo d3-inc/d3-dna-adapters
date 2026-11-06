@@ -28,6 +28,14 @@ export const PERSON_PASS_HEADER = 'd3pay-person';
 /** `<13-digit expiry>.<43-char signature>` is 57; the cap leaves no room for anything else. */
 export const PERSON_PASS_MAX_LENGTH = 64;
 
+/** The visitor id (d3-edge ADR 0087): a label for one browser on one site, never a credential. */
+export const VISITOR_ID_COOKIE = '__Secure-d3visitor';
+
+export const VISITOR_ID_HEADER = 'd3-visitor';
+
+/** `<22-char id>.<13-digit expiry>.<43-char signature>` is 80. */
+export const VISITOR_ID_MAX_LENGTH = 96;
+
 /** The browser check's signals ride back to the page under this name, base64url JSON. */
 export const BROWSER_CHECK_PARAM = 'd3pay_browser';
 
@@ -162,7 +170,7 @@ export function cookiesOf(cookieHeader: string | null): [string, string][] {
 }
 
 /** Ours, never the site's: each rides a header of its own, and neither reaches the origin. */
-export const OWN_COOKIES: readonly string[] = [PAY_SESSION_COOKIE, PERSON_PASS_COOKIE];
+export const OWN_COOKIES: readonly string[] = [PAY_SESSION_COOKIE, PERSON_PASS_COOKIE, VISITOR_ID_COOKIE];
 
 /**
  * Names are compared the way `readCookie` reads them, never as a `name=`

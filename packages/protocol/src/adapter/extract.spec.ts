@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ANS_ARTIFACT_MAX_BASE64_LENGTH } from '../ans';
-import { PAYMENT_AUTHORIZATION_MAX_LENGTH } from '../pay-session';
+import { PAYMENT_AUTHORIZATION_MAX_LENGTH, VISITOR_ID_HEADER } from '../pay-session';
+import { NEVER_FORWARDED_HEADERS } from './forwarding.constants';
 import { X402_MAX_PAYMENT_HEADER_LENGTH } from '../x402/payment-header';
 import {
   ACCEPT_MAX_LENGTH,
@@ -233,6 +234,25 @@ describe('extractPayload navigation headers and the pay cookie', () => {
     expect(long.headers['d3pay-person']).toBeUndefined();
   });
 
+  it('forwards the visitor id under its own name, and only under its cap', async () => {
+    const id = ['v'.repeat(22), '1760000000000', 's'.repeat(43)].join('.');
+    const payload = await extractPayload(
+      new Request('https://x.example/premium', {
+        headers: { cookie: `__Secure-d3visitor=${id}; theme=dark` },
+      })
+    );
+    expect(payload.headers['d3-visitor']).toBe(id);
+    // The site's own cookies still reach the origin; ours never do.
+    expect(payload.headers.cookie).toBeUndefined();
+
+    const long = await extractPayload(
+      new Request('https://x.example/premium', {
+        headers: { cookie: `__Secure-d3visitor=${'a'.repeat(97)}` },
+      })
+    );
+    expect(long.headers['d3-visitor']).toBeUndefined();
+  });
+
   it('drops an oversized navigation header and an oversized cookie value', async () => {
     const payload = await extractPayload(
       new Request('https://x.example/premium', {
@@ -420,5 +440,33 @@ describe('extractPayload by revision', () => {
     const { payload } = await extractEdgeRequest(call, { adapterSet: 3 });
     expect(payload.headers['x-payment']).toBe('eyJ2MSI6dHJ1ZX0=');
     expect(payload.headers['payment-signature']).toBeUndefined();
+  });
+});
+
+/**
+ * The visitor id is ours to set from the cookie and never the client's to
+ * assert: a client naming a stranger's id would have the next redemption link
+ * that id to their own account (d3-edge ADR 0087 decision 4).
+ */
+describe('the visitor id header is not the client to write', () => {
+  it('is in the never-forwarded set, and defined rather than undefined there', () => {
+    expect(VISITOR_ID_HEADER).toBe('d3-visitor');
+    expect(NEVER_FORWARDED_HEADERS.has(VISITOR_ID_HEADER)).toBe(true);
+    expect(NEVER_FORWARDED_HEADERS.has(undefined as unknown as string)).toBe(false);
+  });
+
+  it('drops a client-sent one and keeps the cookie as the only source', async () => {
+    const id = ['v'.repeat(22), '1760000000000', 's'.repeat(43)].join('.');
+    const forged = await extractPayload(
+      new Request('https://x.example/p', { headers: { 'd3-visitor': 'forged-token' } })
+    );
+    expect(forged.headers['d3-visitor']).toBeUndefined();
+
+    const both = await extractPayload(
+      new Request('https://x.example/p', {
+        headers: { 'd3-visitor': 'forged-token', cookie: `__Secure-d3visitor=${id}` },
+      })
+    );
+    expect(both.headers['d3-visitor']).toBe(id);
   });
 });

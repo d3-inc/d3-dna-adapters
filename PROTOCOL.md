@@ -80,7 +80,7 @@ read them, minus three sets:
   platform's own credentials (`x-vercel-oidc-token`, `cf-access-*`).
 - **The site's exclusions:** `DNA_EXCLUDE_HEADERS` and `DNA_EXCLUDE_COOKIES`,
   echoed by name in `excluded`.
-- **Our two cookies,** which ride headers of their own (below).
+- **Our own cookies,** which ride headers of their own (below).
 
 A value without a cap of its own stops at 2048 chars, and those values
 together at 16 384; past either, the longest go first and each is named in
@@ -101,7 +101,10 @@ sent:
 | `payment-authorization`                                         | 128  | A D3 Pay handoff or session, for a cookie-less agent |
 
 Plus `d3pay-session`, which is not a client header at all — see
-[the credential](#the-credential).
+[the credential](#the-credential) — and, from revision 4, `d3-visitor`:
+`Cookie: __Secure-d3visitor` under its own name, capped at 96. It is a label
+for one browser on one site, never a credential, and the endpoint records it
+without ever deciding on it.
 
 ### `content-digest` is yours to compute, never to relay
 
@@ -247,8 +250,9 @@ one the endpoint assumes.
 | Revision | You assert that you                                                                                                                                                                               |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1        | forward `Cookie: __Host-d3person` as `d3pay-person`; append the answer's `Set-Cookie` to the origin's response rather than replacing it; and strip `d3pay_browser` from the URL before the origin |
-| 2        | all of 1, and [forward everything](#forwarding-everything) but the never-sent, the site's exclusions and our two cookies                                                                          |
+| 2        | all of 1, and [forward everything](#forwarding-everything) but the never-sent, the site's exclusions and our own cookies                                                                          |
 | 3        | all of 2, and lift an MCP call's payment out of `_meta`, strip it before the origin, answer a `json-rpc` instruction, and put `meta` and the key argument on a JSON-RPC result                    |
+| 4        | all of 3, and forward `Cookie: __Secure-d3visitor` as `d3-visitor`, keeping it from the origin with our other two                                                                                 |
 
 All or nothing. A copy of this repository that drops any one of the three
 must not claim `1` — the cost falls on that site's own visitors, who get

@@ -832,7 +832,7 @@ describe('forwarding and MCP carriage (ADR 0081)', () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 42, method, params }),
     }) as IncomingRequest;
 
-  it('declares revision 3, forwards every header and cookie, and keeps back what the site lists', async () => {
+  it('declares revision 4, forwards every header and cookie, and keeps back what the site lists', async () => {
     const log = stubOutbound({ action: 'pass' });
     await run(
       siteRequest({
@@ -847,7 +847,7 @@ describe('forwarding and MCP carriage (ADR 0081)', () => {
     );
     const sent = log.policyCalls[0].payload;
     expect(sent.adapterSet).toBe(ADAPTER_SET);
-    expect(ADAPTER_SET).toBe(3);
+    expect(ADAPTER_SET).toBe(4);
     expect(sent.headers['x-partner']).toBe('acme');
     expect(sent.headers['x-api-key']).toBeUndefined();
     expect(sent.cookies).toEqual({ plan: 'pro' });
