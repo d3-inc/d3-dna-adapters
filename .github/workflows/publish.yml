@@ -75,4 +75,5 @@ jobs:
         with:
           name: release
           path: release
+      # No install: nothing but our scripts runs beside the id-token, so they load only Node built-ins.
       - run: node scripts/publish-release.ts
