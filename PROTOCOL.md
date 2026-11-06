@@ -146,12 +146,13 @@ apply your fail mode. Do not invent a default.
 Rich, and mostly for logging and response headers rather than
 enforcement. The fields adapters generally surface:
 
-| Field      | Meaning                                                                           |
-| ---------- | --------------------------------------------------------------------------------- |
-| `tier`     | `proven` \| `claimed` \| `derived` \| `spoofed` \| `unverified`, strongest first. |
-| `identity` | Canonical agent name when known, else the claimed `Signature-Agent` hostname.     |
-| `reason`   | `ok`, or why verification did not reach `proven` (`expired`, `unknown-key`, …).   |
-| `purpose`  | The purposes we assert this agent serves.                                         |
+| Field           | Meaning                                                                                            |
+| --------------- | -------------------------------------------------------------------------------------------------- |
+| `tier`          | `proven` \| `claimed` \| `derived` \| `spoofed` \| `unverified`, strongest first.                  |
+| `identity`      | Canonical agent name when known, else the claimed `Signature-Agent` hostname. Absent on `spoofed`. |
+| `impersonating` | On `spoofed` only: the agent whose name the request used.                                          |
+| `reason`        | `ok`, or why verification did not reach `proven` (`expired`, `unknown-key`, …).                    |
+| `purpose`       | The purposes we assert this agent serves.                                                          |
 
 Unsigned traffic is classified, not rejected: no signature means a
 `derived`, `spoofed`, or `unverified` verdict, and policy decides from
