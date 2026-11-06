@@ -277,6 +277,17 @@ describe('D3 Pay', () => {
     expect(budgets).toEqual([1000, 5000, 5000, 5000]);
   });
 
+  it('should forward an MPP-sized credential and drop one past its cap', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    const mpp = 'Payment ' + 'a'.repeat(4096 - 'Payment '.length);
+
+    await run(siteRequest({ headers: { 'payment-authorization': mpp } }));
+    await run(siteRequest({ headers: { 'payment-authorization': mpp + 'a' } }));
+
+    expect(log.policyCalls[0].payload.headers['payment-authorization']).toBe(mpp);
+    expect(log.policyCalls[1].payload.headers['payment-authorization']).toBeUndefined();
+  });
+
   it('should render the 402 the worker handed it, without reaching the origin', async () => {
     const body = JSON.stringify({ error: 'handoff_pending', payUrl: 'https://pay.d3.com/pay?handoff=x' });
     const log = stubOutbound({
