@@ -61,7 +61,7 @@ const HEADER_LENGTH_CAPS = new Map([
   ['upgrade-insecure-requests', 32],
   ['payment-signature', 4096],
   ['x-payment', 4096],
-  ['payment-authorization', 128],
+  ['payment-authorization', 4096],
 ]);
 
 const PAYMENT_HEADERS = ['payment-signature', 'x-payment', 'payment-authorization', 'd3pay-session'];
