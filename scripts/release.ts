@@ -14,9 +14,29 @@ export const PUBLISH_WORKFLOW = '.github/workflows/publish.yml';
 /**
  * Versions put up by hand, by the integrity npm holds for each, acknowledged in a reviewed PR once
  * published. The registry check flags any other version without this repo's CI provenance, and any
- * listed version whose bytes differ.
+ * listed version whose bytes differ. `0.0.0-stage` is the placeholder npm itself adds when a new name is
+ * first published; it serves no tarball.
  */
-export const HAND_PUBLISHED: Readonly<Record<string, Readonly<Record<string, string>>>> = {};
+export const HAND_PUBLISHED: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  '@d3-inc/d3-dna-protocol': {
+    '0.0.0-stage':
+      'sha512-B7kP/UNGobebBVqR/eYDGeoAZF0kLKQ+outDxsumT1pgUiMxhYKW9TjzxWJC+c/IoTJsgvaMlS+ZMZM+TkOQHQ==',
+    '0.10.0':
+      'sha512-zHv0e6Huif0nZlB4NrZOGhD/doaausCXTzXt5M0fO+SXl20is1/HUQxQRUvrowtX7Zj/z08qhnDJeZF/tpQhmQ==',
+  },
+  '@d3-inc/d3-dna-cloudflare-adapter': {
+    '0.0.0-stage':
+      'sha512-sJdYccQZ/Hc7rE4PT+NBXmnACPAdfU6rw/olV+ZlHsM1WUg6/EVvPlQdlXERZnTIBz6lfCqIEHTuadxQRunZTw==',
+    '0.10.0':
+      'sha512-PISMNWKQ9/0gKEP6lfIjD248BSIPbuP7scwodAZyUXUOcx2fXVsTZBcHyEAuGPvakzBPXuMEb9XclaTVflWaYw==',
+  },
+  '@d3-inc/d3-dna-vercel-middleware': {
+    '0.0.0-stage':
+      'sha512-1ZfWeAdIqKb5DUXSNr40HdCLOtL6L0udYgr1XI9EHY/Zq4L1E7V7TXtyzLpYB+OejqwmP+IFRegMeZpKlD4R+Q==',
+    '0.10.0':
+      'sha512-ugaXrP2S0NtjHutrxc5vM75SYhZNPA9nXqQeIMfZwgcyTQNTvKdVP4C6VyNP0B4CcAQj9U7Y28qNtqtQs/jXEA==',
+  },
+};
 
 /** Whether npm's bytes for a version match a hand publish a PR acknowledged. */
 export const isAcknowledgedHandPublish = (
