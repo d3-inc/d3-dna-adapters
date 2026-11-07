@@ -68,7 +68,9 @@ export {
   FORWARDED_MAX_TOTAL_LENGTH,
   FORWARDED_VALUE_MAX_LENGTH,
   NO_EXCLUSIONS,
+  forwardAll,
   parseExclusionList,
+  withheldOf,
 } from './adapter/forward-all';
 export type { ForwardExclusions } from './adapter/forward-all';
 export {
@@ -118,6 +120,7 @@ export {
   ANS_HEADERS,
   FORWARDED_HEADERS,
   FORWARDED_HEADER_SET,
+  HEADER_LENGTH_CAPS,
   HINT_HEADERS,
   NAVIGATION_HEADERS,
   extractEdgeRequest,

@@ -28,3 +28,23 @@ jobs:
       - run: pnpm test
       # tsup's declaration build is the check that the published types still compile.
       - run: pnpm build
+
+  caddy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # The version dna.caddy is tested on, by checksum: moving it is a deliberate edit here.
+      - env:
+          CADDY_VERSION: 2.11.8
+          CADDY_SHA512: c863699eee84c6b410573de2ec67af81d07eb054f9020bb98f3c6cb256fea4be2fd1acfbd39110c649c3338282593bba3d3ed6424d91b7f5675e8b877a8999e9
+        run: |
+          curl -fsSL -o caddy.tar.gz "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz"
+          echo "${CADDY_SHA512}  caddy.tar.gz" | sha512sum -c -
+          tar -xzf caddy.tar.gz caddy
+          sudo install caddy /usr/local/bin/caddy
+      - run: bash caddy/test/run.sh

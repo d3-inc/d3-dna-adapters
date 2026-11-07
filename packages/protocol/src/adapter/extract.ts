@@ -13,7 +13,7 @@ import { PURPOSE_HEADERS } from '../purpose';
 import type { HandshakeAttestation, NetworkFacts, RequestPayload } from '../types';
 import { PAYMENT_HEADER_CAPS, X402_PAYMENT_HEADERS } from '../x402/payment-header';
 import { debugHeadersOf } from './debug-headers';
-import { echoedExclusions, forwardAll, NO_EXCLUSIONS, type ForwardExclusions } from './forward-all';
+import { forwardAll, NO_EXCLUSIONS, withheldOf, type ForwardExclusions } from './forward-all';
 import { CARRIES_MCP_SINCE, FORWARDS_ALL_SINCE } from './forwarding.constants';
 import { liftedPaymentToForward, mcpCarriageOf, type McpCarriage } from './mcp';
 
@@ -84,7 +84,7 @@ export const FORWARDED_HEADERS = [
 
 // Per-header drop bounds: past these a value can never verify, so it must not bloat the
 // decision POST. The visitor sets each header's length; the verifier re-applies both caps.
-const HEADER_LENGTH_CAPS: ReadonlyMap<string, number> = new Map([
+export const HEADER_LENGTH_CAPS: ReadonlyMap<string, number> = new Map([
   ['x-scitt-receipt', ANS_ARTIFACT_MAX_BASE64_LENGTH],
   ['x-ans-status-token', ANS_ARTIFACT_MAX_BASE64_LENGTH],
   ['dpop', ANS_DPOP_MAX_PROOF_BYTES],
@@ -168,14 +168,6 @@ export async function extractEdgeRequest(request: Request, opts: ExtractOptions 
     else headers[name] = value;
   }
 
-  const hasExclusions = exclude.headers.length > 0 || exclude.cookies.length > 0;
-  const echo = echoedExclusions(exclude);
-  const unlisted = forwardsAll
-    ? {
-        headers: droppedUnlisted.headers || echo.overflow.headers,
-        cookies: droppedUnlisted.cookies || echo.overflow.cookies,
-      }
-    : droppedUnlisted;
   const payload: RequestPayload = {
     ip: opts.ip,
     handshake: opts.handshake,
@@ -191,8 +183,7 @@ export async function extractEdgeRequest(request: Request, opts: ExtractOptions 
     headers,
     ...(forwardsAll ? { cookies } : {}),
     ...(droppedCookies.length > 0 ? { droppedCookies } : {}),
-    ...(unlisted.headers || unlisted.cookies ? { droppedUnlisted: unlisted } : {}),
-    ...(forwardsAll && hasExclusions ? { excluded: echo.excluded } : {}),
+    ...(forwardsAll ? withheldOf(exclude, droppedUnlisted) : {}),
     ...(mcp?.facts ? { mcp: mcp.facts } : {}),
     ...(opts.debugHeaders
       ? { debugHeaders: debugHeadersOf(entriesOf(request.headers), exclude.headers) }

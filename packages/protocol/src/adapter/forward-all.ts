@@ -1,4 +1,5 @@
 import { cookiesOf, OWN_COOKIES } from '../pay-session';
+import type { RequestPayload } from '../types';
 import { FORWARDED_MAX_COOKIES, FORWARDED_MAX_NAMES, NEVER_FORWARDED_HEADERS } from './forwarding.constants';
 
 /** Per value, for a header or cookie without a cap of its own. */
@@ -51,6 +52,23 @@ export function echoedExclusions(exclude: ForwardExclusions): {
       headers: exclude.headers.length > FORWARDED_MAX_NAMES,
       cookies: exclude.cookies.length > FORWARDED_MAX_NAMES,
     },
+  };
+}
+
+/** A revision 2 payload's account of what it held back: the exclusions echoed, and each kind past its lists flagged. */
+export function withheldOf(
+  exclude: ForwardExclusions,
+  droppedUnlisted: ForwardedRequest['droppedUnlisted']
+): Pick<RequestPayload, 'excluded' | 'droppedUnlisted'> {
+  const echo = echoedExclusions(exclude);
+  const unlisted = {
+    headers: droppedUnlisted.headers || echo.overflow.headers,
+    cookies: droppedUnlisted.cookies || echo.overflow.cookies,
+  };
+  const hasExclusions = exclude.headers.length > 0 || exclude.cookies.length > 0;
+  return {
+    ...(unlisted.headers || unlisted.cookies ? { droppedUnlisted: unlisted } : {}),
+    ...(hasExclusions ? { excluded: echo.excluded } : {}),
   };
 }
 
