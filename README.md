@@ -13,7 +13,7 @@ times out, so an outage on our side never takes your site down.
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------- |
 | [`cloudflare-snippet/`](./cloudflare-snippet) | A single pasted file for Cloudflare zones — no Worker deploy (paid plans). Traffic sampling built in | Yes         |
 | [`cloudflare-worker/`](./cloudflare-worker)   | Standalone Worker template fronting a site hosted outside Cloudflare                                 | Yes         |
-| [`caddy/`](./caddy)                           | Config-only recipe for Caddy's built-in `forward_auth` — no plugin, no build                         | No          |
+| [`caddy/`](./caddy)                           | One importable file for stock Caddy 2.8+: no plugin, no build                                        | Yes         |
 | [`nginx/`](./nginx)                           | Access-phase Lua script for OpenResty / nginx with the Lua module                                    | Yes         |
 | [`nginx-auth-request/`](./nginx-auth-request) | Config-only recipe for stock nginx via `auth_request` — no Lua required                              | No          |
 
@@ -26,11 +26,10 @@ infrastructure.
 
 The last column is [D3 Pay](./PROTOCOL.md#paid-routes), the optional
 half of that contract: a site prices a route, and the adapter answers
-`402` until the visitor's agent presents a credential. The two
-forward-auth recipes cannot carry it — their whole answer is a status
-code — so a priced route behind them is served as an ordinary pass, and
-each README says so. The worker template carries whatever the Cloudflare
-adapter it installs carries.
+`402` until the visitor's agent presents a credential. Behind nginx
+`auth_request`, a priced route is served as an ordinary page, because nginx
+keeps only the answer's status. The worker template carries whatever the
+Cloudflare adapter it installs carries.
 
 The npm SDKs live in [`packages/`](./packages), beside the recipes:
 

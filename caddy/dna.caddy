@@ -1,0 +1,249 @@
+# DNA for Caddy, revision 2. Stock Caddy 2.8 or later, no plugin.
+#
+# Import this file once, below any global options block, add `invoke dna` to
+# each site you want covered, set D3_EDGE_ADAPTER_KEY in Caddy's environment and
+# restart Caddy. To upgrade, replace this file. See README.md.
+#
+# Sends DNA every header and cookie but Authorization and Proxy-Authorization;
+# DNA ignores the names in DNA_EXCLUDE_HEADERS and DNA_EXCLUDE_COOKIES. Serves
+# every rule: Let in, Block, Charge, Require a human, Charge or require a human.
+
+(dna_payment_unavailable) {
+	header Content-Type "application/json; charset=utf-8"
+	header Cache-Control no-store
+	header x-d3-edge fail-closed
+	respond `{"error":"payment_unavailable"}` 502
+}
+
+# An answer DNA did not give, or gave because it failed: an unpaid request
+# reads it as DNA being down; a paying one is never served free.
+(dna_degrade) {
+	@paying_hop vars {vars.d3_gateway} 127.0.0.1:8114
+	route @paying_hop {
+		import dna_payment_unavailable
+	}
+	vars d3_edge fail-open
+}
+
+# ---- Decision gateways ------------------------------------------------------
+# A subrequest whose connection fails would reach the visitor as an error.
+# These local hops turn that into an answer before the site sees one.
+# `http://:PORT` + bind, NOT `http://127.0.0.1:PORT`: the subrequest carries
+# the visitor's Host, and a hostname-scoped address only matches Host
+# 127.0.0.1, so every request would get Caddy's empty 200 and pass unchecked.
+
+# Unpaid: a hung endpoint degrades like a down one, and the page is served.
+http://:8113 {
+	bind 127.0.0.1
+	reverse_proxy {$DNA_ENDPOINT:https://edge-api.d3.com} {
+		header_up Host {$DNA_ENDPOINT_HOST:edge-api.d3.com}
+		transport http {
+			# 500ms covers a cold isolate; a canceled call is never logged.
+			response_header_timeout {$DNA_TIMEOUT:500ms}
+			# Otherwise Go adds an Accept-Encoding the visitor never sent, and a
+			# rule on that header would read it.
+			compression off
+		}
+	}
+	handle_errors {
+		header x-d3-edge fail-open
+		respond 200
+	}
+}
+
+# Paying: settlement runs inside this budget, and a failure is a 502, never a
+# free page.
+http://:8114 {
+	bind 127.0.0.1
+	reverse_proxy {$DNA_ENDPOINT:https://edge-api.d3.com} {
+		header_up Host {$DNA_ENDPOINT_HOST:edge-api.d3.com}
+		transport http {
+			response_header_timeout {$DNA_PAYMENT_TIMEOUT:10s}
+			compression off
+		}
+	}
+	handle_errors {
+		import dna_payment_unavailable
+	}
+}
+
+# ---- The check --------------------------------------------------------------
+# A named route, because `invoke` runs before `handle` blocks and a plain
+# `route` runs after them, so a site built of `handle` blocks would never ask.
+&(dna) {
+	# Inside a named route Caddy sorts directives by its own order, which would
+	# strip the credentials before asking DNA. `route` keeps them as written.
+	route {
+		# No Host names no site (DNA reads `.` as none): it cannot judge the
+		# request, and failing open on it would serve the page unchecked.
+		@no_host vars_regexp {http.request.host} ^\.*$
+		respond @no_host 400
+
+		# The browser-check pass is not a payment, so it never buys this budget.
+		@paying expression `{http.request.header.Payment-Signature} != "" || {http.request.header.X-Payment} != "" || {http.request.header.Payment-Authorization} != "" || {http.request.cookie.__Host-d3pay} != "" || query({'d3pay_handoff': '*'})`
+		vars d3_gateway 127.0.0.1:8113
+		vars @paying d3_gateway 127.0.0.1:8114
+
+		reverse_proxy {vars.d3_gateway} {
+			method GET
+			rewrite /v1/forward-auth
+			transport http {
+				compression off
+			}
+			# orig_*: a site's rewrite or try_files has already run by now, and DNA
+			# must judge the request the visitor sent.
+			header_up X-Forwarded-Method {http.request.orig_method}
+			header_up X-Forwarded-Uri {http.request.orig_uri}
+			header_up X-Forwarded-Host {http.request.hostport}
+			header_up X-Forwarded-Proto {scheme}
+			header_up x-d3-adapter-set 2
+			header_up x-d3-adapter-key {env.D3_EDGE_ADAPTER_KEY}
+			# The pinned client IP: the endpoint never trusts X-Forwarded-For.
+			header_up x-d3-real-ip {client_ip}
+			# Our two cookies by name. The rest of the jar goes too: revision 2
+			# forwards every header and cookie but the site's exclusions. Ours leave
+			# the jar, so an oversized one never crosses twice.
+			header_up d3pay-session {http.request.cookie.__Host-d3pay}
+			header_up d3pay-person {http.request.cookie.__Host-d3person}
+			header_up Cookie "(^|;\s*)__Host-d3(?:pay|person)\s*=[^;]*" ""
+			header_up Cookie "^;\s*" ""
+			header_up -Authorization
+			header_up -Proxy-Authorization
+			# Set, never deleted: Caddy deletes after it sets, and a name a visitor
+			# marked withheld would skip the condition that should hold it. Caddy
+			# cannot drop a listed name here, so DNA drops these on arrival.
+			# Read from Caddy's own environment, as the key is, so a reload from
+			# another shell cannot empty them.
+			header_up x-d3-excluded-headers "{env.DNA_EXCLUDE_HEADERS}"
+			header_up x-d3-excluded-cookies "{env.DNA_EXCLUDE_COOKIES}"
+			# A visitor must not pin its own tuple, key, or digest.
+			header_up -x-d3-method
+			header_up -x-d3-host
+			header_up -x-d3-uri
+			header_up -x-d3-content-digest
+			header_up -X-Original-URL
+			header_up -X-Original-Method
+			# The visitor's request may upgrade; this call never does. HTTP/2 to DNA
+			# refuses an Upgrade header, and the failed call would serve the page.
+			header_up -Upgrade
+			header_up -Connection
+
+			# Pay copy in place of the page: a 200 that must not reach the origin.
+			@stub header X-D3-Edge payment-stub
+			handle_response @stub {
+				copy_response
+			}
+
+			# Every answer DNA gives carries x-d3-edge. A 5xx or 429 without one is a
+			# proxy in between failing. Any other status without one, such as a 431
+			# for headers too large to forward, goes to the visitor as it came:
+			# read as DNA being down, padding a request would serve it free.
+			@not_dna {
+				status 429 5xx
+				header !X-D3-Edge
+			}
+			handle_response @not_dna {
+				import dna_degrade
+			}
+
+			# DNA's own failure (a dead key, an internal error) answers 200 fail-open.
+			@fail_open {
+				status 2xx
+				header X-D3-Edge fail-open
+			}
+			handle_response @fail_open {
+				import dna_degrade
+			}
+
+			# Any other 2xx continues to the origin. vars, not request headers, so a
+			# receipt or our Set-Cookie never reaches the origin.
+			@pass status 2xx
+			handle_response @pass {
+				vars {
+					d3_edge {rp.header.X-D3-Edge}
+					d3_receipt {rp.header.Payment-Receipt}
+					d3_x402 {rp.header.Payment-Response}
+					d3_x402_v1 {rp.header.X-Payment-Response}
+					d3_cookie {rp.header.Set-Cookie}
+					d3_expose {rp.header.Access-Control-Expose-Headers}
+					d3_cc {rp.header.Cache-Control}
+				}
+			}
+			# Every other status (403, 402, 302, 502) is returned as it came.
+		}
+
+		# No payment header, neither cookie, and no handoff, auth check or
+		# browser-check answer on the URL reaches the origin.
+		request_header -Payment-Signature
+		request_header -X-Payment
+		request_header -Payment-Authorization
+		request_header -D3pay-Session
+		request_header -D3pay-Person
+		request_header -Mcp-Param-Dna-Key
+		# Spaces before `=` too: Caddy's cookie reader trims them, so a cookie DNA
+		# was handed must not survive here under a spelling the regex skipped.
+		request_header Cookie "(^|;\s*)__Host-d3(?:pay|person)\s*=[^;]*" ""
+		request_header Cookie "^;\s*" ""
+		# Only when ours are present: `uri query` re-encodes and reorders the query.
+		@ours expression `query({'d3pay_handoff': '*'}) || query({'d3pay_check': '*'}) || query({'d3pay_browser': '*'})`
+		uri @ours query {
+			-d3pay_handoff
+			-d3pay_check
+			-d3pay_browser
+		}
+
+		# Set-Cookie and the CORS list are appended, so the site keeps its own.
+		@edge not vars {vars.d3_edge} ""
+		header @edge {
+			X-D3-Edge {vars.d3_edge}
+			defer
+		}
+		@receipt not vars {vars.d3_receipt} ""
+		header @receipt {
+			Payment-Receipt {vars.d3_receipt}
+			defer
+		}
+		@x402 not vars {vars.d3_x402} ""
+		header @x402 {
+			Payment-Response {vars.d3_x402}
+			defer
+		}
+		@x402_v1 not vars {vars.d3_x402_v1} ""
+		header @x402_v1 {
+			X-Payment-Response {vars.d3_x402_v1}
+			defer
+		}
+		@cookie not vars {vars.d3_cookie} ""
+		header @cookie {
+			+Set-Cookie {vars.d3_cookie}
+			defer
+		}
+		@expose not vars {vars.d3_expose} ""
+		header @expose {
+			+Access-Control-Expose-Headers {vars.d3_expose}
+			defer
+		}
+		# DNA's no-store (a browser-check pass) replaces the origin's caching, so no
+		# shared cache hands that page to the next visitor unchecked. Only no-store:
+		# any other value on the answer could only loosen the page.
+		@dna_no_store vars {vars.d3_cc} no-store
+		header @dna_no_store {
+			Cache-Control no-store
+			defer
+		}
+
+		# A page carrying any of those is the visitor's alone: no shared cache
+		# stores it, and its freshness is kept. Same result as privateCacheControl
+		# in packages/protocol, on headers alone so a large page is never buffered.
+		@paid expression `{vars.d3_receipt} != "" || {vars.d3_x402} != "" || {vars.d3_x402_v1} != "" || {vars.d3_cookie} != "" || {vars.d3_expose} != ""`
+		header @paid ?Cache-Control private
+		header @paid {
+			# Prefix private, then take it off where the site's value already says
+			# private or no-store, or where its public becomes private instead.
+			Cache-Control ^ "private, "
+			Cache-Control "(?i)^private, ((?:.*,)?\s*(?:private|no-store)\s*(?:[=,].*)?)$" "${1}"
+			Cache-Control "(?i)^private, ((?:.*?,)??\s*)public(\s*(?:,.*)?)$" "${1}private${2}"
+			defer
+		}
+	}
+}

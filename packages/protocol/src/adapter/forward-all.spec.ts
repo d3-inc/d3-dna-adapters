@@ -6,6 +6,7 @@ import {
   forwardAll,
   NO_EXCLUSIONS,
   parseExclusionList,
+  withheldOf,
 } from './forward-all';
 import { FORWARDED_MAX_NAMES, MCP_DNA_KEY_HEADER, NEVER_FORWARDED_HEADERS } from './forwarding.constants';
 
@@ -156,5 +157,19 @@ describe('echoedExclusions', () => {
     expect(echo.excluded.headers).toHaveLength(FORWARDED_MAX_NAMES);
     expect(echo.excluded.cookies).toEqual(['sid']);
     expect(echo.overflow).toEqual({ headers: true, cookies: false });
+  });
+});
+
+describe('withheldOf', () => {
+  it('says nothing when the site keeps nothing back and every drop is listed', () => {
+    expect(withheldOf(NO_EXCLUSIONS, { headers: false, cookies: false })).toEqual({});
+  });
+
+  it('echoes the exclusions, and flags a kind whose drops or exclusions outran their lists', () => {
+    const many = Array.from({ length: FORWARDED_MAX_NAMES + 1 }, (_, i) => `x-h${i}`);
+    const withheld = withheldOf({ headers: many, cookies: ['sid'] }, { headers: false, cookies: true });
+    expect(withheld.excluded?.headers).toHaveLength(FORWARDED_MAX_NAMES);
+    expect(withheld.excluded?.cookies).toEqual(['sid']);
+    expect(withheld.droppedUnlisted).toEqual({ headers: true, cookies: true });
   });
 });
