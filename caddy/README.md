@@ -23,7 +23,7 @@ Caddy 2.8 or later (tested on 2.11.8).
    blocks wherever the line sits, and DNA judges the URL the visitor sent, not
    what a `rewrite` or `try_files` made of it.
 3. Create an API key at [dashboard.d3.com/keys](https://dashboard.d3.com/keys)
-   and set it as `D3_EDGE_ADAPTER_KEY` in Caddy's environment.
+   and set it as `DNA_API_KEY` in Caddy's environment.
 4. Restart Caddy. A reload doesn't give a running Caddy a new environment
    variable.
 
@@ -32,7 +32,9 @@ them, replace every `8113` and `8114` in `dna.caddy`.
 
 Coming from the earlier `forward_auth` block? Remove it and its `http://:8113`
 site first. Left beside `dna.caddy`, the duplicate site stops Caddy loading, and
-a `forward_auth` left in a site asks DNA twice per request.
+a `forward_auth` left in a site asks DNA twice per request. Then rename
+`D3_EDGE_ADAPTER_KEY` in Caddy's environment to `DNA_API_KEY`: left under the
+old name, the key never reaches DNA and nothing is enforced.
 
 ## Revisions
 
@@ -95,7 +97,7 @@ until the key works. To check a key:
 
 ```sh
 curl -sI https://edge-api.d3.com/v1/forward-auth \
-  -H "x-d3-adapter-key: $D3_EDGE_ADAPTER_KEY" | grep -i '^x-d3-reason'
+  -H "x-d3-adapter-key: $DNA_API_KEY" | grep -i '^x-d3-reason'
 ```
 
 A good key prints `malformed-tuple`: this check sends no request to judge.

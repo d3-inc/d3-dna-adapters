@@ -1,7 +1,7 @@
 # DNA for Caddy, revision 2. Stock Caddy 2.8 or later, no plugin.
 #
 # Import this file once, below any global options block, add `invoke dna` to
-# each site you want covered, set D3_EDGE_ADAPTER_KEY in Caddy's environment and
+# each site you want covered, set DNA_API_KEY in Caddy's environment and
 # restart Caddy. To upgrade, replace this file. See README.md.
 #
 # Sends DNA every header and cookie but Authorization and Proxy-Authorization;
@@ -97,7 +97,7 @@ http://:8114 {
 			header_up X-Forwarded-Host {http.request.hostport}
 			header_up X-Forwarded-Proto {scheme}
 			header_up x-d3-adapter-set 2
-			header_up x-d3-adapter-key {env.D3_EDGE_ADAPTER_KEY}
+			header_up x-d3-adapter-key {env.DNA_API_KEY}
 			# The pinned client IP: the endpoint never trusts X-Forwarded-For.
 			header_up x-d3-real-ip {client_ip}
 			# Our two cookies by name. The rest of the jar goes too: revision 2

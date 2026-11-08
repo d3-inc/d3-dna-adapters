@@ -202,6 +202,7 @@ if (process.argv[2] === 'live') {
       'd3pay-session': 'SPOOF',
       'd3pay-person': 'SPOOF',
       'x-d3-adapter-set': '99',
+      'x-d3-adapter-key': 'forged',
       'x-forwarded-host': 'other.example',
       authorization: 'Bearer site-token',
       'x-partner-id': 'acme',
@@ -233,6 +234,11 @@ if (process.argv[2] === 'live') {
       sub.headers['x-partner-id'] === 'acme' &&
       sub.headers['x-d3-adapter-set'] === '2',
     `cookie=${sub.headers.cookie}`
+  );
+  ok(
+    "to DNA: the key from DNA_API_KEY, never the visitor's",
+    sub.headers['x-d3-adapter-key'] === 'test-key',
+    `key=${sub.headers['x-d3-adapter-key']}`
   );
   ok('to DNA: never Authorization', !('authorization' in sub.headers));
   ok(

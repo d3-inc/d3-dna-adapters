@@ -3,7 +3,7 @@
 # Needs caddy and node on PATH. Usage: caddy/test/run.sh
 set -u
 cd "$(dirname "$0")"
-export D3_EDGE_ADAPTER_KEY=test-key DNA_ENDPOINT=http://127.0.0.1:9000 DNA_ENDPOINT_HOST=mock
+export DNA_API_KEY=test-key DNA_ENDPOINT=http://127.0.0.1:9000 DNA_ENDPOINT_HOST=mock
 # Short budgets keep the timeout checks quick; production defaults are 500ms and 10s.
 export DNA_TIMEOUT=500ms DNA_PAYMENT_TIMEOUT=3s
 export DNA_EXCLUDE_HEADERS=x-internal-token DNA_EXCLUDE_COOKIES=sid
