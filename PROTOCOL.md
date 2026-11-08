@@ -380,21 +380,48 @@ describe a different request than the one they made:
 | `X-Forwarded-*` | `X-Forwarded-Method`, `X-Forwarded-Host`, `X-Forwarded-Uri` | Caddy, Traefik; nginx recipes |
 | `X-Original-*`  | `X-Original-URL` (absolute) + `X-Original-Method`           | ingress-nginx convention      |
 
-A recipe that builds the tuple by hand sets the `X-Forwarded-*` headers.
+A recipe that builds the tuple by hand sets the `X-Forwarded-*` headers. Once
+`X-Forwarded-Uri` arrives, the endpoint reads that convention alone: a tuple
+missing its host or method is malformed, never completed from an `X-Original-*`
+a visitor could have set. An `X-Forwarded-Uri` with a scheme
+(`http://host/path`, or `http:/path`, which Go also accepts) is read by
+its path and query, the page the proxy serves.
 
 The client IP comes only from a recipe-pinned `x-d3-real-ip`; raw
 `X-Forwarded-For` is client-spoofable and deliberately never read, and
 `X-Real-IP` cannot be used — Cloudflare-fronted endpoints rewrite it to
 the connecting IP, which is the enforcement point's own egress. The client's own headers — the signature set from [Which
 headers to forward](#which-headers-to-forward) — arrive because the proxy
-copies them onto the side-request; recipes must strip `Cookie`,
-`Authorization`, `Proxy-Authorization`, and any inbound `x-d3-*`.
+copies them onto the side-request; below revision 2, recipes must strip
+`Cookie`, `Authorization`, `Proxy-Authorization`, and any inbound `x-d3-*`.
 `requestId` is generated server-side, and there are no outcome reports —
 there is no adapter code to send one.
 
+### Revision 2
+
+A proxy declares its revision in `x-d3-adapter-set`, the header form of
+[`adapterSet`](#declaring-what-you-can-do). Declare at most `2`: revision 3
+rewrites bodies, which no forward-auth hook can. From `2` the endpoint:
+
+- reads every header and cookie on the side-request but `Authorization`,
+  `Proxy-Authorization`, the proxy's own headers (the tuple, `Via`,
+  `X-Forwarded-For`), and those the endpoint's CDN adds (`cf-*`,
+  `cdn-loop`, `x-real-ip`);
+- drops on arrival the names the proxy lists, comma-separated, in
+  `x-d3-excluded-headers` and `x-d3-excluded-cookies`, and reads them as
+  withheld, as an [exclusion](#forwarding-everything) reads;
+- reads `d3pay-session` and `d3pay-person`, which the proxy sets from the
+  `__Host-d3pay` and `__Host-d3person` cookies;
+- answers a gate, below.
+
+The proxy sets `x-d3-adapter-set`, both exclusion lists and both `d3pay-*`
+headers itself, overwriting any copy the visitor sent. A
+visitor's own exclusion list would mark a header withheld and skip the rule
+condition that should hold it.
+
 ### Response
 
-The status code is the whole answer:
+Below revision 2, the status code is the whole answer:
 
 | Status | Meaning                                                                                                                                                                                                                  |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -411,18 +438,36 @@ Fail-open moves server-side in this dialect; the proxy-side recipe still
 needs its own fail-open for the case where the endpoint is unreachable
 (each recipe documents its pattern).
 
-### No paid routes
+### Paid routes from revision 2
 
-The status code is the whole answer, so there is nowhere to put a
-`402` body, a session cookie, or a receipt. The endpoint knows which
-dialect it is answering and **evaluates paid routes only for the JSON
-one**: a priced route reached through forward-auth is answered `200` or
-`403` like any other, never paywalled and never charged.
+Below revision 2 the endpoint evaluates no gate: a priced route reached
+through forward-auth is answered `200` or `403` like any other, never
+paywalled and never charged.
 
-This is deliberate, not an oversight to work around in a recipe. A
-dialect that dropped the instruction would serve a priced route free —
-and, worse, settle a presented payment and throw the receipt away. If
-you price routes, enforce them with an adapter that runs code.
+From revision 2 it answers a gate as the JSON dialect's
+[payment instruction](#the-answer) would, already rendered. The proxy
+returns it whole, status, body and headers:
+
+| Answer                                 | The proxy                                                                                                                                                                                                                                                                                      |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `402`, `x-d3-edge: payment-required`   | Returns it: a price, or the browser check                                                                                                                                                                                                                                                      |
+| `3xx`, `x-d3-edge: payment-redirect`   | Returns it, with no body                                                                                                                                                                                                                                                                       |
+| `200`, `x-d3-edge: payment-stub`       | Returns it in place of the page, and never calls the origin                                                                                                                                                                                                                                    |
+| `502`, `x-d3-edge: fail-closed`        | Returns it: a payment could not be taken                                                                                                                                                                                                                                                       |
+| `403`, `x-d3-edge: block`, HTML        | Returns it: a block rule's browser check, which lets the visitor through once it passes                                                                                                                                                                                                        |
+| `200`, `x-d3-edge: pass`, with headers | Calls the origin, then puts the answer's headers on the origin's response, as in [Passing clean, returning rich](#passing-clean-returning-rich). An answer's `Cache-Control: no-store` replaces the origin's, and no other value from it does; a paid page without it is narrowed to `private` |
+
+[Failing closed](#failing-closed-exactly-here) and the
+[budget](#the-budget) apply as written: a request presenting a payment
+gets the longer timeout, and never falls open. Declare `2` only if your
+recipe does all of this and keeps DNA's credentials from the origin.
+
+A visitor can send `x-d3-adapter-set: 2` through a recipe that doesn't
+set it, and that recipe reads any `2xx` as allow. So on this dialect no
+answer that refuses the page is a `2xx`: a block rule's check, a `200`
+on the JSON dialect, comes here as a `403`. The one other `2xx`,
+`payment-stub`, only replaces a page that would otherwise be served
+free.
 
 ### The body is usually unattested
 

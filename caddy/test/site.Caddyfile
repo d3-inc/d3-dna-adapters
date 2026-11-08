@@ -1,0 +1,28 @@
+{
+	admin off
+	auto_https off
+	# As behind a CDN or load balancer, so a spoofed X-Forwarded-Host is a real test.
+	servers {
+		trusted_proxies static 127.0.0.1/32
+	}
+}
+import ../dna.caddy
+
+# A bare site.
+http://:8080 {
+	invoke dna
+	reverse_proxy http://127.0.0.1:3000
+}
+
+# The shape the landing-pages fleet uses: try_files, then handle blocks.
+http://:8085 {
+	root * www
+	invoke dna
+	try_files {path} /index.html
+	handle /api/* {
+		reverse_proxy http://127.0.0.1:3000
+	}
+	handle {
+		reverse_proxy http://127.0.0.1:3000
+	}
+}

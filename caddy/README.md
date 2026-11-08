@@ -1,125 +1,152 @@
-# D3 Edge for Caddy (`forward_auth`)
+# DNA for Caddy
 
-[D3 Edge](https://ai.d3.com) enforcement through Caddy's built-in
-[`forward_auth`](https://caddyserver.com/docs/caddyfile/directives/forward_auth)
-directive — pure config, no plugin, no custom build. Per request Caddy
-sends a small side-request to the D3 Edge decision endpoint and reads
-the status code: `200` continues to your site, `403` is returned to the
-visitor as-is (JSON body included).
+[DNA](https://ai.d3.com) enforcement in stock Caddy config: no plugin, no
+custom build. Caddy asks DNA about each request, then serves the page, a block,
+or DNA's answer to a **Charge** or **Require a human** rule: a `402`, a redirect
+to DNA, or DNA's payment instructions in place of your page.
 
 This is the forward-auth dialect of [the decision
-protocol](../PROTOCOL.md#the-forward-auth-dialect): the original method
-and URL ride in `X-Forwarded-*` headers, the client's own headers —
-including Web Bot Auth signatures — are copied along, and there is no
-adapter code anywhere.
+protocol](../PROTOCOL.md#the-forward-auth-dialect): the original method and URL
+ride in `X-Forwarded-*` headers, and the visitor's own headers, Web Bot Auth
+signatures included, are copied along.
 
 ## Requirements
 
-Stock Caddy 2. Nothing else.
+Caddy 2.8 or later (tested on 2.11.8).
 
 ## Install
 
-1. Copy both blocks from [`Caddyfile`](./Caddyfile) into your Caddyfile:
-   the decision gateway once, the `forward_auth` block into each site
-   you want covered.
-2. Create an adapter key at
-   [dashboard.d3.com/keys](https://dashboard.d3.com/keys) and set it as
-   `D3_EDGE_ADAPTER_KEY` in Caddy's environment.
-3. Reload: `caddy reload`.
+1. Put [`dna.caddy`](./dna.caddy) beside your Caddyfile.
+2. Add `import dna.caddy` once, at the top level and below your global options
+   block if you have one, and `invoke dna` in each site you want covered.
+   [`Caddyfile`](./Caddyfile) shows where. `invoke` runs before your `handle`
+   blocks wherever the line sits, and DNA judges the URL the visitor sent, not
+   what a `rewrite` or `try_files` made of it.
+3. Create an API key at [dashboard.d3.com/keys](https://dashboard.d3.com/keys)
+   and set it as `DNA_API_KEY` in Caddy's environment.
+4. Restart Caddy. A reload doesn't give a running Caddy a new environment
+   variable.
 
-## How fail-open works (read before changing the gateway)
+Ports 8113 and 8114 on `127.0.0.1` are the recipe's own. If something else uses
+them, replace every `8113` and `8114` in `dna.caddy`.
 
-Enforcement breaking must never take your site down — but `forward_auth`
-returns any upstream error straight to the visitor, which is fail-
-_closed_. The recipe's local gateway hop is what inverts that:
-`forward_auth` talks to `127.0.0.1:8113`, which proxies to the real
-endpoint with a hard 500 ms budget, and its `handle_errors` block turns
-a dead, unreachable, or hung endpoint into `200` + `x-d3-edge:
-fail-open`. Two failure modes remain server-side by design: a dead or
-revoked adapter key also answers `200 fail-open` (never `401` — the
-proxy couldn't tell it apart from a block), tagged with an
-`x-d3-reason` header and worth alerting on.
+Coming from the earlier `forward_auth` block? Remove it and its `http://:8113`
+site first. Left beside `dna.caddy`, the duplicate site stops Caddy loading, and
+a `forward_auth` left in a site asks DNA twice per request. Then rename
+`D3_EDGE_ADAPTER_KEY` in Caddy's environment to `DNA_API_KEY`: left under the
+old name, the key never reaches DNA and nothing is enforced.
 
-The gateway runs in the same Caddy process, so there is no separate
-service to keep alive.
+## Revisions
+
+`dna.caddy` sends its revision in `x-d3-adapter-set`, and DNA answers only with
+what that revision can show. To upgrade, replace `dna.caddy` and reload; your
+Caddyfile does not change.
+
+| Revision                                | Carries                                                                                                                        |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| none (the earlier `forward_auth` block) | Let in and Block, on a fixed list of headers. **Charge** and **Require a human** pages are served as ordinary pages            |
+| 2                                       | Every header and cookie but your exclusions, and every rule: Let in, Block, Charge, Require a human, Charge or require a human |
+
+An **MCP server** rule answers here as an **API** rule does. Charging per tool
+call is revision 3, which rewrites request and response bodies, and stock Caddy
+cannot.
+
+## What each answer looks like
+
+| DNA answers                                          | The visitor gets                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Let in                                               | Your page                                                                             |
+| Block                                                | `403` with a JSON body                                                                |
+| Block, to a browser DNA cannot yet tell from a bot   | `403` with DNA's check page; your page once the browser passes                        |
+| A price or a human check                             | A `302` to DNA, or a `402` saying how to pay or sign in                               |
+| A price, to a browser DNA cannot yet tell from a bot | `402` with DNA's check page                                                           |
+| Payment instructions, to some agents                 | DNA's instructions as a `200` tagged `x-d3-edge: payment-stub`, in place of your page |
+| Paid                                                 | Your page, with the receipt and DNA's session cookie added                            |
+| Payment could not be taken                           | `502`, never your page                                                                |
+
+A paid page gets `Cache-Control: private`, with your freshness directives kept,
+so no shared cache serves it to another visitor.
+
+## How fail-open works
+
+A subrequest that errors reaches the visitor as an error. The recipe puts a
+local gateway in front of the decision endpoint so DNA being down never takes
+your site down:
+
+| Request            | Budget (variable)            | If DNA is down, slow, or failing                |
+| ------------------ | ---------------------------- | ----------------------------------------------- |
+| No payment         | 500 ms (`DNA_TIMEOUT`)       | `200`, your page served, `x-d3-edge: fail-open` |
+| Presents a payment | 10 s (`DNA_PAYMENT_TIMEOUT`) | `502 payment_unavailable`, never a free page    |
+
+Both budgets take a Caddy duration, such as `750ms`.
+
+"Failing" covers three things: no connection, a `5xx` or `429` with no
+`x-d3-edge` (from a proxy in between, never a decision), and DNA's own
+`fail-open` answer. Every decision DNA makes carries `x-d3-edge`. Any other
+status without it, such as a `431` for headers too large to forward, reaches
+the visitor as it came.
+
+A request presents a payment when it carries `Payment-Signature`, `X-Payment`
+or `Payment-Authorization`, the `__Host-d3pay` cookie, or `?d3pay_handoff=` on
+the URL. Settlement happens inside the 10 s.
+
+A missing, unknown, expired or revoked key also answers `200 fail-open`, with
+`x-d3-reason` set to `unknown-key`, `expired` or `revoked`. Alert on it: nothing
+is enforced, and a visitor holding a DNA session gets a `502` on every page
+until the key works. To check a key:
+
+```sh
+curl -sI https://edge-api.d3.com/v1/forward-auth \
+  -H "x-d3-adapter-key: $DNA_API_KEY" | grep -i '^x-d3-reason'
+```
+
+A good key prints `malformed-tuple`: this check sends no request to judge.
 
 ## What leaves your infrastructure
 
-`forward_auth` copies the visitor's request headers onto the
-side-request. The recipe strips what we must never receive (`Cookie`,
-`Authorization`, `Proxy-Authorization`) and pins what we must be able to
-trust (`x-d3-real-ip`, the adapter key, no client-set `x-d3-*`). Note this
-is remove-what-you-name: an unusual header the recipe doesn't strip
-would still reach us. If you need keep-only-what-you-name semantics, use
-a proxy with a true allowlist (Envoy's `headersToExtAuth`).
+To DNA:
 
-No request body is ever sent — Caddy rewrites the side-request to a
-body-less `GET`. The one consequence: signed `POST`/`PUT` requests get a
-capped verdict (`claimed`, reason `body-unattested`) because nothing
-could check the body against its signed digest. `GET`/`HEAD` — nearly
-all agent traffic — are unaffected.
+- The visitor's headers and cookies, minus `Authorization` and
+  `Proxy-Authorization`. `__Host-d3pay` and `__Host-d3person` also travel as
+  `d3pay-session` and `d3pay-person`.
+- Names in `DNA_EXCLUDE_HEADERS` and `DNA_EXCLUDE_COOKIES` (comma-separated, in
+  Caddy's environment) still travel; DNA drops them on arrival and reads them as
+  withheld. To keep a header on your server, add `header_up -Name` to the
+  `reverse_proxy {vars.d3_gateway}` block in `dna.caddy`, and again after each
+  upgrade.
+- Host, method and URL come from the request Caddy received, and the key and
+  revision from `dna.caddy`. Behind a load balancer, set `trusted_proxies` and
+  turn on `trusted_proxies_strict`, or a visitor can choose the IP DNA sees.
+- No request body, so a signed `POST` or `PUT` gets a capped verdict
+  (`claimed`, reason `body-unattested`); `GET` and `HEAD` are unaffected.
 
-## Paid routes (D3 Pay): not this recipe
+To your origin: nothing of DNA's. No payment header, neither cookie, and no
+`d3pay_handoff`, `d3pay_check` or `d3pay_browser` on the URL. The receipt and
+DNA's `Set-Cookie` are added to your response, never to the request your
+origin sees.
 
-[D3 Pay](../PROTOCOL.md#paid-routes) needs an enforcement point that can
-answer `402` with a body, read a cookie by name, and strip a credential
-before the origin. `forward_auth` gives none of that: the dialect's whole
-answer is a status code, so the endpoint calls this recipe with paid
-routes switched off. **A priced route behind Caddy `forward_auth` is
-served as an ordinary pass — never paywalled, and never charged.** The browser
-check rides on paid routes, so it never runs here either: this recipe
-declares no `adapterSet`, and the endpoint does not start a check it
-cannot finish.
+A URL without those three reaches your origin byte for byte. One that carries
+them, which only happens on the way back from DNA, has the rest of its query
+rewritten in Caddy's encoding, sorted by name.
 
-The deny body is the only part Caddy would in fact return verbatim; the
-rest — the session cookie, the budget, the receipt — has nowhere to go.
-If you price routes, enforce them with the [Cloudflare
-Snippet](../cloudflare-snippet), the [Lua adapter](../nginx), or a
-[worker install](https://ai.d3.com/docs/sdks/cloudflare). Bot-auth
-enforcement here is unaffected.
+## Coverage
 
-## Scoping and ramp-up
+On a site with **Charge** or **Require a human** rules, put `invoke dna` in the
+site with no matcher. A request it skips never reaches DNA, so a priced page is
+served free. Sampling, or matching only signed agents, skips requests. A request
+with no `Host` names no site to check, so the recipe answers it `400`.
 
-`forward_auth` takes a matcher like any Caddy directive. To start with
-only signed agent traffic (tiny volume, the traffic D3 Edge exists for):
+Use `invoke dna` in sites named by host. On a catch-all site (`:80`, `:443`) the
+visitor picks the `Host` DNA checks, so a page served whatever the `Host` is
+judged by the rules of any host they name, or by none.
 
-```caddyfile
-	@signed header Signature *
-	forward_auth @signed 127.0.0.1:8113 {
-		# ...same block as above
-	}
-```
+Set such a site's caching on the origin, not with Caddy's `header` directive.
+DNA's answers carry `Cache-Control: no-store` and a paid page gets the origin's
+value narrowed; a `header` directive in the site can rewrite either.
 
-Or ramp by volume — send a fixed fraction of _all_ traffic to the
-endpoint. `{http.request.uuid}` is a per-request UUIDv4, and lowercase
-hex sorts the same lexicographically as numerically, so comparing it
-against a 4-hex-digit threshold passes a uniform `threshold / 65536` —
-no state, no per-request cost beyond the random bytes Caddy already
-generates. An unsampled request skips the call entirely: no decision,
-nothing logged, no `x-d3-edge` header.
+## Testing it
 
-```caddyfile
-	# Full coverage by default; dial down to ramp: "8000" = 50%, "1999" ≈ 10%,
-	# "028f" ≈ 1%. "ffff" ≈ 100% — or just drop the matcher, as in section 2.
-	@d3_sampled expression `{http.request.uuid} < "ffff"`
-	forward_auth @d3_sampled 127.0.0.1:8113 {
-		# ...same block as above
-	}
-```
-
-Start low and raise the threshold — or widen the matcher — when you're
-ready for more.
-
-## Verifying it works
-
-A passed response looks exactly like your site without the recipe —
-Caddy doesn't copy the side-request's headers onto what the visitor
-gets. Check server-side instead: send
-
-```sh
-curl -sI -H 'signature-input: x' https://example.com/
-```
-
-and watch the request appear in your [D3
-dashboard](https://dashboard.d3.com). A blocked request is visible from
-outside: `403` with the `x-d3-edge: block` header and a JSON body.
+[`test/run.sh`](./test/run.sh) runs `dna.caddy` in real Caddy against a mock
+decision endpoint and origin: every answer above, what reaches DNA and the
+origin, a site built of `handle` blocks and `try_files`, DNA failing in each
+way, and both budgets. It needs `caddy` and `node` on `PATH`.

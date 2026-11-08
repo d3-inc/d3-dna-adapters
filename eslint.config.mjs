@@ -46,5 +46,9 @@ export default defineConfig(
     // Pasted as plain JS into Cloudflare Snippets, which run on the Workers runtime.
     files: ['cloudflare-snippet/snippet.js'],
     languageOptions: { globals: globals.serviceworker },
+  },
+  {
+    files: ['caddy/test/**/*.mjs'],
+    languageOptions: { globals: globals.node },
   }
 );
