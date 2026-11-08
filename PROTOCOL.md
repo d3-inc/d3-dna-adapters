@@ -251,7 +251,7 @@ one the endpoint assumes.
 | Revision | You assert that you                                                                                                                                                                               |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1        | forward `Cookie: __Host-d3person` as `d3pay-person`; append the answer's `Set-Cookie` to the origin's response rather than replacing it; and strip `d3pay_browser` from the URL before the origin |
-| 2        | all of 1, and [forward everything](#forwarding-everything) but the never-sent, the site's exclusions and our own cookies                                                                          |
+| 2        | all of 1, and [forward everything](#forwarding-everything) but the never-sent, the site's exclusions and the two cookies it lifts                                                                 |
 | 3        | all of 2, and lift an MCP call's payment out of `_meta`, strip it before the origin, answer a `json-rpc` instruction, and put `meta` and the key argument on a JSON-RPC result                    |
 | 4        | all of 3, and forward `Cookie: __Secure-d3visitor` as `d3-visitor`, keeping it from the origin with our other two                                                                                 |
 
