@@ -12,7 +12,7 @@ stop() { for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; wait 2>/dev/null
 trap stop EXIT
 up() { for _ in $(seq 1 40); do curl -s -o /dev/null "$1" && return 0; sleep 0.25; done; echo "never came up: $1" >&2; exit 1; }
 
-node origin.mjs & pids+=($!)
+node ../../test/origin.mjs & pids+=($!)
 node mock-worker.mjs & worker=$!; pids+=($worker)
 up 127.0.0.1:3000; up 127.0.0.1:9000/__log
 caddy run --config site.Caddyfile --adapter caddyfile >caddy.log 2>&1 & pids+=($!)

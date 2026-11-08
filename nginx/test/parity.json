@@ -1,0 +1,3979 @@
+{
+  "constants": {
+    "ADAPTER_SET": 3,
+    "FORWARDED_HEADER_SET": 2,
+    "FORWARDED_HEADERS": [
+      "signature",
+      "signature-input",
+      "signature-agent",
+      "user-agent",
+      "content-digest",
+      "accept",
+      "sec-fetch-mode",
+      "sec-fetch-dest",
+      "upgrade-insecure-requests",
+      "sec-ch-ua",
+      "sec-ch-ua-platform",
+      "sec-ch-ua-mobile",
+      "accept-language",
+      "sec-purpose",
+      "x-purpose",
+      "purpose",
+      "x-scitt-receipt",
+      "x-ans-status-token",
+      "dpop",
+      "payment-signature",
+      "x-payment",
+      "payment-authorization"
+    ],
+    "HEADER_LENGTH_CAPS": {
+      "x-scitt-receipt": 1398104,
+      "x-ans-status-token": 1398104,
+      "dpop": 8192,
+      "accept": 256,
+      "sec-fetch-mode": 32,
+      "sec-fetch-dest": 32,
+      "upgrade-insecure-requests": 32,
+      "sec-ch-ua": 256,
+      "sec-ch-ua-platform": 256,
+      "sec-ch-ua-mobile": 256,
+      "accept-language": 256,
+      "payment-signature": 4096,
+      "x-payment": 4096,
+      "payment-authorization": 4096,
+      "d3pay-session": 64
+    },
+    "NEVER_FORWARDED_HEADERS": [
+      "connection",
+      "transfer-encoding",
+      "content-length",
+      "host",
+      "authorization",
+      "proxy-authorization",
+      "cookie",
+      "mcp-param-dna-key",
+      "x-vercel-oidc-token",
+      "cf-access-jwt-assertion",
+      "cf-access-client-id",
+      "cf-access-client-secret"
+    ],
+    "MCP_KEY_ARGUMENT_SCHEMA": {
+      "type": "string",
+      "description": "A DNA account key that pays for this call. Leave it out to be told how to pay.",
+      "x-mcp-header": "Dna-Key"
+    }
+  },
+  "forwardAll": [
+    {
+      "name": "every header but the never-sent, every cookie but ours",
+      "headers": [
+        [
+          "User-Agent",
+          "agent/1"
+        ],
+        [
+          "Accept",
+          "text/html"
+        ],
+        [
+          "X-Custom",
+          "yes"
+        ],
+        [
+          "Cookie",
+          "a=1; b=2; __Host-d3pay=SESSION; __Host-d3person=PASS"
+        ],
+        [
+          "Authorization",
+          "Bearer secret"
+        ],
+        [
+          "Proxy-Authorization",
+          "Basic x"
+        ],
+        [
+          "Content-Length",
+          "12"
+        ],
+        [
+          "Connection",
+          "keep-alive"
+        ],
+        [
+          "Transfer-Encoding",
+          "chunked"
+        ],
+        [
+          "X-Vercel-Oidc-Token",
+          "t"
+        ],
+        [
+          "Cf-Access-Jwt-Assertion",
+          "j"
+        ],
+        [
+          "Mcp-Param-Dna-Key",
+          "dna_k_1"
+        ]
+      ],
+      "exclude": {
+        "headers": [],
+        "cookies": []
+      },
+      "out": {
+        "headers": {
+          "accept": "text/html",
+          "user-agent": "agent/1",
+          "x-custom": "yes"
+        },
+        "cookies": {
+          "a": "1",
+          "b": "2"
+        },
+        "droppedHeaders": [],
+        "droppedCookies": [],
+        "droppedUnlisted": {
+          "headers": false,
+          "cookies": false
+        }
+      }
+    },
+    {
+      "name": "exclusions keep a header and a cookie back",
+      "headers": [
+        [
+          "x-internal-token",
+          "keep-me-home"
+        ],
+        [
+          "x-other",
+          "go"
+        ],
+        [
+          "cookie",
+          "sid=private; theme=dark"
+        ]
+      ],
+      "exclude": {
+        "headers": [
+          "x-internal-token"
+        ],
+        "cookies": [
+          "sid"
+        ]
+      },
+      "out": {
+        "headers": {
+          "x-other": "go"
+        },
+        "cookies": {
+          "theme": "dark"
+        },
+        "droppedHeaders": [],
+        "droppedCookies": [],
+        "droppedUnlisted": {
+          "headers": false,
+          "cookies": false
+        }
+      }
+    },
+    {
+      "name": "a named cap drops its header, under it the header goes",
+      "headers": [
+        [
+          "accept",
+          {
+            "$repeat": "x",
+            "n": 257
+          }
+        ],
+        [
+          "sec-fetch-mode",
+          "navigate"
+        ],
+        [
+          "payment-authorization",
+          "Payment xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        ],
+        [
+          "dpop",
+          {
+            "$repeat": "x",
+            "n": 8193
+          }
+        ]
+      ],
+      "exclude": {
+        "headers": [],
+        "cookies": []
+      },
+      "out": {
+        "headers": {
+          "payment-authorization": "Payment xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "sec-fetch-mode": "navigate"
+        },
+        "cookies": {},
+        "droppedHeaders": [
+          "accept",
+          "dpop"
+        ],
+        "droppedCookies": [],
+        "droppedUnlisted": {
+          "headers": false,
+          "cookies": false
+        }
+      }
+    },
+    {
+      "name": "past the per-value cap a header and a cookie are dropped",
+      "headers": [
+        [
+          "x-big",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-fits",
+          {
+            "$repeat": "x",
+            "n": 2048
+          }
+        ],
+        [
+          "cookie",
+          "huge=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; small=1"
+        ]
+      ],
+      "exclude": {
+        "headers": [],
+        "cookies": []
+      },
+      "out": {
+        "headers": {
+          "x-fits": {
+            "$repeat": "x",
+            "n": 2048
+          }
+        },
+        "cookies": {
+          "small": "1"
+        },
+        "droppedHeaders": [
+          "x-big"
+        ],
+        "droppedCookies": [
+          "huge"
+        ],
+        "droppedUnlisted": {
+          "headers": false,
+          "cookies": false
+        }
+      }
+    },
+    {
+      "name": "past the total the longest go first",
+      "headers": [
+        [
+          "x-a",
+          {
+            "$repeat": "x",
+            "n": 2000
+          }
+        ],
+        [
+          "x-b",
+          {
+            "$repeat": "x",
+            "n": 2000
+          }
+        ],
+        [
+          "x-c",
+          {
+            "$repeat": "x",
+            "n": 2000
+          }
+        ],
+        [
+          "x-d",
+          {
+            "$repeat": "x",
+            "n": 2000
+          }
+        ],
+        [
+          "x-e",
+          {
+            "$repeat": "x",
+            "n": 2000
+          }
+        ],
+        [
+          "x-f",
+          {
+            "$repeat": "x",
+            "n": 2000
+          }
+        ],
+        [
+          "x-g",
+          {
+            "$repeat": "x",
+            "n": 2000
+          }
+        ],
+        [
+          "x-h",
+          {
+            "$repeat": "x",
+            "n": 1990
+          }
+        ],
+        [
+          "x-i",
+          {
+            "$repeat": "x",
+            "n": 1500
+          }
+        ],
+        [
+          "cookie",
+          "c1=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c2=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        ]
+      ],
+      "exclude": {
+        "headers": [],
+        "cookies": []
+      },
+      "out": {
+        "headers": {
+          "x-c": {
+            "$repeat": "x",
+            "n": 2000
+          },
+          "x-d": {
+            "$repeat": "x",
+            "n": 2000
+          },
+          "x-e": {
+            "$repeat": "x",
+            "n": 2000
+          },
+          "x-f": {
+            "$repeat": "x",
+            "n": 2000
+          },
+          "x-g": {
+            "$repeat": "x",
+            "n": 2000
+          },
+          "x-h": {
+            "$repeat": "x",
+            "n": 1990
+          },
+          "x-i": {
+            "$repeat": "x",
+            "n": 1500
+          }
+        },
+        "cookies": {
+          "c1": {
+            "$repeat": "x",
+            "n": 1800
+          },
+          "c2": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        },
+        "droppedHeaders": [
+          "x-a",
+          "x-b"
+        ],
+        "droppedCookies": [],
+        "droppedUnlisted": {
+          "headers": false,
+          "cookies": false
+        }
+      }
+    },
+    {
+      "name": "a repeated cookie forwards its first value",
+      "headers": [
+        [
+          "cookie",
+          "dup=first; other=1; dup=second"
+        ]
+      ],
+      "exclude": {
+        "headers": [],
+        "cookies": []
+      },
+      "out": {
+        "headers": {},
+        "cookies": {
+          "dup": "first",
+          "other": "1"
+        },
+        "droppedHeaders": [],
+        "droppedCookies": [],
+        "droppedUnlisted": {
+          "headers": false,
+          "cookies": false
+        }
+      }
+    },
+    {
+      "name": "past 256 cookies the rest are dropped by name",
+      "headers": [
+        [
+          "cookie",
+          "k000=v; k001=v; k002=v; k003=v; k004=v; k005=v; k006=v; k007=v; k008=v; k009=v; k010=v; k011=v; k012=v; k013=v; k014=v; k015=v; k016=v; k017=v; k018=v; k019=v; k020=v; k021=v; k022=v; k023=v; k024=v; k025=v; k026=v; k027=v; k028=v; k029=v; k030=v; k031=v; k032=v; k033=v; k034=v; k035=v; k036=v; k037=v; k038=v; k039=v; k040=v; k041=v; k042=v; k043=v; k044=v; k045=v; k046=v; k047=v; k048=v; k049=v; k050=v; k051=v; k052=v; k053=v; k054=v; k055=v; k056=v; k057=v; k058=v; k059=v; k060=v; k061=v; k062=v; k063=v; k064=v; k065=v; k066=v; k067=v; k068=v; k069=v; k070=v; k071=v; k072=v; k073=v; k074=v; k075=v; k076=v; k077=v; k078=v; k079=v; k080=v; k081=v; k082=v; k083=v; k084=v; k085=v; k086=v; k087=v; k088=v; k089=v; k090=v; k091=v; k092=v; k093=v; k094=v; k095=v; k096=v; k097=v; k098=v; k099=v; k100=v; k101=v; k102=v; k103=v; k104=v; k105=v; k106=v; k107=v; k108=v; k109=v; k110=v; k111=v; k112=v; k113=v; k114=v; k115=v; k116=v; k117=v; k118=v; k119=v; k120=v; k121=v; k122=v; k123=v; k124=v; k125=v; k126=v; k127=v; k128=v; k129=v; k130=v; k131=v; k132=v; k133=v; k134=v; k135=v; k136=v; k137=v; k138=v; k139=v; k140=v; k141=v; k142=v; k143=v; k144=v; k145=v; k146=v; k147=v; k148=v; k149=v; k150=v; k151=v; k152=v; k153=v; k154=v; k155=v; k156=v; k157=v; k158=v; k159=v; k160=v; k161=v; k162=v; k163=v; k164=v; k165=v; k166=v; k167=v; k168=v; k169=v; k170=v; k171=v; k172=v; k173=v; k174=v; k175=v; k176=v; k177=v; k178=v; k179=v; k180=v; k181=v; k182=v; k183=v; k184=v; k185=v; k186=v; k187=v; k188=v; k189=v; k190=v; k191=v; k192=v; k193=v; k194=v; k195=v; k196=v; k197=v; k198=v; k199=v; k200=v; k201=v; k202=v; k203=v; k204=v; k205=v; k206=v; k207=v; k208=v; k209=v; k210=v; k211=v; k212=v; k213=v; k214=v; k215=v; k216=v; k217=v; k218=v; k219=v; k220=v; k221=v; k222=v; k223=v; k224=v; k225=v; k226=v; k227=v; k228=v; k229=v; k230=v; k231=v; k232=v; k233=v; k234=v; k235=v; k236=v; k237=v; k238=v; k239=v; k240=v; k241=v; k242=v; k243=v; k244=v; k245=v; k246=v; k247=v; k248=v; k249=v; k250=v; k251=v; k252=v; k253=v; k254=v; k255=v; k256=v; k257=v; k258=v; k259=v"
+        ]
+      ],
+      "exclude": {
+        "headers": [],
+        "cookies": []
+      },
+      "out": {
+        "headers": {},
+        "cookies": {
+          "k000": "v",
+          "k001": "v",
+          "k002": "v",
+          "k003": "v",
+          "k004": "v",
+          "k005": "v",
+          "k006": "v",
+          "k007": "v",
+          "k008": "v",
+          "k009": "v",
+          "k010": "v",
+          "k011": "v",
+          "k012": "v",
+          "k013": "v",
+          "k014": "v",
+          "k015": "v",
+          "k016": "v",
+          "k017": "v",
+          "k018": "v",
+          "k019": "v",
+          "k020": "v",
+          "k021": "v",
+          "k022": "v",
+          "k023": "v",
+          "k024": "v",
+          "k025": "v",
+          "k026": "v",
+          "k027": "v",
+          "k028": "v",
+          "k029": "v",
+          "k030": "v",
+          "k031": "v",
+          "k032": "v",
+          "k033": "v",
+          "k034": "v",
+          "k035": "v",
+          "k036": "v",
+          "k037": "v",
+          "k038": "v",
+          "k039": "v",
+          "k040": "v",
+          "k041": "v",
+          "k042": "v",
+          "k043": "v",
+          "k044": "v",
+          "k045": "v",
+          "k046": "v",
+          "k047": "v",
+          "k048": "v",
+          "k049": "v",
+          "k050": "v",
+          "k051": "v",
+          "k052": "v",
+          "k053": "v",
+          "k054": "v",
+          "k055": "v",
+          "k056": "v",
+          "k057": "v",
+          "k058": "v",
+          "k059": "v",
+          "k060": "v",
+          "k061": "v",
+          "k062": "v",
+          "k063": "v",
+          "k064": "v",
+          "k065": "v",
+          "k066": "v",
+          "k067": "v",
+          "k068": "v",
+          "k069": "v",
+          "k070": "v",
+          "k071": "v",
+          "k072": "v",
+          "k073": "v",
+          "k074": "v",
+          "k075": "v",
+          "k076": "v",
+          "k077": "v",
+          "k078": "v",
+          "k079": "v",
+          "k080": "v",
+          "k081": "v",
+          "k082": "v",
+          "k083": "v",
+          "k084": "v",
+          "k085": "v",
+          "k086": "v",
+          "k087": "v",
+          "k088": "v",
+          "k089": "v",
+          "k090": "v",
+          "k091": "v",
+          "k092": "v",
+          "k093": "v",
+          "k094": "v",
+          "k095": "v",
+          "k096": "v",
+          "k097": "v",
+          "k098": "v",
+          "k099": "v",
+          "k100": "v",
+          "k101": "v",
+          "k102": "v",
+          "k103": "v",
+          "k104": "v",
+          "k105": "v",
+          "k106": "v",
+          "k107": "v",
+          "k108": "v",
+          "k109": "v",
+          "k110": "v",
+          "k111": "v",
+          "k112": "v",
+          "k113": "v",
+          "k114": "v",
+          "k115": "v",
+          "k116": "v",
+          "k117": "v",
+          "k118": "v",
+          "k119": "v",
+          "k120": "v",
+          "k121": "v",
+          "k122": "v",
+          "k123": "v",
+          "k124": "v",
+          "k125": "v",
+          "k126": "v",
+          "k127": "v",
+          "k128": "v",
+          "k129": "v",
+          "k130": "v",
+          "k131": "v",
+          "k132": "v",
+          "k133": "v",
+          "k134": "v",
+          "k135": "v",
+          "k136": "v",
+          "k137": "v",
+          "k138": "v",
+          "k139": "v",
+          "k140": "v",
+          "k141": "v",
+          "k142": "v",
+          "k143": "v",
+          "k144": "v",
+          "k145": "v",
+          "k146": "v",
+          "k147": "v",
+          "k148": "v",
+          "k149": "v",
+          "k150": "v",
+          "k151": "v",
+          "k152": "v",
+          "k153": "v",
+          "k154": "v",
+          "k155": "v",
+          "k156": "v",
+          "k157": "v",
+          "k158": "v",
+          "k159": "v",
+          "k160": "v",
+          "k161": "v",
+          "k162": "v",
+          "k163": "v",
+          "k164": "v",
+          "k165": "v",
+          "k166": "v",
+          "k167": "v",
+          "k168": "v",
+          "k169": "v",
+          "k170": "v",
+          "k171": "v",
+          "k172": "v",
+          "k173": "v",
+          "k174": "v",
+          "k175": "v",
+          "k176": "v",
+          "k177": "v",
+          "k178": "v",
+          "k179": "v",
+          "k180": "v",
+          "k181": "v",
+          "k182": "v",
+          "k183": "v",
+          "k184": "v",
+          "k185": "v",
+          "k186": "v",
+          "k187": "v",
+          "k188": "v",
+          "k189": "v",
+          "k190": "v",
+          "k191": "v",
+          "k192": "v",
+          "k193": "v",
+          "k194": "v",
+          "k195": "v",
+          "k196": "v",
+          "k197": "v",
+          "k198": "v",
+          "k199": "v",
+          "k200": "v",
+          "k201": "v",
+          "k202": "v",
+          "k203": "v",
+          "k204": "v",
+          "k205": "v",
+          "k206": "v",
+          "k207": "v",
+          "k208": "v",
+          "k209": "v",
+          "k210": "v",
+          "k211": "v",
+          "k212": "v",
+          "k213": "v",
+          "k214": "v",
+          "k215": "v",
+          "k216": "v",
+          "k217": "v",
+          "k218": "v",
+          "k219": "v",
+          "k220": "v",
+          "k221": "v",
+          "k222": "v",
+          "k223": "v",
+          "k224": "v",
+          "k225": "v",
+          "k226": "v",
+          "k227": "v",
+          "k228": "v",
+          "k229": "v",
+          "k230": "v",
+          "k231": "v",
+          "k232": "v",
+          "k233": "v",
+          "k234": "v",
+          "k235": "v",
+          "k236": "v",
+          "k237": "v",
+          "k238": "v",
+          "k239": "v",
+          "k240": "v",
+          "k241": "v",
+          "k242": "v",
+          "k243": "v",
+          "k244": "v",
+          "k245": "v",
+          "k246": "v",
+          "k247": "v",
+          "k248": "v",
+          "k249": "v",
+          "k250": "v",
+          "k251": "v",
+          "k252": "v",
+          "k253": "v",
+          "k254": "v",
+          "k255": "v"
+        },
+        "droppedHeaders": [],
+        "droppedCookies": [
+          "k256",
+          "k257",
+          "k258",
+          "k259"
+        ],
+        "droppedUnlisted": {
+          "headers": false,
+          "cookies": false
+        }
+      }
+    },
+    {
+      "name": "past 128 drops the rest go unnamed",
+      "headers": [
+        [
+          "x-h000",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h001",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h002",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h003",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h004",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h005",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h006",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h007",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h008",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h009",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h010",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h011",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h012",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h013",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h014",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h015",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h016",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h017",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h018",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h019",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h020",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h021",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h022",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h023",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h024",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h025",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h026",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h027",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h028",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h029",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h030",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h031",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h032",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h033",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h034",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h035",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h036",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h037",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h038",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h039",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h040",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h041",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h042",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h043",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h044",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h045",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h046",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h047",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h048",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h049",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h050",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h051",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h052",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h053",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h054",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h055",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h056",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h057",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h058",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h059",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h060",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h061",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h062",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h063",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h064",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h065",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h066",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h067",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h068",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h069",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h070",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h071",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h072",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h073",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h074",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h075",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h076",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h077",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h078",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h079",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h080",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h081",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h082",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h083",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h084",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h085",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h086",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h087",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h088",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h089",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h090",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h091",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h092",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h093",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h094",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h095",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h096",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h097",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h098",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h099",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h100",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h101",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h102",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h103",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h104",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h105",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h106",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h107",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h108",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h109",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h110",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h111",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h112",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h113",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h114",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h115",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h116",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h117",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h118",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h119",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h120",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h121",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h122",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h123",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h124",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h125",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h126",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h127",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h128",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "x-h129",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ]
+      ],
+      "exclude": {
+        "headers": [],
+        "cookies": []
+      },
+      "out": {
+        "headers": {},
+        "cookies": {},
+        "droppedHeaders": [
+          "x-h000",
+          "x-h001",
+          "x-h002",
+          "x-h003",
+          "x-h004",
+          "x-h005",
+          "x-h006",
+          "x-h007",
+          "x-h008",
+          "x-h009",
+          "x-h010",
+          "x-h011",
+          "x-h012",
+          "x-h013",
+          "x-h014",
+          "x-h015",
+          "x-h016",
+          "x-h017",
+          "x-h018",
+          "x-h019",
+          "x-h020",
+          "x-h021",
+          "x-h022",
+          "x-h023",
+          "x-h024",
+          "x-h025",
+          "x-h026",
+          "x-h027",
+          "x-h028",
+          "x-h029",
+          "x-h030",
+          "x-h031",
+          "x-h032",
+          "x-h033",
+          "x-h034",
+          "x-h035",
+          "x-h036",
+          "x-h037",
+          "x-h038",
+          "x-h039",
+          "x-h040",
+          "x-h041",
+          "x-h042",
+          "x-h043",
+          "x-h044",
+          "x-h045",
+          "x-h046",
+          "x-h047",
+          "x-h048",
+          "x-h049",
+          "x-h050",
+          "x-h051",
+          "x-h052",
+          "x-h053",
+          "x-h054",
+          "x-h055",
+          "x-h056",
+          "x-h057",
+          "x-h058",
+          "x-h059",
+          "x-h060",
+          "x-h061",
+          "x-h062",
+          "x-h063",
+          "x-h064",
+          "x-h065",
+          "x-h066",
+          "x-h067",
+          "x-h068",
+          "x-h069",
+          "x-h070",
+          "x-h071",
+          "x-h072",
+          "x-h073",
+          "x-h074",
+          "x-h075",
+          "x-h076",
+          "x-h077",
+          "x-h078",
+          "x-h079",
+          "x-h080",
+          "x-h081",
+          "x-h082",
+          "x-h083",
+          "x-h084",
+          "x-h085",
+          "x-h086",
+          "x-h087",
+          "x-h088",
+          "x-h089",
+          "x-h090",
+          "x-h091",
+          "x-h092",
+          "x-h093",
+          "x-h094",
+          "x-h095",
+          "x-h096",
+          "x-h097",
+          "x-h098",
+          "x-h099",
+          "x-h100",
+          "x-h101",
+          "x-h102",
+          "x-h103",
+          "x-h104",
+          "x-h105",
+          "x-h106",
+          "x-h107",
+          "x-h108",
+          "x-h109",
+          "x-h110",
+          "x-h111",
+          "x-h112",
+          "x-h113",
+          "x-h114",
+          "x-h115",
+          "x-h116",
+          "x-h117",
+          "x-h118",
+          "x-h119",
+          "x-h120",
+          "x-h121",
+          "x-h122",
+          "x-h123",
+          "x-h124",
+          "x-h125",
+          "x-h126",
+          "x-h127"
+        ],
+        "droppedCookies": [],
+        "droppedUnlisted": {
+          "headers": true,
+          "cookies": false
+        }
+      }
+    },
+    {
+      "name": "our cookie spaced before its equals is still ours",
+      "headers": [
+        [
+          "cookie",
+          "__Host-d3person =x; noequals; =blank; keep=1"
+        ]
+      ],
+      "exclude": {
+        "headers": [],
+        "cookies": []
+      },
+      "out": {
+        "headers": {},
+        "cookies": {
+          "keep": "1"
+        },
+        "droppedHeaders": [],
+        "droppedCookies": [],
+        "droppedUnlisted": {
+          "headers": false,
+          "cookies": false
+        }
+      }
+    },
+    {
+      "name": "a header named __proto__ is forwarded like any other",
+      "headers": [
+        [
+          "__proto__",
+          "p"
+        ]
+      ],
+      "exclude": {
+        "headers": [],
+        "cookies": []
+      },
+      "out": {
+        "headers": {
+          "__proto__": "p"
+        },
+        "cookies": {},
+        "droppedHeaders": [],
+        "droppedCookies": [],
+        "droppedUnlisted": {
+          "headers": false,
+          "cookies": false
+        }
+      }
+    }
+  ],
+  "withheld": [
+    {
+      "name": "nothing kept back",
+      "exclude": {
+        "headers": [],
+        "cookies": []
+      },
+      "unlisted": {
+        "headers": false,
+        "cookies": false
+      },
+      "out": {}
+    },
+    {
+      "name": "exclusions echoed",
+      "exclude": {
+        "headers": [
+          "x-a"
+        ],
+        "cookies": [
+          "c"
+        ]
+      },
+      "unlisted": {
+        "headers": false,
+        "cookies": false
+      },
+      "out": {
+        "excluded": {
+          "headers": [
+            "x-a"
+          ],
+          "cookies": [
+            "c"
+          ]
+        }
+      }
+    },
+    {
+      "name": "an unlisted drop flagged",
+      "exclude": {
+        "headers": [],
+        "cookies": []
+      },
+      "unlisted": {
+        "headers": true,
+        "cookies": false
+      },
+      "out": {
+        "droppedUnlisted": {
+          "headers": true,
+          "cookies": false
+        }
+      }
+    },
+    {
+      "name": "past 128 exclusions flagged",
+      "exclude": {
+        "headers": [
+          "x-0",
+          "x-1",
+          "x-2",
+          "x-3",
+          "x-4",
+          "x-5",
+          "x-6",
+          "x-7",
+          "x-8",
+          "x-9",
+          "x-10",
+          "x-11",
+          "x-12",
+          "x-13",
+          "x-14",
+          "x-15",
+          "x-16",
+          "x-17",
+          "x-18",
+          "x-19",
+          "x-20",
+          "x-21",
+          "x-22",
+          "x-23",
+          "x-24",
+          "x-25",
+          "x-26",
+          "x-27",
+          "x-28",
+          "x-29",
+          "x-30",
+          "x-31",
+          "x-32",
+          "x-33",
+          "x-34",
+          "x-35",
+          "x-36",
+          "x-37",
+          "x-38",
+          "x-39",
+          "x-40",
+          "x-41",
+          "x-42",
+          "x-43",
+          "x-44",
+          "x-45",
+          "x-46",
+          "x-47",
+          "x-48",
+          "x-49",
+          "x-50",
+          "x-51",
+          "x-52",
+          "x-53",
+          "x-54",
+          "x-55",
+          "x-56",
+          "x-57",
+          "x-58",
+          "x-59",
+          "x-60",
+          "x-61",
+          "x-62",
+          "x-63",
+          "x-64",
+          "x-65",
+          "x-66",
+          "x-67",
+          "x-68",
+          "x-69",
+          "x-70",
+          "x-71",
+          "x-72",
+          "x-73",
+          "x-74",
+          "x-75",
+          "x-76",
+          "x-77",
+          "x-78",
+          "x-79",
+          "x-80",
+          "x-81",
+          "x-82",
+          "x-83",
+          "x-84",
+          "x-85",
+          "x-86",
+          "x-87",
+          "x-88",
+          "x-89",
+          "x-90",
+          "x-91",
+          "x-92",
+          "x-93",
+          "x-94",
+          "x-95",
+          "x-96",
+          "x-97",
+          "x-98",
+          "x-99",
+          "x-100",
+          "x-101",
+          "x-102",
+          "x-103",
+          "x-104",
+          "x-105",
+          "x-106",
+          "x-107",
+          "x-108",
+          "x-109",
+          "x-110",
+          "x-111",
+          "x-112",
+          "x-113",
+          "x-114",
+          "x-115",
+          "x-116",
+          "x-117",
+          "x-118",
+          "x-119",
+          "x-120",
+          "x-121",
+          "x-122",
+          "x-123",
+          "x-124",
+          "x-125",
+          "x-126",
+          "x-127",
+          "x-128",
+          "x-129"
+        ],
+        "cookies": []
+      },
+      "unlisted": {
+        "headers": false,
+        "cookies": false
+      },
+      "out": {
+        "droppedUnlisted": {
+          "headers": true,
+          "cookies": false
+        },
+        "excluded": {
+          "headers": [
+            "x-0",
+            "x-1",
+            "x-2",
+            "x-3",
+            "x-4",
+            "x-5",
+            "x-6",
+            "x-7",
+            "x-8",
+            "x-9",
+            "x-10",
+            "x-11",
+            "x-12",
+            "x-13",
+            "x-14",
+            "x-15",
+            "x-16",
+            "x-17",
+            "x-18",
+            "x-19",
+            "x-20",
+            "x-21",
+            "x-22",
+            "x-23",
+            "x-24",
+            "x-25",
+            "x-26",
+            "x-27",
+            "x-28",
+            "x-29",
+            "x-30",
+            "x-31",
+            "x-32",
+            "x-33",
+            "x-34",
+            "x-35",
+            "x-36",
+            "x-37",
+            "x-38",
+            "x-39",
+            "x-40",
+            "x-41",
+            "x-42",
+            "x-43",
+            "x-44",
+            "x-45",
+            "x-46",
+            "x-47",
+            "x-48",
+            "x-49",
+            "x-50",
+            "x-51",
+            "x-52",
+            "x-53",
+            "x-54",
+            "x-55",
+            "x-56",
+            "x-57",
+            "x-58",
+            "x-59",
+            "x-60",
+            "x-61",
+            "x-62",
+            "x-63",
+            "x-64",
+            "x-65",
+            "x-66",
+            "x-67",
+            "x-68",
+            "x-69",
+            "x-70",
+            "x-71",
+            "x-72",
+            "x-73",
+            "x-74",
+            "x-75",
+            "x-76",
+            "x-77",
+            "x-78",
+            "x-79",
+            "x-80",
+            "x-81",
+            "x-82",
+            "x-83",
+            "x-84",
+            "x-85",
+            "x-86",
+            "x-87",
+            "x-88",
+            "x-89",
+            "x-90",
+            "x-91",
+            "x-92",
+            "x-93",
+            "x-94",
+            "x-95",
+            "x-96",
+            "x-97",
+            "x-98",
+            "x-99",
+            "x-100",
+            "x-101",
+            "x-102",
+            "x-103",
+            "x-104",
+            "x-105",
+            "x-106",
+            "x-107",
+            "x-108",
+            "x-109",
+            "x-110",
+            "x-111",
+            "x-112",
+            "x-113",
+            "x-114",
+            "x-115",
+            "x-116",
+            "x-117",
+            "x-118",
+            "x-119",
+            "x-120",
+            "x-121",
+            "x-122",
+            "x-123",
+            "x-124",
+            "x-125",
+            "x-126",
+            "x-127"
+          ],
+          "cookies": []
+        }
+      }
+    }
+  ],
+  "exclusionList": [
+    {
+      "raw": " A, b ,,a ",
+      "lowercase": true,
+      "out": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "raw": " A, b ,,a ",
+      "lowercase": false,
+      "out": [
+        "A",
+        "b",
+        "a"
+      ]
+    },
+    {
+      "raw": "",
+      "lowercase": true,
+      "out": []
+    },
+    {
+      "raw": "",
+      "lowercase": false,
+      "out": []
+    },
+    {
+      "raw": null,
+      "lowercase": true,
+      "out": []
+    },
+    {
+      "raw": null,
+      "lowercase": false,
+      "out": []
+    },
+    {
+      "raw": "Sid,sid, Sid ",
+      "lowercase": true,
+      "out": [
+        "sid"
+      ]
+    },
+    {
+      "raw": "Sid,sid, Sid ",
+      "lowercase": false,
+      "out": [
+        "Sid",
+        "sid"
+      ]
+    }
+  ],
+  "privateCacheControl": [
+    {
+      "origin": "public, s-maxage=60, stale-while-revalidate=300",
+      "out": "private, s-maxage=60, stale-while-revalidate=300"
+    },
+    {
+      "origin": "max-age=60",
+      "out": "private, max-age=60"
+    },
+    {
+      "origin": "private, max-age=60",
+      "out": "private, max-age=60"
+    },
+    {
+      "origin": "no-store",
+      "out": "no-store"
+    },
+    {
+      "origin": null,
+      "out": "private"
+    },
+    {
+      "origin": "",
+      "out": "private"
+    },
+    {
+      "origin": " , ",
+      "out": "private"
+    },
+    {
+      "origin": "max-age=0, must-revalidate, public",
+      "out": "max-age=0, must-revalidate, private"
+    },
+    {
+      "origin": "private=\"set-cookie\", max-age=5",
+      "out": "private=\"set-cookie\", max-age=5"
+    },
+    {
+      "origin": "no-cache",
+      "out": "private, no-cache"
+    },
+    {
+      "origin": "public, max-age=60, public",
+      "out": "private, max-age=60, public"
+    },
+    {
+      "origin": "PUBLIC, max-age=1",
+      "out": "private, max-age=1"
+    },
+    {
+      "origin": "No-Store",
+      "out": "No-Store"
+    }
+  ],
+  "cookies": [
+    {
+      "header": "a=1; b = 2 ;c=; =x; noeq; d=e=f",
+      "cookiesOf": [
+        [
+          "a",
+          "1"
+        ],
+        [
+          "b",
+          "2"
+        ],
+        [
+          "c",
+          ""
+        ],
+        [
+          "d",
+          "e=f"
+        ]
+      ],
+      "readSession": null,
+      "readPerson": null,
+      "stripOwn": "a=1; b = 2; c=; =x; noeq; d=e=f"
+    },
+    {
+      "header": "",
+      "cookiesOf": [],
+      "readSession": null,
+      "readPerson": null,
+      "stripOwn": null
+    },
+    {
+      "header": "__Host-d3pay=S; __Host-d3person =P; site=1",
+      "cookiesOf": [
+        [
+          "__Host-d3pay",
+          "S"
+        ],
+        [
+          "__Host-d3person",
+          "P"
+        ],
+        [
+          "site",
+          "1"
+        ]
+      ],
+      "readSession": "S",
+      "readPerson": "P",
+      "stripOwn": "site=1"
+    }
+  ],
+  "payParams": [
+    {
+      "url": "/a",
+      "out": "/a"
+    },
+    {
+      "url": "/a?x=1",
+      "out": "/a?x=1"
+    },
+    {
+      "url": "/a?d3pay_handoff=AAAAAAAAAAAAAAAAAAAAAA.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&x=1",
+      "out": "/a?x=1"
+    },
+    {
+      "url": "/a?x=1&d3pay_check=1&d3pay_browser=abc&y=%2F",
+      "out": "/a?x=1&y=%2F"
+    },
+    {
+      "url": "/a?d3pay_handoff=1",
+      "out": "/a"
+    },
+    {
+      "url": "/a?d3pay_handoffx=1&d3pay_handoff",
+      "out": "/a?d3pay_handoffx=1"
+    }
+  ],
+  "mcp": [
+    {
+      "name": "x402 in _meta is lifted and stripped",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"search\",\"arguments\":{\"q\":\"a\"},\"_meta\":{\"x402/payment\":{\"x402Version\":2,\"payload\":{\"signature\":\"0xabc\",\"authorization\":{\"value\":\"1000\"}}},\"progressToken\":1}}}",
+      "excluded": [],
+      "rpc": {
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "search",
+          "arguments": {
+            "q": "a"
+          },
+          "_meta": {
+            "x402/payment": {
+              "x402Version": 2,
+              "payload": {
+                "signature": "0xabc",
+                "authorization": {
+                  "value": "1000"
+                }
+              }
+            },
+            "progressToken": 1
+          }
+        }
+      },
+      "facts": {
+        "method": "tools/call",
+        "tool": "search",
+        "source": "body"
+      },
+      "lifted": {
+        "payment-signature": "eyJ4NDAyVmVyc2lvbiI6MiwicGF5bG9hZCI6eyJzaWduYXR1cmUiOiIweGFiYyIsImF1dGhvcml6YXRpb24iOnsidmFsdWUiOiIxMDAwIn19fQ=="
+      },
+      "originBody": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "search",
+          "arguments": {
+            "q": "a"
+          },
+          "_meta": {
+            "progressToken": 1
+          }
+        }
+      },
+      "unreadableCredential": false,
+      "forwarded": {
+        "payment-signature": "eyJ4NDAyVmVyc2lvbiI6MiwicGF5bG9hZCI6eyJzaWduYXR1cmUiOiIweGFiYyIsImF1dGhvcml6YXRpb24iOnsidmFsdWUiOiIxMDAwIn19fQ=="
+      }
+    },
+    {
+      "name": "the DNA key in _meta is lifted and _meta goes when empty",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json; charset=utf-8"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"search\",\"_meta\":{\"dna.d3.com/key\":\"dna_k_meta\"}}}",
+      "excluded": [],
+      "rpc": {
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "search",
+          "_meta": {
+            "dna.d3.com/key": "dna_k_meta"
+          }
+        }
+      },
+      "facts": {
+        "method": "tools/call",
+        "tool": "search",
+        "source": "body"
+      },
+      "lifted": {
+        "payment-authorization": "Payment dna_k_meta"
+      },
+      "originBody": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "search"
+        }
+      },
+      "unreadableCredential": false,
+      "forwarded": {
+        "payment-authorization": "Payment dna_k_meta"
+      }
+    },
+    {
+      "name": "the key argument is lifted from a tool call",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"search\",\"arguments\":{\"q\":\"a\",\"dna_account_key\":\"dna_k_arg\"}}}",
+      "excluded": [],
+      "rpc": {
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "search",
+          "arguments": {
+            "q": "a",
+            "dna_account_key": "dna_k_arg"
+          }
+        }
+      },
+      "facts": {
+        "method": "tools/call",
+        "tool": "search",
+        "source": "body"
+      },
+      "lifted": {
+        "payment-authorization": "Payment dna_k_arg"
+      },
+      "originBody": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "search",
+          "arguments": {
+            "q": "a"
+          }
+        }
+      },
+      "unreadableCredential": false,
+      "forwarded": {
+        "payment-authorization": "Payment dna_k_arg"
+      }
+    },
+    {
+      "name": "the _meta key wins over the argument, and both are stripped",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"s\",\"arguments\":{\"dna_account_key\":\"arg\"},\"_meta\":{\"dna.d3.com/key\":\"meta\"}}}",
+      "excluded": [],
+      "rpc": {
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "s",
+          "arguments": {
+            "dna_account_key": "arg"
+          },
+          "_meta": {
+            "dna.d3.com/key": "meta"
+          }
+        }
+      },
+      "facts": {
+        "method": "tools/call",
+        "tool": "s",
+        "source": "body"
+      },
+      "lifted": {
+        "payment-authorization": "Payment meta"
+      },
+      "originBody": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "s",
+          "arguments": {}
+        }
+      },
+      "unreadableCredential": false,
+      "forwarded": {
+        "payment-authorization": "Payment meta"
+      }
+    },
+    {
+      "name": "a key argument outside a tool call stays",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":\"p1\",\"method\":\"prompts/get\",\"params\":{\"name\":\"greet\",\"arguments\":{\"dna_account_key\":\"k\"}}}",
+      "excluded": [],
+      "rpc": {
+        "id": "p1",
+        "method": "prompts/get",
+        "params": {
+          "name": "greet",
+          "arguments": {
+            "dna_account_key": "k"
+          }
+        }
+      },
+      "facts": {
+        "method": "prompts/get",
+        "tool": "greet",
+        "source": "body"
+      },
+      "lifted": {},
+      "originBody": null,
+      "unreadableCredential": false,
+      "forwarded": {}
+    },
+    {
+      "name": "the mirrored key header is lifted when the body carries none",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ],
+        [
+          "mcp-param-dna-key",
+          "dna_k_header"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"search\"}}",
+      "excluded": [],
+      "rpc": {
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "search"
+        }
+      },
+      "facts": {
+        "method": "tools/call",
+        "tool": "search",
+        "source": "body"
+      },
+      "lifted": {
+        "payment-authorization": "Payment dna_k_header"
+      },
+      "originBody": null,
+      "unreadableCredential": false,
+      "forwarded": {
+        "payment-authorization": "Payment dna_k_header"
+      }
+    },
+    {
+      "name": "a resource URI loses its query and userinfo in the facts",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/read\",\"params\":{\"uri\":\"https://user:pw@h.example/doc?token=1#x\"}}",
+      "excluded": [],
+      "rpc": {
+        "id": 1,
+        "method": "resources/read",
+        "params": {
+          "uri": "https://user:pw@h.example/doc?token=1#x"
+        }
+      },
+      "facts": {
+        "method": "resources/read",
+        "tool": "https://h.example/doc",
+        "source": "body"
+      },
+      "lifted": {},
+      "originBody": null,
+      "unreadableCredential": false,
+      "forwarded": {}
+    },
+    {
+      "name": "without a readable call the mirrors name it",
+      "method": "GET",
+      "headers": [
+        [
+          "mcp-method",
+          "tools/call"
+        ],
+        [
+          "mcp-name",
+          "search"
+        ]
+      ],
+      "body": "",
+      "excluded": [],
+      "rpc": null,
+      "facts": {
+        "method": "tools/call",
+        "tool": "search",
+        "source": "headers"
+      },
+      "lifted": {},
+      "originBody": null,
+      "unreadableCredential": false,
+      "forwarded": {}
+    },
+    {
+      "name": "an excluded mirror is not read",
+      "method": "GET",
+      "headers": [
+        [
+          "mcp-method",
+          "tools/call"
+        ],
+        [
+          "mcp-name",
+          "search"
+        ]
+      ],
+      "body": "",
+      "excluded": [
+        "mcp-name"
+      ],
+      "rpc": null,
+      "facts": {
+        "method": "tools/call",
+        "source": "headers"
+      },
+      "lifted": {},
+      "originBody": null,
+      "unreadableCredential": false,
+      "forwarded": {}
+    },
+    {
+      "name": "a method past 128 chars or not printable is dropped",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm\",\"params\":{\"name\":\"tab\\there\"}}",
+      "excluded": [],
+      "rpc": {
+        "id": 1,
+        "method": "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+        "params": {
+          "name": "tab\there"
+        }
+      },
+      "facts": null,
+      "lifted": {},
+      "originBody": null,
+      "unreadableCredential": false,
+      "forwarded": {}
+    },
+    {
+      "name": "a batch is not a call",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "[{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"a\"}}]",
+      "excluded": [],
+      "rpc": null,
+      "facts": null,
+      "lifted": {},
+      "originBody": null,
+      "unreadableCredential": false,
+      "forwarded": {}
+    },
+    {
+      "name": "a notification keeps no id",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"a\",\"_meta\":{\"dna.d3.com/key\":\"k\"}}}",
+      "excluded": [],
+      "rpc": {
+        "method": "tools/call",
+        "params": {
+          "name": "a",
+          "_meta": {
+            "dna.d3.com/key": "k"
+          }
+        }
+      },
+      "facts": {
+        "method": "tools/call",
+        "tool": "a",
+        "source": "body"
+      },
+      "lifted": {
+        "payment-authorization": "Payment k"
+      },
+      "originBody": {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+          "name": "a"
+        }
+      },
+      "unreadableCredential": false,
+      "forwarded": {
+        "payment-authorization": "Payment k"
+      }
+    },
+    {
+      "name": "a null id stays null",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"tools/call\",\"params\":{\"name\":\"a\",\"_meta\":{\"dna.d3.com/key\":\"k\"}}}",
+      "excluded": [],
+      "rpc": {
+        "id": null,
+        "method": "tools/call",
+        "params": {
+          "name": "a",
+          "_meta": {
+            "dna.d3.com/key": "k"
+          }
+        }
+      },
+      "facts": {
+        "method": "tools/call",
+        "tool": "a",
+        "source": "body"
+      },
+      "lifted": {
+        "payment-authorization": "Payment k"
+      },
+      "originBody": {
+        "jsonrpc": "2.0",
+        "id": null,
+        "method": "tools/call",
+        "params": {
+          "name": "a"
+        }
+      },
+      "unreadableCredential": false,
+      "forwarded": {
+        "payment-authorization": "Payment k"
+      }
+    },
+    {
+      "name": "a +json type is JSON",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/vnd.example+json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"a\",\"_meta\":{\"dna.d3.com/key\":\"k\"}}}",
+      "excluded": [],
+      "rpc": {
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "a",
+          "_meta": {
+            "dna.d3.com/key": "k"
+          }
+        }
+      },
+      "facts": {
+        "method": "tools/call",
+        "tool": "a",
+        "source": "body"
+      },
+      "lifted": {
+        "payment-authorization": "Payment k"
+      },
+      "originBody": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "a"
+        }
+      },
+      "unreadableCredential": false,
+      "forwarded": {
+        "payment-authorization": "Payment k"
+      }
+    },
+    {
+      "name": "not JSON is not a call",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",",
+      "excluded": [],
+      "rpc": null,
+      "facts": null,
+      "lifted": {},
+      "originBody": null,
+      "unreadableCredential": false,
+      "forwarded": {}
+    },
+    {
+      "name": "a non-object x402 payment is stripped and not lifted",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"a\",\"_meta\":{\"x402/payment\":\"not-an-object\",\"keep\":true}}}",
+      "excluded": [],
+      "rpc": {
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "a",
+          "_meta": {
+            "x402/payment": "not-an-object",
+            "keep": true
+          }
+        }
+      },
+      "facts": {
+        "method": "tools/call",
+        "tool": "a",
+        "source": "body"
+      },
+      "lifted": {},
+      "originBody": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "a",
+          "_meta": {
+            "keep": true
+          }
+        }
+      },
+      "unreadableCredential": false,
+      "forwarded": {}
+    },
+    {
+      "name": "a header credential wins over the body, family by family",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ],
+        [
+          "x-payment",
+          "header-payment"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"a\",\"_meta\":{\"x402/payment\":{\"x402Version\":2,\"payload\":{\"signature\":\"0xabc\",\"authorization\":{\"value\":\"1000\"}}},\"dna.d3.com/key\":\"k\"}}}",
+      "excluded": [],
+      "rpc": {
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "a",
+          "_meta": {
+            "x402/payment": {
+              "x402Version": 2,
+              "payload": {
+                "signature": "0xabc",
+                "authorization": {
+                  "value": "1000"
+                }
+              }
+            },
+            "dna.d3.com/key": "k"
+          }
+        }
+      },
+      "facts": {
+        "method": "tools/call",
+        "tool": "a",
+        "source": "body"
+      },
+      "lifted": {
+        "payment-signature": "eyJ4NDAyVmVyc2lvbiI6MiwicGF5bG9hZCI6eyJzaWduYXR1cmUiOiIweGFiYyIsImF1dGhvcml6YXRpb24iOnsidmFsdWUiOiIxMDAwIn19fQ==",
+        "payment-authorization": "Payment k"
+      },
+      "originBody": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "a"
+        }
+      },
+      "unreadableCredential": false,
+      "forwarded": {
+        "payment-authorization": "Payment k"
+      }
+    },
+    {
+      "name": "an oversized call naming a credential cannot be read",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"a\",\"arguments\":{\"blob\":\"@BLOB@\"},\"_meta\":{\"dna.d3.com/key\":\"k\"}}}",
+      "blobBytes": 1048576,
+      "excluded": [],
+      "rpc": null,
+      "facts": null,
+      "lifted": {},
+      "originBody": null,
+      "unreadableCredential": true,
+      "forwarded": {}
+    },
+    {
+      "name": "an oversized call naming none is passed on",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"a\",\"arguments\":{\"blob\":\"@BLOB@\"}}}",
+      "blobBytes": 1048576,
+      "excluded": [],
+      "rpc": null,
+      "facts": null,
+      "lifted": {},
+      "originBody": null,
+      "unreadableCredential": false,
+      "forwarded": {}
+    },
+    {
+      "name": "numbers keep their exact value through a rewrite",
+      "method": "POST",
+      "headers": [
+        [
+          "content-type",
+          "application/json"
+        ]
+      ],
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"a\",\"arguments\":{\"n\":0.30000000000000004,\"big\":9007199254740991,\"neg\":-1.5e-7},\"_meta\":{\"dna.d3.com/key\":\"k\"}}}",
+      "excluded": [],
+      "rpc": {
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "a",
+          "arguments": {
+            "n": 0.30000000000000004,
+            "big": 9007199254740991,
+            "neg": -1.5e-7
+          },
+          "_meta": {
+            "dna.d3.com/key": "k"
+          }
+        }
+      },
+      "facts": {
+        "method": "tools/call",
+        "tool": "a",
+        "source": "body"
+      },
+      "lifted": {
+        "payment-authorization": "Payment k"
+      },
+      "originBody": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "a",
+          "arguments": {
+            "n": 0.30000000000000004,
+            "big": 9007199254740991,
+            "neg": -1.5e-7
+          }
+        }
+      },
+      "unreadableCredential": false,
+      "forwarded": {
+        "payment-authorization": "Payment k"
+      }
+    }
+  ],
+  "answers": [
+    {
+      "name": "a 402 with its headers, unsafe ones dropped",
+      "payment": {
+        "status": 402,
+        "headers": {
+          "payment-required": "eyJ4fQ==",
+          "link": "<https://dna.d3.com/approve/h1>; rel=\"payment\"",
+          "x-bad": "a\r\nset-cookie: evil=1",
+          "bad name": "v",
+          "x-empty": "",
+          "x-long": {
+            "$repeat": "x",
+            "n": 8193
+          }
+        },
+        "body": "{\"error\":\"payment_required\"}"
+      },
+      "status": 402,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "link": "<https://dna.d3.com/approve/h1>; rel=\"payment\"",
+        "payment-required": "eyJ4fQ==",
+        "x-d3-edge": "payment-required"
+      },
+      "body": "{\"error\":\"payment_required\"}"
+    },
+    {
+      "name": "a redirect has no content type",
+      "payment": {
+        "status": 302,
+        "headers": {
+          "location": "https://pay.example/a"
+        }
+      },
+      "status": 302,
+      "headers": {
+        "cache-control": "no-store",
+        "location": "https://pay.example/a",
+        "x-d3-edge": "payment-redirect"
+      },
+      "body": null
+    },
+    {
+      "name": "pay copy is a 200",
+      "payment": {
+        "status": 200,
+        "body": "<p>copy</p>"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "x-d3-edge": "payment-stub"
+      },
+      "body": "<p>copy</p>"
+    },
+    {
+      "name": "a json-rpc instruction answers with the call id",
+      "payment": {
+        "status": 402,
+        "bodyKind": "json-rpc",
+        "body": "{\"content\":[{\"type\":\"text\",\"text\":\"pay\"}],\"isError\":true}"
+      },
+      "rpcId": 7,
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "x-d3-edge": "payment-required"
+      },
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"pay\"}],\"isError\":true}}"
+    },
+    {
+      "name": "a json-rpc instruction keeps a string id",
+      "payment": {
+        "status": 402,
+        "bodyKind": "json-rpc",
+        "body": "{\"a\":[]}",
+        "headers": {
+          "payment-required": "x"
+        }
+      },
+      "rpcId": "abc",
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "payment-required": "x",
+        "x-d3-edge": "payment-required"
+      },
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":\"abc\",\"result\":{\"a\":[]}}"
+    },
+    {
+      "name": "a json-rpc instruction keeps a null id",
+      "payment": {
+        "status": 402,
+        "bodyKind": "json-rpc",
+        "body": "{}"
+      },
+      "rpcId": null,
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "x-d3-edge": "payment-required"
+      },
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":null,\"result\":{}}"
+    },
+    {
+      "name": "a json-rpc instruction whose body is not JSON fails closed",
+      "payment": {
+        "status": 402,
+        "bodyKind": "json-rpc",
+        "body": "not json"
+      },
+      "rpcId": 1,
+      "status": 502,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "x-d3-edge": "fail-closed"
+      },
+      "body": "{\"error\":\"payment_unavailable\"}"
+    },
+    {
+      "name": "a json-rpc instruction with no call is the plain answer",
+      "payment": {
+        "status": 402,
+        "bodyKind": "json-rpc",
+        "body": "{\"x\":1}"
+      },
+      "status": 402,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "x-d3-edge": "payment-required"
+      },
+      "body": "{\"x\":1}"
+    }
+  ],
+  "results": [
+    {
+      "name": "the receipt goes into _meta",
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"content\":[],\"_meta\":{\"origin\":1}}}",
+      "contentType": "application/json",
+      "meta": {
+        "x402/payment-response": {
+          "success": true
+        }
+      },
+      "method": "tools/call",
+      "keyArgument": false,
+      "rewritten": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "result": {
+          "content": [],
+          "_meta": {
+            "origin": 1,
+            "x402/payment-response": {
+              "success": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "tools/list gains the key argument",
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"a\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}},{\"name\":\"b\"},\"odd\"]}}",
+      "contentType": "application/json",
+      "meta": null,
+      "method": "tools/list",
+      "keyArgument": true,
+      "rewritten": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "tools": [
+            {
+              "name": "a",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  },
+                  "dna_account_key": {
+                    "type": "string",
+                    "description": "A DNA account key that pays for this call. Leave it out to be told how to pay.",
+                    "x-mcp-header": "Dna-Key"
+                  }
+                }
+              }
+            },
+            {
+              "name": "b",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "dna_account_key": {
+                    "type": "string",
+                    "description": "A DNA account key that pays for this call. Leave it out to be told how to pay.",
+                    "x-mcp-header": "Dna-Key"
+                  }
+                }
+              }
+            },
+            "odd"
+          ]
+        }
+      }
+    },
+    {
+      "name": "an error answer is left alone",
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-1,\"message\":\"no\"}}",
+      "contentType": "application/json",
+      "meta": {
+        "r": 1
+      },
+      "method": "tools/call",
+      "keyArgument": false,
+      "rewritten": null
+    },
+    {
+      "name": "an event stream is left alone",
+      "body": "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{}}\n\n",
+      "contentType": "text/event-stream",
+      "meta": {
+        "r": 1
+      },
+      "method": "tools/call",
+      "keyArgument": false,
+      "rewritten": null
+    },
+    {
+      "name": "a body that is not JSON is left alone",
+      "body": "{\"jsonrpc\":\"2.0\",",
+      "contentType": "application/json",
+      "meta": {
+        "r": 1
+      },
+      "method": "tools/call",
+      "keyArgument": false,
+      "rewritten": null
+    },
+    {
+      "name": "no edits, no rewrite",
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{}}",
+      "contentType": "application/json",
+      "meta": null,
+      "method": "tools/call",
+      "keyArgument": false,
+      "rewritten": null
+    },
+    {
+      "name": "numbers and empty arrays survive the rewrite",
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":9007199254740991,\"result\":{\"n\":0.30000000000000004,\"e\":[],\"o\":{},\"s\":\"a/b\\u0001\\\"q\"}}",
+      "contentType": "application/json",
+      "meta": {
+        "r": 1
+      },
+      "method": "tools/call",
+      "keyArgument": false,
+      "rewritten": {
+        "jsonrpc": "2.0",
+        "id": 9007199254740991,
+        "result": {
+          "n": 0.30000000000000004,
+          "e": [],
+          "o": {},
+          "s": "a/b\u0001\"q",
+          "_meta": {
+            "r": 1
+          }
+        }
+      }
+    }
+  ],
+  "edgeModes": [
+    {
+      "status": 402,
+      "out": "payment-required"
+    },
+    {
+      "status": 302,
+      "out": "payment-redirect"
+    },
+    {
+      "status": 307,
+      "out": "payment-redirect"
+    },
+    {
+      "status": 200,
+      "out": "payment-stub"
+    },
+    {
+      "status": 500,
+      "out": "fail-closed"
+    },
+    {
+      "status": 502,
+      "out": "fail-closed"
+    },
+    {
+      "status": 403,
+      "out": "fail-closed"
+    }
+  ],
+  "recordableName": [
+    {
+      "name": "search",
+      "out": "search"
+    },
+    {
+      "name": "https://u:p@h/x?t=1",
+      "out": "https://h/x"
+    },
+    {
+      "name": "file:///a#b",
+      "out": "file:///a"
+    },
+    {
+      "name": "urn:x?y",
+      "out": "urn:x"
+    },
+    {
+      "name": "",
+      "out": null
+    }
+  ],
+  "debugHeaders": [
+    {
+      "name": "the never-sent and excluded go, and each value is bounded",
+      "headers": [
+        [
+          "authorization",
+          "a"
+        ],
+        [
+          "x-keep",
+          "k"
+        ],
+        [
+          "x-excluded",
+          "e"
+        ],
+        [
+          "x-long",
+          {
+            "$repeat": "x",
+            "n": 2049
+          }
+        ],
+        [
+          "cookie",
+          "c=1"
+        ]
+      ],
+      "excluded": [
+        "x-excluded"
+      ],
+      "out": {
+        "x-keep": "k"
+      }
+    },
+    {
+      "name": "at most 64",
+      "headers": [
+        [
+          "x-00",
+          "v"
+        ],
+        [
+          "x-01",
+          "v"
+        ],
+        [
+          "x-02",
+          "v"
+        ],
+        [
+          "x-03",
+          "v"
+        ],
+        [
+          "x-04",
+          "v"
+        ],
+        [
+          "x-05",
+          "v"
+        ],
+        [
+          "x-06",
+          "v"
+        ],
+        [
+          "x-07",
+          "v"
+        ],
+        [
+          "x-08",
+          "v"
+        ],
+        [
+          "x-09",
+          "v"
+        ],
+        [
+          "x-10",
+          "v"
+        ],
+        [
+          "x-11",
+          "v"
+        ],
+        [
+          "x-12",
+          "v"
+        ],
+        [
+          "x-13",
+          "v"
+        ],
+        [
+          "x-14",
+          "v"
+        ],
+        [
+          "x-15",
+          "v"
+        ],
+        [
+          "x-16",
+          "v"
+        ],
+        [
+          "x-17",
+          "v"
+        ],
+        [
+          "x-18",
+          "v"
+        ],
+        [
+          "x-19",
+          "v"
+        ],
+        [
+          "x-20",
+          "v"
+        ],
+        [
+          "x-21",
+          "v"
+        ],
+        [
+          "x-22",
+          "v"
+        ],
+        [
+          "x-23",
+          "v"
+        ],
+        [
+          "x-24",
+          "v"
+        ],
+        [
+          "x-25",
+          "v"
+        ],
+        [
+          "x-26",
+          "v"
+        ],
+        [
+          "x-27",
+          "v"
+        ],
+        [
+          "x-28",
+          "v"
+        ],
+        [
+          "x-29",
+          "v"
+        ],
+        [
+          "x-30",
+          "v"
+        ],
+        [
+          "x-31",
+          "v"
+        ],
+        [
+          "x-32",
+          "v"
+        ],
+        [
+          "x-33",
+          "v"
+        ],
+        [
+          "x-34",
+          "v"
+        ],
+        [
+          "x-35",
+          "v"
+        ],
+        [
+          "x-36",
+          "v"
+        ],
+        [
+          "x-37",
+          "v"
+        ],
+        [
+          "x-38",
+          "v"
+        ],
+        [
+          "x-39",
+          "v"
+        ],
+        [
+          "x-40",
+          "v"
+        ],
+        [
+          "x-41",
+          "v"
+        ],
+        [
+          "x-42",
+          "v"
+        ],
+        [
+          "x-43",
+          "v"
+        ],
+        [
+          "x-44",
+          "v"
+        ],
+        [
+          "x-45",
+          "v"
+        ],
+        [
+          "x-46",
+          "v"
+        ],
+        [
+          "x-47",
+          "v"
+        ],
+        [
+          "x-48",
+          "v"
+        ],
+        [
+          "x-49",
+          "v"
+        ],
+        [
+          "x-50",
+          "v"
+        ],
+        [
+          "x-51",
+          "v"
+        ],
+        [
+          "x-52",
+          "v"
+        ],
+        [
+          "x-53",
+          "v"
+        ],
+        [
+          "x-54",
+          "v"
+        ],
+        [
+          "x-55",
+          "v"
+        ],
+        [
+          "x-56",
+          "v"
+        ],
+        [
+          "x-57",
+          "v"
+        ],
+        [
+          "x-58",
+          "v"
+        ],
+        [
+          "x-59",
+          "v"
+        ],
+        [
+          "x-60",
+          "v"
+        ],
+        [
+          "x-61",
+          "v"
+        ],
+        [
+          "x-62",
+          "v"
+        ],
+        [
+          "x-63",
+          "v"
+        ],
+        [
+          "x-64",
+          "v"
+        ],
+        [
+          "x-65",
+          "v"
+        ],
+        [
+          "x-66",
+          "v"
+        ],
+        [
+          "x-67",
+          "v"
+        ],
+        [
+          "x-68",
+          "v"
+        ],
+        [
+          "x-69",
+          "v"
+        ]
+      ],
+      "excluded": [],
+      "out": {
+        "x-00": "v",
+        "x-01": "v",
+        "x-02": "v",
+        "x-03": "v",
+        "x-04": "v",
+        "x-05": "v",
+        "x-06": "v",
+        "x-07": "v",
+        "x-08": "v",
+        "x-09": "v",
+        "x-10": "v",
+        "x-11": "v",
+        "x-12": "v",
+        "x-13": "v",
+        "x-14": "v",
+        "x-15": "v",
+        "x-16": "v",
+        "x-17": "v",
+        "x-18": "v",
+        "x-19": "v",
+        "x-20": "v",
+        "x-21": "v",
+        "x-22": "v",
+        "x-23": "v",
+        "x-24": "v",
+        "x-25": "v",
+        "x-26": "v",
+        "x-27": "v",
+        "x-28": "v",
+        "x-29": "v",
+        "x-30": "v",
+        "x-31": "v",
+        "x-32": "v",
+        "x-33": "v",
+        "x-34": "v",
+        "x-35": "v",
+        "x-36": "v",
+        "x-37": "v",
+        "x-38": "v",
+        "x-39": "v",
+        "x-40": "v",
+        "x-41": "v",
+        "x-42": "v",
+        "x-43": "v",
+        "x-44": "v",
+        "x-45": "v",
+        "x-46": "v",
+        "x-47": "v",
+        "x-48": "v",
+        "x-49": "v",
+        "x-50": "v",
+        "x-51": "v",
+        "x-52": "v",
+        "x-53": "v",
+        "x-54": "v",
+        "x-55": "v",
+        "x-56": "v",
+        "x-57": "v",
+        "x-58": "v",
+        "x-59": "v",
+        "x-60": "v",
+        "x-61": "v",
+        "x-62": "v",
+        "x-63": "v"
+      }
+    }
+  ],
+  "settings": [
+    {
+      "name": "nothing set is off",
+      "env": {},
+      "out": {
+        "failMode": "open",
+        "timeoutMs": 2000,
+        "paymentTimeoutMs": 10000,
+        "debugLogRawPayload": false,
+        "exclude": {
+          "headers": [],
+          "cookies": []
+        }
+      }
+    },
+    {
+      "name": "DNA_API_KEY alone is on, at the default endpoint",
+      "env": {
+        "DNA_API_KEY": "k"
+      },
+      "out": {
+        "endpoint": "https://edge-api.d3.com/v1/decision",
+        "apiKey": "k",
+        "failMode": "open",
+        "timeoutMs": 2000,
+        "paymentTimeoutMs": 10000,
+        "debugLogRawPayload": false,
+        "exclude": {
+          "headers": [],
+          "cookies": []
+        }
+      }
+    },
+    {
+      "name": "an earlier key alone stays off",
+      "env": {
+        "POLICY_ADAPTER_KEY": "k"
+      },
+      "out": {
+        "apiKey": "k",
+        "failMode": "open",
+        "timeoutMs": 2000,
+        "paymentTimeoutMs": 10000,
+        "debugLogRawPayload": false,
+        "exclude": {
+          "headers": [],
+          "cookies": []
+        }
+      }
+    },
+    {
+      "name": "an empty endpoint is off",
+      "env": {
+        "DNA_API_KEY": "k",
+        "DNA_ENDPOINT": ""
+      },
+      "out": {
+        "apiKey": "k",
+        "failMode": "open",
+        "timeoutMs": 2000,
+        "paymentTimeoutMs": 10000,
+        "debugLogRawPayload": false,
+        "exclude": {
+          "headers": [],
+          "cookies": []
+        }
+      }
+    },
+    {
+      "name": "DNA_ENABLED false is off",
+      "env": {
+        "DNA_API_KEY": "k",
+        "DNA_ENABLED": " FALSE "
+      },
+      "out": {
+        "apiKey": "k",
+        "failMode": "open",
+        "timeoutMs": 2000,
+        "paymentTimeoutMs": 10000,
+        "debugLogRawPayload": false,
+        "exclude": {
+          "headers": [],
+          "cookies": []
+        }
+      }
+    },
+    {
+      "name": "every setting, read",
+      "env": {
+        "DNA_API_KEY": "k",
+        "DNA_ENDPOINT": "http://127.0.0.1:9000/v1/decision",
+        "DNA_FAIL_MODE": "closed",
+        "DNA_TIMEOUT_MS": "300",
+        "DNA_PAYMENT_TIMEOUT_MS": "9000",
+        "DNA_DEBUG_LOG_RAW_PAYLOAD": "true",
+        "DNA_EXCLUDE_HEADERS": " X-Internal , x-internal,,x-two ",
+        "DNA_EXCLUDE_COOKIES": "Sid, sid"
+      },
+      "out": {
+        "endpoint": "http://127.0.0.1:9000/v1/decision",
+        "apiKey": "k",
+        "failMode": "closed",
+        "timeoutMs": 300,
+        "paymentTimeoutMs": 9000,
+        "debugLogRawPayload": true,
+        "exclude": {
+          "headers": [
+            "x-internal",
+            "x-two"
+          ],
+          "cookies": [
+            "Sid",
+            "sid"
+          ]
+        }
+      }
+    },
+    {
+      "name": "a bad timeout falls back",
+      "env": {
+        "DNA_API_KEY": "k",
+        "DNA_TIMEOUT_MS": "-5",
+        "DNA_PAYMENT_TIMEOUT_MS": "soon"
+      },
+      "out": {
+        "endpoint": "https://edge-api.d3.com/v1/decision",
+        "apiKey": "k",
+        "failMode": "open",
+        "timeoutMs": 2000,
+        "paymentTimeoutMs": 10000,
+        "debugLogRawPayload": false,
+        "exclude": {
+          "headers": [],
+          "cookies": []
+        }
+      }
+    },
+    {
+      "name": "earlier names still read, and the generic debug name only beside POLICY_WORKER_URL",
+      "env": {
+        "POLICY_WORKER_URL": "https://edge.example/v1/decision",
+        "POLICY_SHARED_SECRET": "s",
+        "FAIL_MODE": "closed",
+        "POLICY_TIMEOUT_MS": "250",
+        "DEBUG_LOG_RAW_PAYLOAD": "true"
+      },
+      "out": {
+        "endpoint": "https://edge.example/v1/decision",
+        "apiKey": "s",
+        "failMode": "closed",
+        "timeoutMs": 250,
+        "paymentTimeoutMs": 10000,
+        "debugLogRawPayload": true,
+        "exclude": {
+          "headers": [],
+          "cookies": []
+        }
+      }
+    },
+    {
+      "name": "the generic debug name alone is ignored",
+      "env": {
+        "DNA_API_KEY": "k",
+        "DEBUG_LOG_RAW_PAYLOAD": "true"
+      },
+      "out": {
+        "endpoint": "https://edge-api.d3.com/v1/decision",
+        "apiKey": "k",
+        "failMode": "open",
+        "timeoutMs": 2000,
+        "paymentTimeoutMs": 10000,
+        "debugLogRawPayload": false,
+        "exclude": {
+          "headers": [],
+          "cookies": []
+        }
+      }
+    },
+    {
+      "name": "a DNA_ name wins over an earlier one",
+      "env": {
+        "DNA_API_KEY": "new",
+        "POLICY_ADAPTER_KEY": "old",
+        "DNA_FAIL_MODE": "open",
+        "FAIL_MODE": "closed"
+      },
+      "out": {
+        "endpoint": "https://edge-api.d3.com/v1/decision",
+        "apiKey": "new",
+        "failMode": "open",
+        "timeoutMs": 2000,
+        "paymentTimeoutMs": 10000,
+        "debugLogRawPayload": false,
+        "exclude": {
+          "headers": [],
+          "cookies": []
+        }
+      }
+    }
+  ]
+}

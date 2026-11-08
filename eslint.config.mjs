@@ -48,7 +48,7 @@ export default defineConfig(
     languageOptions: { globals: globals.serviceworker },
   },
   {
-    files: ['caddy/test/**/*.mjs'],
+    files: ['caddy/test/**/*.mjs', 'nginx/test/**/*.mjs', 'test/**/*.mjs'],
     languageOptions: { globals: globals.node },
   }
 );
