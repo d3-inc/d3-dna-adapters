@@ -30,6 +30,7 @@ jobs:
       - run: pnpm build
 
   caddy:
+    name: caddy ${{ matrix.version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
