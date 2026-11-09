@@ -86,8 +86,10 @@ A value without a cap of its own stops at 2048 chars, and those values
 together at 16 384; past either, the longest go first and each is named in
 `droppedHeaders` or `droppedCookies`. Past 128 names a list stops and
 `droppedUnlisted` says so; an exclusion list past 128 is echoed capped, with
-`droppedUnlisted` set, and every name on it is still withheld. The endpoint reads these values for rules and
-does not store them.
+`droppedUnlisted` set, and every name on it is still withheld. The endpoint
+then reads every unlisted name of that kind as withheld, so a rule on one the
+request lacks is skipped; an adapter warns once when a site's list is that
+long. The endpoint reads these values for rules and does not store them.
 
 An adapter that enforces [paid routes](#paid-routes) forwards four more
 groups, each with a length past which the value is dropped rather than
@@ -228,7 +230,12 @@ never travels.
 An MCP call too large to read (over 1 MiB) whose body names one of these
 `_meta` keys or the `dna_account_key` argument cannot be stripped, so it is
 answered `413 { "error": "mcp_call_too_large" }` and reaches neither the
-endpoint nor the origin.
+endpoint nor the origin. So is a body that is JSON-RPC at its top level but
+was not read as one call (a batch, or a call sent under another content type)
+and carries one of them where a call does: it is answered
+`400 { "error": "mcp_call_unreadable", "detail": … }`, the endpoint's own
+answer for such a call. A body that only holds a call inside it, such as an
+upload or a document, is left alone, and a compressed body is not searched.
 
 Presence is checked against the caps and nothing else. A value past its
 cap is not a payment.

@@ -40,7 +40,8 @@ except `Authorization`, `Proxy-Authorization` and anything listed in
 `excludeCookies`). DNA reads them
 for rules and doesn't store them. Our two cookies travel under their own
 headers: `__Host-d3pay` (a DNA session) and `__Host-d3person` (a browser-check
-pass).
+pass). Keep each list to 128 names: past that the middleware logs a warning,
+and a rule on a header or cookie a request lacks is skipped.
 
 The site sees neither cookie, nor a payment header, nor a `d3pay_handoff`,
 `d3pay_check` or `d3pay_browser` query parameter: the middleware strips them

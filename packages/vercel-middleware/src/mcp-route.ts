@@ -112,7 +112,9 @@ export function withD3Mcp<R extends Request, A extends unknown[]>(
         builtAnswerOf(response).catch(() => undefined)
       );
 
-    if (mcp?.unreadableCredential) return reportBuilt('fail-closed', unreadableCallResponse());
+    if (mcp?.unreadableCredential) {
+      return reportBuilt('fail-closed', unreadableCallResponse(mcp.unreadableReason));
+    }
 
     let decision: ClientDecision;
     try {

@@ -128,7 +128,9 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
     const reportProxied = (mode: EdgeMode, response: Response, originLatencyMs: number): Response =>
       reportOutcome(mode, response, { originLatencyMs });
 
-    if (mcp?.unreadableCredential) return reportBuilt('fail-closed', unreadableCallResponse());
+    if (mcp?.unreadableCredential) {
+      return reportBuilt('fail-closed', unreadableCallResponse(mcp.unreadableReason));
+    }
 
     let decision: ClientDecision;
     // I/O unfreezes the Workers clock, so Date.now() advances across the fetch.

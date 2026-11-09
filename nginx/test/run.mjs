@@ -24,7 +24,9 @@ function check(name, ok, detail) {
 
 function send(port, path, { method = 'GET', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port, path, method, headers }, (res) => {
+    // Framed explicitly: node sends a GET's body without a length, which nginx then never reads.
+    const framed = body === undefined ? headers : { 'content-length': Buffer.byteLength(body), ...headers };
+    const req = request({ host: '127.0.0.1', port, path, method, headers: framed }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
@@ -637,8 +639,110 @@ async function live() {
     body: '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"a","arguments":{"t":"cut \\ud83d here","dna_account_key":"k"}}}',
   });
   check(
-    'a call cjson cannot read that names a credential is refused, not passed on',
-    res.status === 413 && res.headers['x-d3-edge'] === 'fail-closed',
+    'a call cjson cannot read that names a credential is refused as unreadable, not passed on',
+    res.status === 400 &&
+      res.json?.error === 'mcp_call_unreadable' &&
+      res.headers['x-d3-edge'] === 'fail-closed',
+    res.status
+  );
+
+  for (const [label, type, body] of [
+    [
+      'a batch',
+      'application/json',
+      JSON.stringify([
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'a', _meta: { 'dna.d3.com/key': 'k' } },
+        },
+      ]),
+    ],
+    [
+      'a call sent as text/plain',
+      'text/plain',
+      rpc('tools/call', { name: 'a', arguments: { dna_account_key: 'k' } }),
+    ],
+  ]) {
+    id = tag();
+    res = await send(SITES.include, `/mcp?t=${id}`, {
+      method: 'POST',
+      headers: { 'content-type': type },
+      body,
+    });
+    s = await seen(id);
+    check(
+      `${label} naming a credential is refused, before deciding or reaching the origin`,
+      res.status === 400 && res.json?.error === 'mcp_call_unreadable' && s.decisions.length === 0,
+      { status: res.status, n: s.decisions.length }
+    );
+  }
+
+  id = tag();
+  res = await send(SITES.include, `/mcp?t=${id}`, {
+    method: 'GET',
+    headers: JSON_TYPE,
+    body: rpc('tools/call', { name: 'a', arguments: { dna_account_key: 'k' } }),
+  });
+  const getSeen = await seen(id);
+  check(
+    'a GET carrying a call that names a credential is refused too, since nginx passes its body on',
+    res.status === 400 && getSeen.decisions.length === 0,
+    { status: res.status, text: res.text, n: getSeen.decisions.length }
+  );
+
+  const example = rpc('tools/call', { name: 'a', _meta: { 'dna.d3.com/key': 'k' } });
+  for (const [label, type, body] of [
+    [
+      'a multipart upload holding an example call',
+      'multipart/form-data; boundary=b',
+      `--b\r\ncontent-disposition: form-data; name="f"; filename="call.json"\r\ncontent-type: application/json\r\n\r\n${example}\r\n--b--\r\n`,
+    ],
+    [
+      'a markdown page holding an example call',
+      'text/markdown',
+      `# Paying over MCP\n\n\`\`\`json\n${example}\n\`\`\`\n`,
+    ],
+    [
+      'a 2 MB upload holding an example call, from disk',
+      'multipart/form-data; boundary=b',
+      `--b\r\n\r\n${'x'.repeat(2_000_000)}${example}\r\n--b--\r\n`,
+    ],
+  ]) {
+    res = await send(SITES.include, `/upload?t=${tag()}`, {
+      method: 'POST',
+      headers: { 'content-type': type },
+      body,
+    });
+    check(`${label} reaches the origin`, res.status === 200 && res.json?.origin, res.status);
+  }
+
+  const quotes = '['.concat('"'.repeat(20_000_000));
+  const began = Date.now();
+  res = await send(SITES.include, `/upload?t=${tag()}`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain' },
+    body: quotes,
+  });
+  const searched = Date.now() - began;
+  check(
+    'a 20 MB body of quotes is searched and passed on in well under a second',
+    res.status === 200 && searched < 1500,
+    {
+      status: res.status,
+      searched,
+    }
+  );
+
+  res = await send(SITES.include, `/page?t=${tag()}`, {
+    method: 'POST',
+    headers: JSON_TYPE,
+    body: JSON.stringify({ title: 'Paying over MCP', sample: { _meta: { 'x402/payment': {} } } }),
+  });
+  check(
+    'a post that names a key but is no JSON-RPC call reaches the origin',
+    res.status === 200 && res.json?.origin,
     res.status
   );
 
@@ -706,6 +810,14 @@ async function disabled() {
     'disabled: our params gone',
     !res.json?.url.includes('d3pay_handoff') && res.json?.url.includes('keep=1'),
     res.json?.url
+  );
+  await send(SITES.include, `/page?t=${tag()}`);
+  const warned =
+    readFileSync(process.env.ERROR_LOG, 'utf8').match(/DNA_EXCLUDE_HEADERS lists 130 names/g) ?? [];
+  check(
+    'an exclusion list past 128 is warned about once per worker, not per request',
+    warned.length === 1,
+    warned.length
   );
 }
 

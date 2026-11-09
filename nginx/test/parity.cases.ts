@@ -1,13 +1,18 @@
 // What the protocol package answers for each input, written to parity.json so
 // the OpenResty port (nginx/dna.lua) is checked against it under real OpenResty.
 import { liftedPaymentToForward, mcpCarriageOf } from '../../packages/protocol/src/adapter/mcp.ts';
-import { MCP_KEY_ARGUMENT_SCHEMA, withMcpResult } from '../../packages/protocol/src/adapter/mcp-response.ts';
+import {
+  MCP_KEY_ARGUMENT_SCHEMA,
+  unreadableCallResponse,
+  withMcpResult,
+} from '../../packages/protocol/src/adapter/mcp-response.ts';
 import { privateCacheControl } from '../../packages/protocol/src/adapter/payment-response.ts';
 import {
   ADAPTER_SET,
   buildPaymentResponse,
   cookiesOf,
   debugHeadersOf,
+  exclusionOverflowWarning,
   forwardAll,
   FORWARDED_HEADER_SET,
   FORWARDED_HEADERS,
@@ -29,6 +34,7 @@ type Pairs = [string, string][];
 
 const NONE: ForwardExclusions = { headers: [], cookies: [] };
 const long = (n: number, c = 'x') => c.repeat(n);
+const names = (n: number) => Array.from({ length: n }, (_, i) => `x-${i}`);
 const handoff = `${long(22, 'A')}.${long(43, 'b')}`;
 
 const forwardAllCases: { name: string; headers: Pairs; exclude: ForwardExclusions }[] = [
@@ -310,6 +316,90 @@ const mcpCases: McpCase[] = [
     blobBytes: 1_048_576,
   },
   {
+    name: 'a batch naming a credential cannot be read',
+    method: 'POST',
+    headers: [['content-type', 'application/json']],
+    body: JSON.stringify([
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'a', _meta: { 'dna.d3.com/key': 'k' } },
+      },
+    ]),
+  },
+  {
+    name: 'a call sent as text/plain naming a credential cannot be read',
+    method: 'POST',
+    headers: [['content-type', 'text/plain']],
+    body: call({ name: 'a', arguments: { dna_account_key: 'k' } }),
+  },
+  {
+    name: 'a call sent as application/json-rpc naming a credential cannot be read',
+    method: 'POST',
+    headers: [['content-type', 'application/json-rpc']],
+    body: call({ name: 'a', _meta: { 'x402/payment': x402 } }),
+  },
+  {
+    name: 'a batch spelling the key with an escaped slash, as PHP does, cannot be read',
+    method: 'POST',
+    headers: [['content-type', 'application/json']],
+    body: '[{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{"dna.d3.com\\/key":"k","x402\\/payment":{}}}}]',
+  },
+  {
+    name: 'an upload holding an example call is left alone',
+    method: 'POST',
+    headers: [['content-type', 'multipart/form-data; boundary=b']],
+    body: `--b\r\ncontent-type: application/json\r\n\r\n${call({ name: 'a', _meta: { 'dna.d3.com/key': 'k' } })}\r\n--b--`,
+  },
+  {
+    name: 'a document holding an example call is left alone',
+    method: 'POST',
+    headers: [['content-type', 'application/json']],
+    body: JSON.stringify({
+      openapi: '3.1.0',
+      examples: { pay: JSON.parse(call({ name: 'a', _meta: { 'dna.d3.com/key': 'k' } })) },
+    }),
+  },
+  {
+    name: 'a JSON-RPC answer naming the key argument in a schema is left alone',
+    method: 'POST',
+    headers: [['content-type', 'application/json']],
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      result: { tools: [{ inputSchema: { properties: { dna_account_key: {} } } }] },
+    }),
+  },
+  {
+    name: 'a truncated batch naming a key falls back to the byte search',
+    method: 'POST',
+    headers: [['content-type', 'application/json']],
+    body: '[{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{"dna.d3.com/key":"k"}}',
+  },
+  {
+    name: 'a truncated batch spelling the key as PHP does is found by the byte search',
+    method: 'POST',
+    headers: [['content-type', 'application/json']],
+    body: '[{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{"dna.d3.com\\/key":"k"}}',
+  },
+  {
+    name: 'an oversized call spelling the key as PHP does cannot be read',
+    method: 'POST',
+    headers: [['content-type', 'application/json']],
+    body: '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"blob":"@BLOB@","_meta":{"x402\\/payment":{}}}}',
+    blobBytes: 1_048_576,
+  },
+  {
+    name: 'a post that names a key but never says jsonrpc is left alone',
+    method: 'POST',
+    headers: [['content-type', 'application/json']],
+    body: JSON.stringify({
+      title: 'Paying over MCP',
+      sample: { _meta: { 'x402/payment': {}, 'dna.d3.com/key': 'k' } },
+    }),
+  },
+  {
     name: 'numbers keep their exact value through a rewrite',
     method: 'POST',
     headers: [['content-type', 'application/json']],
@@ -342,6 +432,7 @@ function mcpCase(c: McpCase) {
     lifted: carriage.lifted,
     originBody: carriage.originBody === null ? null : JSON.parse(carriage.originBody),
     unreadableCredential: carriage.unreadableCredential,
+    unreadableReason: carriage.unreadableReason ?? null,
     forwarded: liftedPaymentToForward(request.headers, carriage.lifted),
   };
 }
@@ -631,6 +722,20 @@ export async function buildParity() {
         excluded: [],
       },
     ].map((c) => ({ ...c, out: debugHeadersOf([...headersOf(c.headers).entries()], c.excluded) })),
+    exclusionOverflow: [
+      { headers: [], cookies: [] },
+      { headers: names(128), cookies: names(128) },
+      { headers: names(129), cookies: [] },
+      { headers: names(200), cookies: names(130) },
+    ].map((exclude) => ({ exclude, out: exclusionOverflowWarning(exclude) ?? null })),
+    unreadableAnswers: await Promise.all(
+      (['too-large', 'not-one-call'] as const).map(async (reason) => {
+        const response = unreadableCallResponse(reason);
+        const headers: Record<string, string> = {};
+        response.headers.forEach((value, name) => (headers[name] = value));
+        return { reason, status: response.status, headers, body: await response.text() };
+      })
+    ),
     settings: settingsCases.map((c) => ({ ...c, out: readAdapterSettings((name) => c.env[name]) })),
   };
 }

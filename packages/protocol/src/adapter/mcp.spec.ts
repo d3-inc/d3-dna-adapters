@@ -8,6 +8,7 @@ import {
   oversizedCallNamesCredential,
   readJsonRpcRequest,
   recordedMcpCall,
+  unreadCallNamesCredential,
 } from './mcp';
 
 const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).buffer as ArrayBuffer;
@@ -57,6 +58,71 @@ function post(body: unknown, headers: Record<string, string> = {}): Request {
   });
 }
 
+describe('unreadCallNamesCredential', () => {
+  const key = { name: 'a', _meta: { 'dna.d3.com/key': 'k' } };
+
+  it('flags a JSON-RPC body not read as one call that names a credential key', () => {
+    const batch = encode([{ jsonrpc: '2.0', id: 1, method: 'tools/call', params: key }]);
+    expect(unreadCallNamesCredential(null, batch)).toBe(true);
+    const argument = encode({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { arguments: { dna_account_key: 'k' } },
+    });
+    expect(unreadCallNamesCredential(null, argument)).toBe(true);
+    // PHP's json_encode writes the slash escaped.
+    const php = new TextEncoder().encode(
+      '[{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{"dna.d3.com\\/key":"k"}}}]'
+    );
+    expect(unreadCallNamesCredential(null, php.buffer as ArrayBuffer)).toBe(true);
+  });
+
+  it('leaves alone a call it read, a body naming no key, an empty body, and one that never says jsonrpc', () => {
+    const one = encode({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: key });
+    expect(unreadCallNamesCredential({ id: 1, method: 'tools/call', params: key }, one)).toBe(false);
+    expect(unreadCallNamesCredential(null, encode([{ jsonrpc: '2.0', id: 1, method: 'tools/list' }]))).toBe(
+      false
+    );
+    expect(unreadCallNamesCredential(null, new ArrayBuffer(0))).toBe(false);
+    const article = encode({
+      title: 'Paying over MCP',
+      sample: { _meta: { 'x402/payment': {}, 'dna.d3.com/key': 'k' } },
+    });
+    expect(unreadCallNamesCredential(null, article)).toBe(false);
+  });
+
+  it('leaves alone an upload or a document that only holds an example call', () => {
+    const example = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: key };
+    const bytes = (text: string) => new TextEncoder().encode(text).buffer as ArrayBuffer;
+    expect(unreadCallNamesCredential(null, encode({ openapi: '3.1.0', examples: { pay: example } }))).toBe(
+      false
+    );
+    expect(unreadCallNamesCredential(null, encode({ spans: [{ request: example }] }))).toBe(false);
+    expect(
+      unreadCallNamesCredential(
+        null,
+        bytes(`--b\r\ncontent-type: application/json\r\n\r\n${JSON.stringify(example)}\r\n--b--`)
+      )
+    ).toBe(false);
+    expect(unreadCallNamesCredential(null, bytes(`# Paying\n\n${JSON.stringify(example)}`))).toBe(false);
+    // A JSON-RPC answer naming the key argument in a tool's schema carries no credential.
+    const answer = {
+      jsonrpc: '2.0',
+      id: 1,
+      result: { tools: [{ inputSchema: { properties: { dna_account_key: {} } } }] },
+    };
+    expect(unreadCallNamesCredential(null, encode(answer))).toBe(false);
+  });
+
+  it('falls back to the byte search for JSON-RPC it cannot parse', () => {
+    const truncated = new TextEncoder().encode(
+      '[{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{"dna.d3.com/key":"k"}}'
+    );
+    expect(unreadCallNamesCredential(null, truncated.buffer as ArrayBuffer)).toBe(true);
+  });
+});
+
 describe('readJsonRpcRequest', () => {
   it('reads one JSON-RPC request in a JSON POST', () => {
     expect(
@@ -77,6 +143,31 @@ describe('readJsonRpcRequest', () => {
     expect(
       readJsonRpcRequest('POST', JSON_TYPE, new TextEncoder().encode('{nope').buffer as ArrayBuffer)
     ).toBeNull();
+  });
+});
+
+describe('mcpCarriageOf: a credential it cannot strip', () => {
+  it('names why: a batch or another content type is not one call, and past the cap is too large', async () => {
+    const batch = post([call({ name: 'a', _meta: { 'dna.d3.com/key': 'k' } })]);
+    expect(mcpCarriageOf(batch, await batch.clone().arrayBuffer())).toMatchObject({
+      unreadableCredential: true,
+      unreadableReason: 'not-one-call',
+    });
+
+    const plain = post(call({ name: 'a', arguments: { dna_account_key: 'k' } }), {
+      'content-type': 'text/plain',
+    });
+    expect(mcpCarriageOf(plain, await plain.clone().arrayBuffer()).unreadableReason).toBe('not-one-call');
+
+    const big = post(
+      call({ name: 'a', pad: 'x'.repeat(MCP_BODY_MAX_BYTES), _meta: { 'dna.d3.com/key': 'k' } })
+    );
+    expect(mcpCarriageOf(big, await big.clone().arrayBuffer()).unreadableReason).toBe('too-large');
+
+    const read = post(call({ name: 'a', _meta: { 'dna.d3.com/key': 'k' } }));
+    const carriage = mcpCarriageOf(read, await read.clone().arrayBuffer());
+    expect(carriage.unreadableCredential).toBe(false);
+    expect(carriage).not.toHaveProperty('unreadableReason');
   });
 });
 

@@ -103,6 +103,25 @@ describe('withD3Mcp', () => {
     expect(h.handled).toHaveLength(0);
   });
 
+  it('refuses a call sent as another content type that names a credential, without running the route', async () => {
+    const h = harness({ action: 'pass' });
+    const plain = new Request('https://mcp.example/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { arguments: { dna_account_key: 'k' } },
+      }),
+    });
+    const res = await withD3Mcp(h.handler, CONFIG, h.deps)(plain);
+
+    expect(res.status).toBe(400);
+    expect(h.decisions).toHaveLength(0);
+    expect(h.handled).toHaveLength(0);
+  });
+
   it('falls open when the only credential was a lifted key past its cap', async () => {
     const h = harness('throw');
     const res = await withD3Mcp(
