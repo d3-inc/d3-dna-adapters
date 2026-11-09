@@ -37,7 +37,7 @@
     }
   },
   "dependencies": {
-    "@vercel/functions": "^3.9.0",
+    "@vercel/functions": "^3.11.0",
     "@d3-inc/d3-dna-protocol": "workspace:*"
   },
   "devDependencies": {
