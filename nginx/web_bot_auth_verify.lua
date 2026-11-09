@@ -88,13 +88,13 @@ local HEADER_LENGTH_CAPS = {
   ["upgrade-insecure-requests"] = 32,
   ["payment-signature"]         = 4096,
   ["x-payment"]                 = 4096,
-  ["payment-authorization"]     = 128,
+  ["payment-authorization"]     = 4096,
 }
 
 local PAYMENT_HEADERS = {
   ["payment-signature"]     = 4096,
   ["x-payment"]             = 4096,
-  ["payment-authorization"] = 128,
+  ["payment-authorization"] = 4096,
   ["d3pay-session"]         = 64,
 }
 

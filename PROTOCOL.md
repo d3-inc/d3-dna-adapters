@@ -93,12 +93,12 @@ An adapter that enforces [paid routes](#paid-routes) forwards four more
 groups, each with a length past which the value is dropped rather than
 sent:
 
-| Header                                                          | Cap  | Why                                                  |
-| --------------------------------------------------------------- | ---- | ---------------------------------------------------- |
-| `accept`                                                        | 256  | Agent or browser — picks the `402` or the `302`      |
-| `sec-fetch-mode`, `sec-fetch-dest`, `upgrade-insecure-requests` | 32   | The same, for a navigating browser                   |
-| `payment-signature`, `x-payment`                                | 4096 | x402, two names because v2 renamed the header        |
-| `payment-authorization`                                         | 128  | A D3 Pay handoff or session, for a cookie-less agent |
+| Header                                                          | Cap  | Why                                             |
+| --------------------------------------------------------------- | ---- | ----------------------------------------------- |
+| `accept`                                                        | 256  | Agent or browser — picks the `402` or the `302` |
+| `sec-fetch-mode`, `sec-fetch-dest`, `upgrade-insecure-requests` | 32   | The same, for a navigating browser              |
+| `payment-signature`, `x-payment`                                | 4096 | x402, two names because v2 renamed the header   |
+| `payment-authorization`                                         | 4096 | An MPP credential or a D3 Pay credential        |
 
 Plus `d3pay-session`, which is not a client header at all — see
 [the credential](#the-credential).
