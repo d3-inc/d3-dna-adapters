@@ -31,6 +31,16 @@ jobs:
 
   caddy:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest Caddy dna.caddy supports and the newest, by checksum: moving
+        # either is a deliberate edit here and in caddy/README.md.
+        include:
+          - version: 2.11.7
+            sha512: a7a433a1b133efc3c8d10eb0b99d52a24b5ef5c322dc77f5282182b1c0402139ab83f3a99f0c52409df77d20123fb0b523edad8a66d8f5e49136197bf61ef0e7
+          - version: 2.11.8
+            sha512: c863699eee84c6b410573de2ec67af81d07eb054f9020bb98f3c6cb256fea4be2fd1acfbd39110c649c3338282593bba3d3ed6424d91b7f5675e8b877a8999e9
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -38,10 +48,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      # The version dna.caddy is tested on, by checksum: moving it is a deliberate edit here.
       - env:
-          CADDY_VERSION: 2.11.8
-          CADDY_SHA512: c863699eee84c6b410573de2ec67af81d07eb054f9020bb98f3c6cb256fea4be2fd1acfbd39110c649c3338282593bba3d3ed6424d91b7f5675e8b877a8999e9
+          CADDY_VERSION: ${{ matrix.version }}
+          CADDY_SHA512: ${{ matrix.sha512 }}
         # Outside the checkout: its caddy/ directory would block the binary's name.
         working-directory: ${{ runner.temp }}
         run: |

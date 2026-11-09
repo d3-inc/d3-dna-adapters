@@ -12,7 +12,9 @@ signatures included, are copied along.
 
 ## Requirements
 
-Caddy 2.8 or later (tested on 2.11.8).
+Caddy 2.11.7 or later (tested on 2.11.7 and 2.11.8). Earlier releases cannot
+run this file: before 2.11.6 Caddy will not start with it, and before 2.11.7
+it reads every request as paying.
 
 ## Install
 
