@@ -1,3 +1,5 @@
+import { configure, dispose } from '@logtape/logtape';
+import { createLogRecorder } from '@logtape/testing';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_DNA_ENDPOINT,
@@ -42,6 +44,30 @@ describe('dnaEndpoint', () => {
   it('should ignore any DNA_ENABLED value but false', () => {
     expect(dnaEndpoint({ hasDnaApiKey: true, enabled: 'true' })).toBe(DEFAULT_DNA_ENDPOINT);
     expect(dnaEndpoint({ hasDnaApiKey: true, enabled: 'no' })).toBe(DEFAULT_DNA_ENDPOINT);
+  });
+});
+
+describe('readAdapterSettings: an exclusion list past the cap', () => {
+  it('warns once per isolate, not on every request', async () => {
+    const recorder = createLogRecorder();
+    await configure({
+      reset: true,
+      sinks: { recorder: recorder.sink },
+      loggers: [
+        { category: ['d3-edge'], lowestLevel: 'debug', sinks: ['recorder'] },
+        { category: ['logtape', 'meta'], lowestLevel: 'warning', sinks: [] },
+      ],
+    });
+    const env = { DNA_EXCLUDE_HEADERS: Array.from({ length: 131 }, (_, i) => `x-w-${i}`).join(',') };
+    try {
+      readAdapterSettings((name) => env[name as keyof typeof env]);
+      readAdapterSettings((name) => env[name as keyof typeof env]);
+      const warnings = recorder.records.filter((r) => r.level === 'warning');
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].category).toEqual(['d3-edge', 'adapter-settings']);
+    } finally {
+      await dispose();
+    }
   });
 });
 

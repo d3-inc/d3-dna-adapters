@@ -136,6 +136,7 @@ for _, case in ipairs(parity.mcp) do
   same(label .. " (lifted)", lifted_view(carriage.lifted), lifted_view(case.lifted))
   same(label .. " (origin body)", decoded(carriage.origin_body), case.originBody)
   same(label .. " (unreadable)", carriage.unreadable_credential, case.unreadableCredential)
+  same(label .. " (why)", carriage.unreadable_reason, case.unreadableReason)
   same(label .. " (forwarded)", lifted_view(dna.lifted_payment_to_forward(raw, carriage.lifted)), lifted_view(case.forwarded))
 end
 
@@ -162,6 +163,18 @@ for _, case in ipairs(parity.results) do
   local rewritten = nil
   if edits and dna.is_json_type(case.contentType) then rewritten = dna.rewrite_result(case.body, edits.meta, edits.lists_tools) end
   same("withMcpResult: " .. case.name, decoded(rewritten), case.rewritten)
+end
+
+for _, case in ipairs(parity.exclusionOverflow) do
+  same("exclusionOverflowWarning: " .. #case.exclude.headers .. "/" .. #case.exclude.cookies,
+    dna.exclusion_overflow_warning(case.exclude), case.out)
+end
+
+for _, case in ipairs(parity.unreadableAnswers) do
+  local built = dna.unreadable_call_answer(case.reason)
+  same("unreadableCallResponse: " .. case.reason .. " (status)", built.status, case.status)
+  same("unreadableCallResponse: " .. case.reason .. " (headers)", headers_object(built.headers), case.headers)
+  same("unreadableCallResponse: " .. case.reason .. " (body)", decoded(built.body), decoded(case.body))
 end
 
 for _, case in ipairs(parity.edgeModes) do
@@ -303,7 +316,12 @@ check("one naming none is passed on", dna.mcp_carriage_of("POST", get_json, lone
 local deep = string.rep("[", 1001) .. string.rep("]", 1001)
 local nested = '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"a","x":' .. deep .. ',"_meta":{"dna.d3.com/key":"k"}}}'
 check("a call nested past cjson's depth naming a credential is unreadable", dna.mcp_carriage_of("POST", get_json, nested, {}).unreadable_credential == true)
-check("a streamed call naming a credential is unreadable", dna.mcp_carriage_of("POST", get_json, nil, {}, { names_credential = true }).unreadable_credential == true)
+check("a streamed JSON call past the cap naming a credential is too large",
+  dna.mcp_carriage_of("POST", get_json, nil, {}, { names_credential = true, too_large = true }).unreadable_reason == "too-large")
+check("a streamed JSON-RPC body naming a credential is not one call",
+  dna.mcp_carriage_of("POST", get_json, nil, {}, { names_credential = true, jsonrpc = true }).unreadable_reason == "not-one-call")
+check("a streamed body that never says jsonrpc is left alone",
+  dna.mcp_carriage_of("POST", get_json, nil, {}, { names_credential = true }).unreadable_credential == false)
 check("a streamed call is never parsed", dna.mcp_carriage_of("POST", get_json, nil, {}, { names_credential = false }).rpc == nil)
 
 -- nginx hides every variable without an `env` line, so a missing one is a setting silently ignored.

@@ -883,6 +883,45 @@ describe('forwarding and MCP carriage (ADR 0081)', () => {
     expect(log.originCalls).toHaveLength(0);
   });
 
+  it('refuses a JSON-RPC batch that names a credential, before deciding or reaching the origin', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    const batch = new Request('https://mcp.example/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'user-agent': 'Agent/1' },
+      body: JSON.stringify([
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'a', _meta: { 'dna.d3.com/key': 'k' } },
+        },
+      ]),
+    }) as IncomingRequest;
+    const res = await run(batch);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe('mcp_call_unreadable');
+    expect(log.policyCalls).toHaveLength(0);
+    expect(log.originCalls).toHaveLength(0);
+  });
+
+  it('passes an upload that only holds an example call on to the origin', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    const example = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { _meta: { 'dna.d3.com/key': 'k' } },
+    });
+    const upload = new Request('https://mcp.example/upload', {
+      method: 'POST',
+      headers: { 'content-type': 'multipart/form-data; boundary=b', 'user-agent': 'Agent/1' },
+      body: `--b\r\ncontent-disposition: form-data; name="f"; filename="call.json"\r\n\r\n${example}\r\n--b--\r\n`,
+    }) as IncomingRequest;
+    const res = await run(upload);
+    expect(res.status).toBe(200);
+    expect(log.originCalls).toHaveLength(1);
+  });
+
   it('gives a lifted key past its cap no payment budget, so a failed decision falls open without it', async () => {
     const log = stubOutbound({ status: 500 }, '{}', { 'content-type': 'application/json' });
     const res = await run(mcpCall({ name: 'get_report', _meta: { 'dna.d3.com/key': 'k'.repeat(5000) } }));

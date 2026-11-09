@@ -64,17 +64,17 @@ location replaces the include's there. Your old `env` lines can stay.
 
 Each needs its `env` line, which `dna.main.conf` already has:
 
-| Variable                    | Default                               | What it does                                                                                                |
-| --------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `DNA_API_KEY`               | unset                                 | Your org's key. **Unset means pure passthrough**: nothing is asked.                                         |
-| `DNA_ENABLED`               | unset                                 | `false` turns DNA off without removing the key.                                                             |
-| `DNA_FAIL_MODE`             | `open`                                | `open`: serve the page when DNA can't answer. `closed`: answer `403` instead.                               |
-| `DNA_TIMEOUT_MS`            | `150`                                 | The limit on each step of asking DNA: connecting, sending, and each read.                                   |
-| `DNA_PAYMENT_TIMEOUT_MS`    | `10000`                               | The budget for a request that pays: settlement happens inside it.                                           |
-| `DNA_EXCLUDE_HEADERS`       | unset                                 | Comma-separated header names that never leave your server.                                                  |
-| `DNA_EXCLUDE_COOKIES`       | unset                                 | Comma-separated cookie names that never leave your server.                                                  |
-| `DNA_DEBUG_LOG_RAW_PAYLOAD` | unset                                 | `true` keeps every request header (but the excluded and the credentials below) on DNA's record. Debug only. |
-| `DNA_ENDPOINT`              | `https://edge-api.d3.com/v1/decision` | Leave unset unless we give you another.                                                                     |
+| Variable                    | Default                               | What it does                                                                                                 |
+| --------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `DNA_API_KEY`               | unset                                 | Your org's key. **Unset means pure passthrough**: nothing is asked.                                          |
+| `DNA_ENABLED`               | unset                                 | `false` turns DNA off without removing the key.                                                              |
+| `DNA_FAIL_MODE`             | `open`                                | `open`: serve the page when DNA can't answer. `closed`: answer `403` instead.                                |
+| `DNA_TIMEOUT_MS`            | `150`                                 | The limit on each step of asking DNA: connecting, sending, and each read.                                    |
+| `DNA_PAYMENT_TIMEOUT_MS`    | `10000`                               | The budget for a request that pays: settlement happens inside it.                                            |
+| `DNA_EXCLUDE_HEADERS`       | unset                                 | Comma-separated header names that never leave your server. Up to 128: past that, a warning in the error log. |
+| `DNA_EXCLUDE_COOKIES`       | unset                                 | Comma-separated cookie names that never leave your server. Up to 128, likewise.                              |
+| `DNA_DEBUG_LOG_RAW_PAYLOAD` | unset                                 | `true` keeps every request header (but the excluded and the credentials below) on DNA's record. Debug only.  |
+| `DNA_ENDPOINT`              | `https://edge-api.d3.com/v1/decision` | Leave unset unless we give you another.                                                                      |
 
 ## What leaves your server
 
@@ -116,7 +116,8 @@ when a browser is navigating, and serves the page once the visitor pays.
   reaches your server without it. An unpaid call is answered in band, as a
   JSON-RPC result with the call's `id`; a paid one gets the receipt in its
   result's `_meta`. A call too large to read that names one of our credentials
-  is refused with a `413`. To add the receipt, the script asks your server
+  is refused with a `413`; a batch, or a call sent under another content type
+  or as a GET, that carries one is refused with a `400`. To add the receipt, the script asks your server
   for an uncompressed result.
 
 ## Outcome reports

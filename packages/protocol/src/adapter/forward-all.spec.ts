@@ -3,6 +3,7 @@ import {
   FORWARDED_MAX_TOTAL_LENGTH,
   FORWARDED_VALUE_MAX_LENGTH,
   echoedExclusions,
+  exclusionOverflowWarning,
   forwardAll,
   NO_EXCLUSIONS,
   parseExclusionList,
@@ -128,6 +129,20 @@ describe('forwardAll, hostile shapes', () => {
       NO_CAPS
     );
     expect(out.headers).toEqual({ 'x-ok': '1' });
+  });
+});
+
+describe('exclusionOverflowWarning', () => {
+  const names = (n: number) => Array.from({ length: n }, (_, i) => `x-${i}`);
+
+  it('says nothing at the cap, and names each kind past it', () => {
+    expect(exclusionOverflowWarning({ headers: names(FORWARDED_MAX_NAMES), cookies: [] })).toBeUndefined();
+    expect(exclusionOverflowWarning({ headers: names(FORWARDED_MAX_NAMES + 1), cookies: [] })).toBe(
+      `DNA_EXCLUDE_HEADERS lists 129 names, past the 128 DNA is sent: it reads any header a request lacks as kept back, and skips the rules that check one`
+    );
+    expect(exclusionOverflowWarning({ headers: names(130), cookies: names(129) })).toMatch(
+      /^DNA_EXCLUDE_HEADERS lists 130 names.*; DNA_EXCLUDE_COOKIES lists 129 names.*any cookie a request lacks/
+    );
   });
 });
 

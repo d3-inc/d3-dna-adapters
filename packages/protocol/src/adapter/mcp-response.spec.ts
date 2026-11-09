@@ -5,6 +5,7 @@ import {
   MCP_KEY_ARGUMENT_SCHEMA,
   MCP_RESULT_MAX_BYTES,
   McpKeyArgumentMemory,
+  unreadableCallResponse,
   withMcpResult,
 } from './mcp-response';
 import { buildPaymentResponse } from './payment-response';
@@ -145,6 +146,23 @@ describe('withMcpResult', () => {
 
     const call = await withMcpResult(jsonRpc({ tools }), { method: 'tools/call', keyArgument: true });
     expect((await call.json()).result.tools[1]).toEqual({ name: 'b' });
+  });
+});
+
+describe('unreadableCallResponse', () => {
+  it("answers a call too large to read 413, and one not read as one call with the worker's own 400", async () => {
+    const tooLarge = unreadableCallResponse();
+    expect(tooLarge.status).toBe(413);
+    expect(await tooLarge.json()).toEqual({ error: 'mcp_call_too_large' });
+
+    const notOneCall = unreadableCallResponse('not-one-call');
+    expect(notOneCall.status).toBe(400);
+    expect(await notOneCall.json()).toEqual({
+      error: 'mcp_call_unreadable',
+      detail: 'Send one JSON-RPC request per call, as application/json.',
+    });
+    expect(notOneCall.headers.get('x-d3-edge')).toBe('fail-closed');
+    expect(notOneCall.headers.get('cache-control')).toBe('no-store');
   });
 });
 

@@ -69,6 +69,7 @@ export {
   FORWARDED_VALUE_MAX_LENGTH,
   NO_EXCLUSIONS,
   forwardAll,
+  exclusionOverflowWarning,
   parseExclusionList,
   withheldOf,
 } from './adapter/forward-all';
@@ -91,8 +92,9 @@ export {
   oversizedCallNamesCredential,
   recordableName,
   recordedMcpCall,
+  unreadCallNamesCredential,
 } from './adapter/mcp';
-export type { McpCarriage } from './adapter/mcp';
+export type { McpCarriage, UnreadableReason } from './adapter/mcp';
 export {
   McpKeyArgumentMemory,
   MCP_KEY_ARGUMENT_MEMORY_MS,

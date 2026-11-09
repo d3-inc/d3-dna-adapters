@@ -290,11 +290,30 @@ function M.settings(getenv)
   }
 end
 
+-- exclusionOverflowWarning: what to tell a site whose list is longer than DNA is sent.
+function M.exclusion_overflow_warning(exclude)
+  local lines = {}
+  for _, kind in ipairs({ "headers", "cookies" }) do
+    local n = #exclude[kind]
+    if n > FORWARDED_MAX_NAMES then
+      lines[#lines + 1] = string.format(
+        "DNA_EXCLUDE_%s lists %d names, past the %d DNA is sent: it reads any %s a request lacks as kept back, and skips the rules that check one",
+        string.upper(kind), n, FORWARDED_MAX_NAMES, kind == "headers" and "header" or "cookie")
+    end
+  end
+  if #lines == 0 then return nil end
+  return table.concat(lines, "; ")
+end
+
 local cached
 
--- The environment is fixed for a worker's life, so read it once per worker.
+-- The environment is fixed for a worker's life, so read it, and warn about it, once per worker.
 function M.cached_settings(getenv)
-  if cached == nil then cached = M.settings(getenv) end
+  if cached == nil then
+    cached = M.settings(getenv)
+    local overflow = M.exclusion_overflow_warning(cached.exclude)
+    if overflow ~= nil then ngx.log(ngx.ERR, "dna: ", overflow) end
+  end
   return cached
 end
 
@@ -584,13 +603,11 @@ end
 M.is_json_type = is_json_type
 
 -- readJsonRpcRequest: one call in a JSON POST body, else nil. `id` is nil when absent.
--- The second result is true for a JSON POST cjson could not read at all.
 function M.read_json_rpc_request(method, content_type, body)
   if method ~= "POST" or not is_json_type(content_type) then return nil end
   if #body == 0 or #body > M.MCP_BODY_MAX_BYTES then return nil end
 
   local parsed = M.json_decode(body)
-  if parsed == nil then return nil, true end
   if not is_record(parsed) or parsed.jsonrpc ~= "2.0" or type(parsed.method) ~= "string" then return nil end
 
   local id = parsed.id
@@ -600,18 +617,77 @@ function M.read_json_rpc_request(method, content_type, body)
 end
 
 -- A byte search, not a parse: a key hidden behind JSON escapes is the client hiding its own credential.
+-- Each key as JSON spells it: PHP's encoder writes `/` as `\/` by default, so both count.
+local CREDENTIAL_NEEDLES = {}
+for _, key in ipairs({ MCP_X402_META, MCP_DNA_KEY_META, MCP_KEY_ARGUMENT }) do
+  local quoted = '"' .. key .. '"'
+  CREDENTIAL_NEEDLES[#CREDENTIAL_NEEDLES + 1] = quoted
+  if string.find(quoted, "/", 1, true) then
+    CREDENTIAL_NEEDLES[#CREDENTIAL_NEEDLES + 1] = (string.gsub(quoted, "/", "\\/"))
+  end
+end
+
+-- Found past its opening quote, then the quote checked: a body of quotes would
+-- otherwise make every position a candidate.
+local function find_quoted(body, needle)
+  local rest = string.sub(needle, 2)
+  local init = 2
+  while true do
+    local at = string.find(body, rest, init, true)
+    if at == nil then return false end
+    if string.byte(body, at - 1) == 34 then return true end
+    init = at + 1
+  end
+end
+
 local function names_credential(body)
-  for _, key in ipairs({ MCP_X402_META, MCP_DNA_KEY_META, MCP_KEY_ARGUMENT }) do
-    if string.find(body, '"' .. key .. '"', 1, true) then return true end
+  for _, needle in ipairs(CREDENTIAL_NEEDLES) do
+    if find_quoted(body, needle) then return true end
   end
 
   return false
+end
+
+-- The first byte of a JSON body's first value, past a UTF-8 BOM and whitespace.
+local function first_value_byte(body)
+  local at = string.sub(body, 1, 3) == "\239\187\191" and 4 or 1
+  return string.byte(body, string.find(body, "[^ \t\r\n]", at) or #body + 1)
+end
+
+local function starts_as_json(body)
+  local first = first_value_byte(body)
+  return first == 123 or first == 91
+end
+
+-- Whether a call carries one of our credentials where lift_mcp_payment takes it from.
+local function call_carries_credential(call)
+  local params = is_record(call.params) and call.params or nil
+  if params == nil then return false end
+  local meta = is_record(params._meta) and params._meta or nil
+  if meta and (meta[MCP_X402_META] ~= nil or meta[MCP_DNA_KEY_META] ~= nil) then return true end
+  return call.method == "tools/call" and is_record(params.arguments) and params.arguments[MCP_KEY_ARGUMENT] ~= nil
 end
 
 -- A JSON POST past the read cap whose bytes name a credential key: it cannot be stripped.
 function M.oversized_call_names_credential(method, content_type, body)
   if method ~= "POST" or not is_json_type(content_type) or #body <= M.MCP_BODY_MAX_BYTES then return false end
   return names_credential(body)
+end
+
+-- unreadCallNamesCredential: a body JSON-RPC at its top level, not read as one call
+-- (a batch, another content type), whose calls carry a credential. One that will
+-- not parse (or that cjson rejects) falls back to the byte search.
+function M.unread_call_names_credential(rpc, body)
+  if rpc ~= nil or #body == 0 or not starts_as_json(body) then return false end
+
+  local parsed = #body <= M.MCP_BODY_MAX_BYTES and M.json_decode(body) or nil
+  if parsed == nil then return find_quoted(body, '"jsonrpc"') and names_credential(body) end
+
+  for _, item in ipairs(is_array(parsed) and parsed or { parsed }) do
+    if is_record(item) and item.jsonrpc ~= nil and call_carries_credential(item) then return true end
+  end
+
+  return false
 end
 
 -- recordableName: no query, fragment or userinfo in what the record keeps.
@@ -704,8 +780,8 @@ end
 -- streamed from disk, whose credential search `streamed` already holds.
 function M.mcp_carriage_of(method, get_header, body, excluded, streamed)
   local content_type = get_header("content-type")
-  local rpc, undecodable
-  if body ~= nil then rpc, undecodable = M.read_json_rpc_request(method, content_type, body) end
+  local rpc
+  if body ~= nil then rpc = M.read_json_rpc_request(method, content_type, body) end
   local facts = M.mcp_facts_of(get_header, rpc, excluded)
   local lifted, origin_body = {}, nil
   if rpc then lifted, origin_body = M.lift_mcp_payment(rpc) end
@@ -715,16 +791,22 @@ function M.mcp_carriage_of(method, get_header, body, excluded, streamed)
     lifted["payment-authorization"] = "Payment " .. mirrored
   end
 
+  local too_large, not_one_call
+  if streamed ~= nil then
+    too_large = streamed.too_large and streamed.names_credential
+    not_one_call = not too_large and streamed.names_credential and streamed.jsonrpc
+  else
+    too_large = M.oversized_call_names_credential(method, content_type, body)
+    not_one_call = not too_large and M.unread_call_names_credential(rpc, body)
+  end
+
   return {
     rpc = rpc,
     facts = facts,
     lifted = lifted,
     origin_body = origin_body,
-    -- cjson refuses what JSON.parse reads (a lone surrogate escape, nesting past 1,000), so a
-    -- call only it cannot read is refused like one too large to read, if it names a credential.
-    unreadable_credential = (streamed ~= nil and streamed.names_credential)
-      or (body ~= nil and M.oversized_call_names_credential(method, content_type, body))
-      or (undecodable == true and names_credential(body)),
+    unreadable_credential = (too_large or not_one_call) == true,
+    unreadable_reason = (too_large and "too-large") or (not_one_call and "not-one-call") or nil,
   }
 end
 
@@ -766,14 +848,17 @@ function M.extract(req, opts)
   end
 
   -- Overwritten whenever there is a body or a claimed digest: a forged one never passes through.
+  -- A GET or HEAD signs no body, but nginx still passes one on, so the MCP
+  -- check below reads it whatever the method.
   local can_have_body = req.method ~= "GET" and req.method ~= "HEAD"
-  local streamed = can_have_body and req.streamed or nil
-  local body = nil
-  if streamed then
+  local streamed = req.streamed
+  local body = (not streamed) and (req.body or "") or nil
+  if can_have_body and streamed then
     headers["content-digest"] = streamed.digest
-  else
-    body = can_have_body and (req.body or "") or ""
-    if #body > 0 or headers["content-digest"] ~= nil then headers["content-digest"] = content_digest(body) end
+  elseif can_have_body and (#body > 0 or headers["content-digest"] ~= nil) then
+    headers["content-digest"] = content_digest(body)
+  elseif not can_have_body and headers["content-digest"] ~= nil then
+    headers["content-digest"] = content_digest("")
   end
 
   local mcp = nil
@@ -906,9 +991,12 @@ function M.payment_unavailable_answer()
     { { "content-type", JSON_TYPE }, { "cache-control", "no-store" } }, "fail-closed")
 end
 
--- unreadableCallResponse: a call too large to strip that names our credential.
-function M.unreadable_call_answer()
-  return answer(413, '{"error":"mcp_call_too_large"}',
+-- unreadableCallResponse: a call we could not read that names our credential.
+function M.unreadable_call_answer(reason)
+  local too_large = reason ~= "not-one-call"
+  return answer(too_large and 413 or 400,
+    too_large and '{"error":"mcp_call_too_large"}'
+      or '{"detail":"Send one JSON-RPC request per call, as application/json.","error":"mcp_call_unreadable"}',
     { { "content-type", JSON_TYPE }, { "cache-control", "no-store" } }, "fail-closed")
 end
 
@@ -1082,27 +1170,39 @@ function M.read_body(method, content_type)
   local json_call = method == "POST" and is_json_type(content_type)
   local size = f:seek("end")
   f:seek("set")
-  if json_call and size <= M.MCP_BODY_MAX_BYTES then
-    local whole = f:read("*a")
+  local first = f:read(BODY_CHUNK) or ""
+  local looks_json = starts_as_json(first)
+  -- Small enough to parse, and a call may be in it: read whole.
+  if (json_call or looks_json) and size <= M.MCP_BODY_MAX_BYTES then
+    local whole = first .. (f:read("*a") or "")
     f:close()
     return { data = whole }
   end
 
-  local digest, tail, names = sha256:new(), "", false
-  while true do
-    local chunk = f:read(BODY_CHUNK)
-    if chunk == nil then break end
+  -- Otherwise searched only where a call could be: a JSON POST, or a body that starts as JSON.
+  local search = json_call or looks_json
+  local digest, tail, names, jsonrpc = sha256:new(), "", false, false
+  local chunk = first
+  while chunk ~= nil and chunk ~= "" do
     digest:update(chunk)
-    if json_call and not names then
+    if search then
       -- The previous chunk's tail keeps a key split across two chunks findable.
-      names = names_credential(tail .. chunk)
+      local window = tail .. chunk
+      names = names or names_credential(window)
+      jsonrpc = jsonrpc or find_quoted(window, '"jsonrpc"')
       tail = string.sub(chunk, -32)
     end
+    chunk = f:read(BODY_CHUNK)
   end
   f:close()
 
-  local streamed = { digest = "sha-256=:" .. ngx.encode_base64(digest:final()) .. ":", names_credential = names }
-  return { streamed = streamed }
+  return { streamed = {
+    digest = "sha-256=:" .. ngx.encode_base64(digest:final()) .. ":",
+    names_credential = names,
+    jsonrpc = jsonrpc and looks_json,
+    -- Only a JSON POST past the read cap is streamed and still a call.
+    too_large = json_call,
+  } }
 end
 
 local function post_decision(settings, payload, budget_ms)
@@ -1229,7 +1329,7 @@ function M.access(revision)
 
   local paying = M.presents_payment(by_name, ngx.var.args, payload.headers)
 
-  if mcp and mcp.unreadable_credential then return send(M.unreadable_call_answer()) end
+  if mcp and mcp.unreadable_credential then return send(M.unreadable_call_answer(mcp.unreadable_reason)) end
 
   local res, err = decide(settings, payload, paying and settings.payment_timeout_ms or settings.timeout_ms)
   local decision = res and res.status >= 200 and res.status < 300 and M.json_decode(res.body) or nil

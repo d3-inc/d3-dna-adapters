@@ -1,4 +1,4 @@
-import { MCP_KEY_ARGUMENT } from './mcp';
+import { MCP_KEY_ARGUMENT, type UnreadableReason } from './mcp';
 import { privateCacheControl } from './payment-response';
 
 /** How long a host's `mcpKeyArgument` holds after the decision that carried it (ADR 0081 decision 4). */
@@ -21,12 +21,17 @@ export const MCP_KEY_ARGUMENT_SCHEMA = {
 const REPRESENTATION_HEADERS = ['content-length', 'content-digest', 'repr-digest', 'content-md5', 'etag'];
 
 /**
- * The answer to an MCP call too large to read that names one of our
- * credentials: the adapter can neither strip it nor let the origin see it.
+ * The answer to an MCP call the adapter did not read that names one of our
+ * credentials: it can neither strip it nor let the origin see it. A call it
+ * could not read as one call gets the worker's own answer for one.
  */
-export function unreadableCallResponse(): Response {
-  return new Response(JSON.stringify({ error: 'mcp_call_too_large' }), {
-    status: 413,
+export function unreadableCallResponse(reason: UnreadableReason = 'too-large'): Response {
+  const tooLarge = reason === 'too-large';
+  const body = tooLarge
+    ? { error: 'mcp_call_too_large' }
+    : { error: 'mcp_call_unreadable', detail: 'Send one JSON-RPC request per call, as application/json.' };
+  return new Response(JSON.stringify(body), {
+    status: tooLarge ? 413 : 400,
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',

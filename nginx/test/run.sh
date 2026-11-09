@@ -36,10 +36,10 @@ up 127.0.0.1:3010; up 127.0.0.1:9010/__log
 
 # Short budgets keep the timeout checks quick; production defaults are 150 ms and 10 s.
 start() {
-  docker run -d --name "$NAME" "${net[@]}" "$@" \
+  docker run -d --name "$NAME" "${net[@]}" \
     -e DNA_API_KEY=test-key -e DNA_ENDPOINT="http://$host:9010/v1/decision" \
     -e DNA_TIMEOUT_MS=500 -e DNA_PAYMENT_TIMEOUT_MS=3000 \
-    -e DNA_EXCLUDE_HEADERS=x-internal-token -e DNA_EXCLUDE_COOKIES=sid \
+    -e DNA_EXCLUDE_HEADERS=x-internal-token -e DNA_EXCLUDE_COOKIES=sid "$@" \
     -v "$PWD/..":/etc/nginx/lua:ro -v "$work/nginx.conf":/usr/local/openresty/nginx/conf/nginx.conf:ro \
     -v "$work/logs":/logs "$IMAGE" \
     sh -c 'opm get ledgetech/lua-resty-http >/dev/null 2>&1 && exec openresty -g "daemon off;"' >/dev/null || exit 1
@@ -53,8 +53,9 @@ kill "$mock"; wait "$mock" 2>/dev/null
 ERROR_LOG="$work/logs/error.log" node run.mjs dead; dead=$?
 
 # DNA_ENABLED=false: off, but our credentials and a forged verdict still never reach the origin.
+# An exclusion list past the 128 DNA is sent is warned about once, not per request.
 docker rm -f "$NAME" >/dev/null 2>&1
-start -e DNA_ENABLED=false
+start -e DNA_ENABLED=false -e DNA_EXCLUDE_HEADERS="$(seq -s, -f 'x-many-%g' 1 130)"
 ERROR_LOG="$work/logs/error.log" node run.mjs disabled; off=$?
 [ $(( live || dead || off )) -eq 0 ] || { echo "--- error.log"; tail -40 "$work/logs/error.log"; }
 exit $(( live || dead || off ))
