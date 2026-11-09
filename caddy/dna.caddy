@@ -1,4 +1,4 @@
-# DNA for Caddy, revision 2. Stock Caddy 2.8 or later, no plugin.
+# DNA for Caddy, revision 2. Stock Caddy 2.11.7 or later, no plugin.
 #
 # Import this file once, below any global options block, add `invoke dna` to
 # each site you want covered, set DNA_API_KEY in Caddy's environment and
