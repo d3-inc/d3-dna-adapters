@@ -69,6 +69,24 @@ export function adapterNameOf(type: AdapterType, version: string | undefined): s
   return name.length <= ADAPTER_NAME_MAX_LENGTH ? name : undefined;
 }
 
+const SHORT_COMMIT = /^[0-9a-f]{7,12}$/;
+
+// `git describe` without `--abbrev=0` appends `-<n>-g<hash>`, which parses as a
+// pre-release and sorts below the very tag it describes.
+const DESCRIBE_SUFFIX = /-\d+-g[0-9a-f]+$/;
+
+/**
+ * The version a build from source sends: its nearest release tag
+ * (`git describe --tags --abbrev=0`) without the `v`, then `+` and its short
+ * commit hash. Undefined for anything else, so the build names nothing.
+ */
+export function sourceBuildVersion(tag: string, commit: string): string | undefined {
+  const release = tag.startsWith('v') ? tag.slice(1) : tag;
+  if (!isAdapterVersion(release) || release.includes('+') || DESCRIBE_SUFFIX.test(release)) return undefined;
+
+  return SHORT_COMMIT.test(commit) ? `${release}+${commit}` : undefined;
+}
+
 /** False for a type we don't publish, and for one of ours on a route it never calls. */
 export function callsEndpoint(type: string, endpoint: AdapterEndpoint): boolean {
   if (!isAdapterType(type)) return false;

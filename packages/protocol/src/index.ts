@@ -84,6 +84,7 @@ export {
   isAdapterType,
   isAdapterVersion,
   parseAdapterName,
+  sourceBuildVersion,
 } from './adapter/adapter-name';
 export type { AdapterEndpoint, AdapterName, AdapterType } from './adapter/adapter-name';
 export { DEFAULT_DNA_ENDPOINT, readAdapterSettings } from './adapter/adapter-settings';

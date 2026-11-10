@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bakedNameProblem,
   distTagFor,
   isAcknowledgedHandPublish,
   oldRepoNameProblem,
@@ -78,6 +79,23 @@ describe('distTagFor', () => {
   it('refuses a prerelease off main', () => {
     const onLine = { onMain: false, releaseLines: ['0.10'] };
     expect(() => distTagFor(parseReleaseTag('v0.10.3-next.1'), onLine, null)).toThrow('only main feeds');
+  });
+});
+
+describe('bakedNameProblem', () => {
+  const NAME = '@d3-inc/d3-dna-cloudflare-adapter';
+
+  it('passes a bundle that bakes this release', () => {
+    expect(
+      bakedNameProblem(NAME, '0.11.0', 'adapterNameOf("cloudflare", true ? "0.11.0" : void 0)')
+    ).toBeNull();
+  });
+
+  it('refuses a bundle built without the packed version, or with another one', () => {
+    expect(bakedNameProblem(NAME, '0.11.0', 'typeof __DNA_ADAPTER_VERSION__')).toMatch(/names no build/);
+    expect(bakedNameProblem(NAME, '0.11.0', 'adapterNameOf("cloudflare", "0.10.0")')).toMatch(
+      /does not name itself 0\.11\.0/
+    );
   });
 });
 

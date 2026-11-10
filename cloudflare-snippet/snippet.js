@@ -64,7 +64,7 @@ const HEADER_LENGTH_CAPS = new Map([
   ['payment-authorization', 4096],
 ]);
 
-// This file's build, by its own version: bump it with any change to what the snippet does.
+// Our build of this file, by its own version. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter).
 const DNA_ADAPTER = 'snippet:1.0.0';
 
 const PAYMENT_HEADERS = ['payment-signature', 'x-payment', 'payment-authorization', 'd3pay-session'];

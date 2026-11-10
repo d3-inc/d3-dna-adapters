@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 
 /** What a release publishes, in order: both SDKs depend on protocol at the same version, so it goes first. */
 export const RELEASE_PACKAGES = [
-  { dir: 'protocol', name: '@d3-inc/d3-dna-protocol' },
-  { dir: 'cloudflare-adapter', name: '@d3-inc/d3-dna-cloudflare-adapter' },
-  { dir: 'vercel-middleware', name: '@d3-inc/d3-dna-vercel-middleware' },
+  { dir: 'protocol', name: '@d3-inc/d3-dna-protocol', namesItself: false },
+  { dir: 'cloudflare-adapter', name: '@d3-inc/d3-dna-cloudflare-adapter', namesItself: true },
+  { dir: 'vercel-middleware', name: '@d3-inc/d3-dna-vercel-middleware', namesItself: true },
 ] as const;
 
 export const PROTOCOL_PACKAGE = RELEASE_PACKAGES[0].name;
@@ -121,6 +121,19 @@ function pathsIn(value: unknown): string[] {
 
   if (value && typeof value === 'object') return Object.values(value).flatMap(pathsIn);
   return [];
+}
+
+/**
+ * An SDK bundle that would not name itself by this release in `dna-adapter`:
+ * built without `DNA_PACKED_VERSION`, it names no build, or the version it bakes
+ * is another one. `bundle` is the tarball's `dist/index.js`.
+ */
+export function bakedNameProblem(name: string, version: string, bundle: string): string | null {
+  if (bundle.includes('__DNA_ADAPTER_VERSION__')) {
+    return `${name} bundle names no build: DNA_PACKED_VERSION was unset`;
+  }
+
+  return bundle.includes(JSON.stringify(version)) ? null : `${name} bundle does not name itself ${version}`;
 }
 
 /**

@@ -861,6 +861,11 @@ async function live() {
     lp
   );
   check(
+    'legacy: names no build, so DNA reads its revision alone',
+    s.decisions[0]?.adapter === undefined,
+    s.decisions[0]?.adapter
+  );
+  check(
     'legacy: the page, no marker, no report',
     res.status === 200 && res.headers['x-d3-ref'] === undefined && s.reports.length === 0,
     res.headers

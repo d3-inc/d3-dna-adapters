@@ -3,6 +3,7 @@ import {
   ADAPTER_NAME_MAX_LENGTH,
   ADAPTER_TYPE_ENDPOINTS,
   adapterNameOf,
+  sourceBuildVersion,
   callsEndpoint,
   compareAdapterVersions,
   isAdapterType,
@@ -65,6 +66,23 @@ describe('adapterNameOf', () => {
     ['a value past the cap', `0.11.0+${'a'.repeat(60)}`],
   ])('names nothing for %s', (_name, version) => {
     expect(adapterNameOf('vercel-middleware', version)).toBeUndefined();
+  });
+});
+
+describe('sourceBuildVersion', () => {
+  it('reads the nearest tag without its v, then the short commit', () => {
+    expect(sourceBuildVersion('v0.10.1', '5ac94a8')).toBe('0.10.1+5ac94a8');
+    expect(sourceBuildVersion('v0.11.0-next.1', '5ac94a823be9')).toBe('0.11.0-next.1+5ac94a823be9');
+  });
+
+  it.each([
+    ['git describe output, which sorts below its own tag', 'v0.10.1-3-g5ac94a8', '5ac94a8'],
+    ['a tag that is not a version', 'release-7', '5ac94a8'],
+    ['a tag already carrying build metadata', 'v0.10.1+x', '5ac94a8'],
+    ['a full commit hash', 'v0.10.1', '5ac94a823be95e5391b7bc75ebfcf16eeef26c7e'],
+    ['a short hash', 'v0.10.1', '5ac94a'],
+  ])('names nothing for %s', (_name, tag, commit) => {
+    expect(sourceBuildVersion(tag, commit)).toBeUndefined();
   });
 });
 
