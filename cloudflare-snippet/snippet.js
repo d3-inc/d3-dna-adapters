@@ -231,17 +231,27 @@ function handoffFromUrl(url) {
 
 // Every param of ours, so none of them reaches the origin as a cache key or a
 // line in its access log.
+// Pair by pair, never through URLSearchParams: its toString re-encodes the
+// whole query, so `?tag=a%20b` would reach a different origin cache key than
+// the visitor asked for, on every request, whether or not one of ours was there.
 function stripPayParams(url) {
   const query = url.indexOf('?');
   if (query === -1) return url;
 
-  const params = new URLSearchParams(url.slice(query + 1));
-  for (const name of [...params.keys()]) {
-    if (isNamespaceParam(name)) params.delete(name);
-  }
+  const kept = url
+    .slice(query + 1)
+    .split('&')
+    .filter((pair) => !isNamespaceParam(paramName(pair)));
+  return kept.length > 0 ? `${url.slice(0, query)}?${kept.join('&')}` : url.slice(0, query);
+}
 
-  const rest = params.toString();
-  return rest ? `${url.slice(0, query)}?${rest}` : url.slice(0, query);
+function paramName(pair) {
+  const name = pair.split('=', 1)[0].replaceAll('+', ' ');
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return name;
+  }
 }
 
 // One of our cookies as a header of its own, when it is there and short enough.

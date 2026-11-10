@@ -529,20 +529,7 @@
           "__Secure-d3visitor": "V"
         },
         "droppedHeaders": [],
-        "droppedCookies": [
-          "__Secure-d3pad8",
-          "__Secure-d3pad9",
-          "__Secure-d3pad10",
-          "__Secure-d3pad11",
-          "__Secure-d3pad12",
-          "__Secure-d3pad13",
-          "__Secure-d3pad14",
-          "__Secure-d3pad15",
-          "__Secure-d3pad16",
-          "__Secure-d3pad17",
-          "__Secure-d3pad18",
-          "__Secure-d3pad19"
-        ],
+        "droppedCookies": [],
         "droppedUnlisted": {
           "headers": false,
           "cookies": false

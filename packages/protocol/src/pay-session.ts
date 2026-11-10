@@ -192,9 +192,14 @@ export function stripOwnCookies(cookieHeader: string): string | null {
   return stripCookies(cookieHeader, isNamespaceCookie);
 }
 
-/** Whether the jar holds anything of ours, which is what makes a strip worth building a request for. */
+/**
+ * Whether the jar holds anything of ours, which is what makes a strip worth
+ * building a request for. Read the way `stripCookies` reads a name and not the
+ * way `cookiesOf` does: a pair with no `=` is a cookie name to the stripper, so
+ * asking a stricter question here would skip the strip that removes it.
+ */
 export function holdsOwnCookie(cookieHeader: string): boolean {
-  return cookiesOf(cookieHeader).some(([name]) => isNamespaceCookie(name));
+  return cookieHeader.split(';').some((pair) => isNamespaceCookie(cookieName(pair.trim())));
 }
 
 /** The `Set-Cookie` value a redemption rides to the browser; `Lax` is what a top-level redirect sends. */

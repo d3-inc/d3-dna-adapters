@@ -113,7 +113,8 @@ local OWN_COOKIES     = set_of({ PAY_SESSION_COOKIE, PERSON_PASS_COOKIE })
 -- `__Host-d3_*` and `__Secure-d3-*` cookies, which no adapter should touch.
 local RESERVED_COOKIES = set_of({ PAY_SESSION_COOKIE, PERSON_PASS_COOKIE, VISITOR_ID_COOKIE })
 local NAMESPACE_MAX_COOKIES = 8
-local NAMESPACE_VALUE_MAX_LENGTH = 512
+local NAMESPACE_MAX_TOTAL_LENGTH = 4096
+local NAMESPACE_NAME_MAX_LENGTH = 256
 
 local function is_namespace_cookie(name)
   if name == nil then return false end
@@ -516,6 +517,31 @@ local function with_listed_drops(out)
   return out
 end
 
+-- keepOurs: ours ride outside the shared caps, so a site's own cookies can
+-- never crowd one out. The prefix is a label no browser enforces, though, so
+-- the ones we set keep their place and the rest share a budget — dropped
+-- unnamed past it, because a list of them would reach FORWARDED_MAX_NAMES and
+-- the endpoint reads an overflowing list as its reason never to mint an id.
+local function keep_ours(out, name, value, budget)
+  if RESERVED_COOKIES[name] then
+    if #value > FORWARDED_VALUE_MAX_LENGTH then
+      out.droppedCookies[#out.droppedCookies + 1] = name
+    else
+      out.cookies[name] = value
+    end
+    return
+  end
+
+  if #name > NAMESPACE_NAME_MAX_LENGTH or budget.count >= NAMESPACE_MAX_COOKIES then return end
+
+  local size = #name + #value
+  if budget.length + size > NAMESPACE_MAX_TOTAL_LENGTH then return end
+
+  budget.count = budget.count + 1
+  budget.length = budget.length + size
+  out.cookies[name] = value
+end
+
 -- forwardAll: every header and cookie but the never-sent, the excluded and our two cookies.
 function M.forward_all(entries, exclude, caps)
   local excluded_headers = set_of(exclude.headers)
@@ -537,24 +563,15 @@ function M.forward_all(entries, exclude, caps)
 
   -- The first of a repeated name, as readCookie and most servers read it.
   -- Ours ride outside the shared caps, so a site's own cookies can never crowd
-  -- one out; the names we set keep their place however many others turn up
-  -- wearing the prefix, which no browser enforces.
-  local seen, theirs, ours = {}, 0, 0
+  -- one out; see keep_ours for what the prefix costs.
+  local seen, theirs = {}, 0
+  local budget = { count = 0, length = 0 }
   for _, cookie in ipairs(M.cookies_of(entry_lookup(entries)["cookie"])) do
     local name, value = cookie[1], cookie[2]
     if not OWN_COOKIES[name] and not excluded_cookies[name] and not seen[name] then
       seen[name] = true
       if is_namespace_cookie(name) then
-        if RESERVED_COOKIES[name] or ours < NAMESPACE_MAX_COOKIES then
-          if #value > NAMESPACE_VALUE_MAX_LENGTH then
-            out.droppedCookies[#out.droppedCookies + 1] = name
-          else
-            out.cookies[name] = value
-          end
-          if not RESERVED_COOKIES[name] then ours = ours + 1 end
-        else
-          out.droppedCookies[#out.droppedCookies + 1] = name
-        end
+        keep_ours(out, name, value, budget)
       else
         theirs = theirs + 1
         if theirs > FORWARDED_MAX_COOKIES then

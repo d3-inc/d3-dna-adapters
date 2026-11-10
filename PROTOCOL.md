@@ -124,8 +124,7 @@ A value without a cap of its own stops at 2048 chars, and those values
 together at 16 384; past either, the longest go first and each is named in
 `droppedHeaders` or `droppedCookies`. [Our own cookies](#our-names) are
 outside both, since a jar full of a site's cookies would otherwise decide
-whether ours arrived; each stops at 512 chars instead, the three we set keep
-their place, and at most eight others wearing the prefix are forwarded. Past 128 names a list stops and
+whether ours arrived. Past 128 names a list stops and
 `droppedUnlisted` says so; an exclusion list past 128 is echoed capped, with
 `droppedUnlisted` set, and every name on it is still withheld. The endpoint
 then reads every unlisted name of that kind as withheld, so a rule on one the
@@ -163,8 +162,12 @@ can never crowd one out: the browser sends `Path=/` cookies last, which is
 where a freshly set one of ours sits.
 
 The prefix is a label no browser enforces, so any script on the site can mint a
-name wearing it. An adapter therefore keeps a place for the three we set and
-forwards at most eight others, naming the rest in `droppedCookies`.
+name wearing it. An adapter therefore keeps a place for the three we set — each
+under the 2048-char value cap, and named in `droppedCookies` if it is longer —
+and forwards at most eight other names wearing the prefix, up to 4096 chars of
+name and value between them. The rest are dropped and **not** named: a list of
+them would overflow `droppedCookies`, which the endpoint reads as any cookie of
+ours possibly being missing.
 
 ### `content-digest` is yours to compute, never to relay
 

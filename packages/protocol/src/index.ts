@@ -43,7 +43,8 @@ export {
 export type { HandoffParts, PayCredential } from './pay-session';
 export {
   NAMESPACE_MAX_COOKIES,
-  NAMESPACE_VALUE_MAX_LENGTH,
+  NAMESPACE_MAX_TOTAL_LENGTH,
+  NAMESPACE_NAME_MAX_LENGTH,
   isNamespaceCookie,
   isNamespaceParam,
 } from './namespace';

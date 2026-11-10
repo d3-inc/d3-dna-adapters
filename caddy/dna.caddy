@@ -105,7 +105,7 @@ http://:8114 {
 			# the jar, so an oversized one never crosses twice.
 			header_up d3pay-session {http.request.cookie.__Host-d3pay}
 			header_up d3pay-person {http.request.cookie.__Host-d3person}
-			header_up Cookie "(^|;\s*)__Host-d3(?:pay|person)\s*=[^;]*" ""
+			header_up Cookie "(^|;\s*)__(?:Host|Secure)-d3[a-z][^=;]*\s*=[^;]*" ""
 			header_up Cookie "^;\s*" ""
 			header_up -Authorization
 			header_up -Proxy-Authorization
@@ -182,9 +182,11 @@ http://:8114 {
 		request_header -Mcp-Param-Dna-Key
 		# Spaces before `=` too: Caddy's cookie reader trims them, so a cookie DNA
 		# was handed must not survive here under a spelling the regex skipped.
-		request_header Cookie "(^|;\s*)__Host-d3(?:pay|person)\s*=[^;]*" ""
+		request_header Cookie "(^|;\s*)__(?:Host|Secure)-d3[a-z][^=;]*\s*=[^;]*" ""
 		request_header Cookie "^;\s*" ""
 		# Only when ours are present: `uri query` re-encodes and reorders the query.
+		# By name, not by prefix: a Caddyfile cannot match `d3pay_*`, so a new
+		# parameter of ours needs a line in both this list and the matcher above.
 		@ours expression `query({'d3pay_handoff': '*'}) || query({'d3pay_check': '*'}) || query({'d3pay_browser': '*'})`
 		uri @ours query {
 			-d3pay_handoff

@@ -10,7 +10,7 @@ import {
   withheldOf,
 } from './forward-all';
 import { FORWARDED_MAX_NAMES, MCP_DNA_KEY_HEADER, NEVER_FORWARDED_HEADERS } from './forwarding.constants';
-import { NAMESPACE_VALUE_MAX_LENGTH } from '../namespace';
+import { NAMESPACE_MAX_TOTAL_LENGTH, NAMESPACE_NAME_MAX_LENGTH } from '../namespace';
 
 const NO_CAPS = new Map<string, number>();
 
@@ -219,7 +219,7 @@ describe('forwardAll and the names that are ours', () => {
 
     expect(out.cookies['__Secure-d3visitor']).toBe('token');
     expect(Object.keys(out.cookies).filter((n) => n.startsWith('__Secure-d3pad'))).toHaveLength(8);
-    expect(out.droppedCookies).toContain('__Secure-d3pad8');
+    expect(out.droppedCookies).toEqual([]);
   });
 
   it('forwards it where the jar fills the total budget', () => {
@@ -232,15 +232,47 @@ describe('forwardAll and the names that are ours', () => {
     expect(out.droppedCookies.length).toBeGreaterThan(0);
   });
 
-  it('drops one of ours past its own value cap, and names it', () => {
+  it('names a cookie we set that it had to drop for size, and no other', () => {
     const out = forwardAll(
-      jarOf({ '__Secure-d3fat': 'v'.repeat(NAMESPACE_VALUE_MAX_LENGTH + 1) }),
+      jarOf({
+        '__Secure-d3visitor': 'v'.repeat(FORWARDED_VALUE_MAX_LENGTH + 1),
+        '__Secure-d3pad': 'v'.repeat(FORWARDED_VALUE_MAX_LENGTH + 1),
+      }),
       NO_EXCLUSIONS,
       NO_CAPS
     );
 
-    expect(out.cookies['__Secure-d3fat']).toBeUndefined();
-    expect(out.droppedCookies).toEqual(['__Secure-d3fat']);
+    expect(out.cookies['__Secure-d3visitor']).toBeUndefined();
+    expect(out.droppedCookies).toEqual(['__Secure-d3visitor']);
+  });
+
+  // Each of these used to reach FORWARDED_MAX_NAMES, and an overflowing list is
+  // the endpoint's reason never to mint an id.
+  it('drops a squatter unnamed, whatever its name length or number', () => {
+    const long = { [`__Secure-d3${'x'.repeat(NAMESPACE_NAME_MAX_LENGTH)}`]: 'v' };
+    const many = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`__Secure-d3pad${i}`, 'v']));
+    const out = forwardAll(
+      jarOf({ ...long, ...many, '__Secure-d3visitor': 'V', sid: '1' }),
+      NO_EXCLUSIONS,
+      NO_CAPS
+    );
+
+    expect(out.cookies['__Secure-d3visitor']).toBe('V');
+    expect(out.cookies.sid).toBe('1');
+    expect(out.droppedCookies).toEqual([]);
+    expect(out.droppedUnlisted.cookies).toBe(false);
+  });
+
+  it('bounds what a visitor can add outside the shared total', () => {
+    const fat = Object.fromEntries(
+      Array.from({ length: 8 }, (_, i) => [`__Secure-d3pad${i}`, 'v'.repeat(2000)])
+    );
+    const out = forwardAll(jarOf({ ...fat, '__Secure-d3visitor': 'V' }), NO_EXCLUSIONS, NO_CAPS);
+
+    const ours = Object.entries(out.cookies).filter(([n]) => n.startsWith('__Secure-d3'));
+    const size = ours.reduce((sum, [n, v]) => sum + n.length + v.length, 0);
+    expect(out.cookies['__Secure-d3visitor']).toBe('V');
+    expect(size).toBeLessThanOrEqual(NAMESPACE_MAX_TOTAL_LENGTH + '__Secure-d3visitor'.length + 1);
   });
 
   it('still lets a site keep ours back by name', () => {
