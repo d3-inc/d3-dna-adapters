@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ADAPTER_NAME_MAX_LENGTH,
   ADAPTER_TYPE_ENDPOINTS,
+  adapterNameOf,
   callsEndpoint,
   compareAdapterVersions,
   isAdapterType,
@@ -48,6 +49,22 @@ describe('parseAdapterName', () => {
     ['a space in the version', 'caddy:1.0.0 beta'],
   ])('drops %s', (_, value) => {
     expect(parseAdapterName(value)).toBeNull();
+  });
+});
+
+describe('adapterNameOf', () => {
+  it('names a build by its type and version', () => {
+    expect(adapterNameOf('cloudflare', '0.11.0')).toBe('cloudflare:0.11.0');
+    expect(adapterNameOf('cloudflare', '0.10.1+5ac94a8')).toBe('cloudflare:0.10.1+5ac94a8');
+  });
+
+  it.each([
+    ['no version', undefined],
+    ['a v prefix', 'v0.11.0'],
+    ['git describe output with a v', 'v0.10.1-3-g5ac94a8'],
+    ['a value past the cap', `0.11.0+${'a'.repeat(60)}`],
+  ])('names nothing for %s', (_name, version) => {
+    expect(adapterNameOf('vercel-middleware', version)).toBeUndefined();
   });
 });
 

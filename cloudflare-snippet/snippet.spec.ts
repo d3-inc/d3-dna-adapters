@@ -129,6 +129,7 @@ describe('enforcement', () => {
 
     const call = log.policyCalls[0];
     expect(call.headers.get('authorization')).toBe(`Bearer ${KEY}`);
+    expect(call.headers.get('dna-adapter')).toBe('snippet:1.0.0');
     expect(call.payload).toMatchObject({
       method: 'GET',
       url: '/page?x=1',

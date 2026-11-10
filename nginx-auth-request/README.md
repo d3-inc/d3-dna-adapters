@@ -9,7 +9,7 @@ blocks.
 
 This is the forward-auth dialect of [the decision
 protocol](../PROTOCOL.md#the-forward-auth-dialect). If you run
-OpenResty (or Kong/APISIX), the [Lua adapter](../nginx) is the richer
+OpenResty (or Kong/APISIX), the [Lua adapter](../openresty) is the richer
 install: it can hash request bodies and hand the verdict to your
 upstream as request headers. This recipe trades that for zero
 dependencies.
@@ -65,7 +65,7 @@ signed `POST`/`PUT` requests get a capped verdict (`claimed`, reason
 `body-unattested`) because nothing could check the body against its
 signed digest. `GET`/`HEAD` — nearly all agent traffic — are
 unaffected. If body attestation matters to you, use the [Lua
-adapter](../nginx).
+adapter](../openresty).
 
 ## Paid routes (D3 Pay): not this recipe
 
@@ -79,7 +79,7 @@ paywalled, and never charged.** The browser check rides on paid routes,
 so it never runs here either: this recipe declares no `adapterSet`, and
 the endpoint does not start a check it cannot finish.
 
-If you price routes, enforce them with the [Lua adapter](../nginx),
+If you price routes, enforce them with the [Lua adapter](../openresty),
 which carries the whole loop on the same OpenResty you may already run,
 or with a [worker install](https://ai.d3.com/docs/sdks/cloudflare).
 Bot-auth enforcement here is unaffected.

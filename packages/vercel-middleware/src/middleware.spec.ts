@@ -84,6 +84,7 @@ describe('createD3Middleware', () => {
     expect(h.nextCalls).toHaveLength(1);
 
     expect(h.policyCalls[0].headers.authorization).toBe(`Bearer ${KEY}`);
+    expect(h.policyCalls[0].headers['dna-adapter']).toBe('vercel-middleware:0.0.0-test');
     expect(h.policyCalls[0].body).toMatchObject({
       method: 'GET',
       url: '/page?x=1',

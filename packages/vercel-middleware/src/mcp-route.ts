@@ -19,6 +19,7 @@ import {
   type ClientDecision,
   type EdgeMode,
 } from '@d3-inc/d3-dna-protocol';
+import { MCP_ROUTE_ADAPTER_NAME } from './adapter-name';
 import { ipAddress as vercelIpAddress, waitUntil as vercelWaitUntil } from '@vercel/functions';
 import { blockResponse, networkFactsFromVercel, paymentUnavailableResponse } from './answers';
 import { resolveConfig, type D3MiddlewareConfig } from './env';
@@ -67,7 +68,12 @@ export function withD3Mcp<R extends Request, A extends unknown[]>(
     payload.requestId = requestId;
     const paying = edgeRequestPresentsPayment(request, payload);
     const client = createHttpPolicyClient(
-      { url: endpoint, bearer: cfg.apiKey, timeoutMs: paying ? cfg.paymentTimeoutMs : cfg.timeoutMs },
+      {
+        url: endpoint,
+        bearer: cfg.apiKey,
+        timeoutMs: paying ? cfg.paymentTimeoutMs : cfg.timeoutMs,
+        adapterName: MCP_ROUTE_ADAPTER_NAME,
+      },
       deps.fetchImpl
     );
     // The handler gets its own request type back (a `NextRequest`), not the plain one the strip builds.

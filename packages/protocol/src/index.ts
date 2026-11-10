@@ -78,6 +78,7 @@ export {
   ADAPTER_NAME_MAX_LENGTH,
   ADAPTER_TYPE_ENDPOINTS,
   DNA_ADAPTER_HEADER,
+  adapterNameOf,
   callsEndpoint,
   compareAdapterVersions,
   isAdapterType,

@@ -1311,6 +1311,9 @@ function M.contain_access_error()
   return paying
 end
 
+-- This install's build, by its own version: bump it with any change to what it does.
+local DNA_ADAPTER = "openresty:1.0.0"
+
 local function post_decision(settings, payload, budget_ms)
   local httpc = http.new()
   httpc:set_timeout(budget_ms)
@@ -1321,6 +1324,7 @@ local function post_decision(settings, payload, budget_ms)
     headers = {
       ["Content-Type"] = "application/json",
       ["Authorization"] = settings.api_key and ("Bearer " .. settings.api_key) or nil,
+      ["dna-adapter"] = DNA_ADAPTER,
     },
   })
 end

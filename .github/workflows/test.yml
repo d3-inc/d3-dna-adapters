@@ -29,6 +29,22 @@ jobs:
       # tsup's declaration build is the check that the published types still compile.
       - run: pnpm build
 
+  recipe-versions:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # A changed recipe names a new version, or the worker reads it by the old build's row (ADR 0092).
+      - env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-recipe-versions.ts "origin/$BASE_REF"
+
   caddy:
     name: caddy ${{ matrix.version }}
     runs-on: ubuntu-latest

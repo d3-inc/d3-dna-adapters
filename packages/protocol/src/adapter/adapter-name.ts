@@ -58,6 +58,17 @@ export function isAdapterType(type: string): type is AdapterType {
   return Object.hasOwn(ADAPTER_TYPE_ENDPOINTS, type);
 }
 
+/**
+ * The `dna-adapter` value for one of our builds, or undefined when the version is
+ * missing or malformed: such a call names nothing, and reads by its `adapterSet`.
+ */
+export function adapterNameOf(type: AdapterType, version: string | undefined): string | undefined {
+  if (version === undefined || !isAdapterVersion(version)) return undefined;
+
+  const name = `${type}:${version}`;
+  return name.length <= ADAPTER_NAME_MAX_LENGTH ? name : undefined;
+}
+
 /** False for a type we don't publish, and for one of ours on a route it never calls. */
 export function callsEndpoint(type: string, endpoint: AdapterEndpoint): boolean {
   if (!isAdapterType(type)) return false;

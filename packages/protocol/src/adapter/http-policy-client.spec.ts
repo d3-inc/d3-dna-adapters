@@ -66,6 +66,17 @@ describe('createHttpPolicyClient', () => {
     expect(await client.getDecision(PAYLOAD)).toEqual(decision);
   });
 
+  it('names the build on a decision call, and nothing when it has no name', async () => {
+    const named = stubFetch(Response.json({ action: 'pass' }));
+    const unnamed = stubFetch(Response.json({ action: 'pass' }));
+    const adapterName = 'cloudflare:0.11.0';
+    await createHttpPolicyClient({ url: URL, timeoutMs: 1000, adapterName }, named.impl).getDecision(PAYLOAD);
+    await createHttpPolicyClient({ url: URL, timeoutMs: 1000 }, unnamed.impl).getDecision(PAYLOAD);
+
+    expect((named.calls[0].init.headers as Record<string, string>)['dna-adapter']).toBe(adapterName);
+    expect(unnamed.calls[0].init.headers as Record<string, string>).not.toHaveProperty('dna-adapter');
+  });
+
   it('omits the authorization header when no secret is configured', async () => {
     const { impl, calls } = stubFetch(Response.json({ action: 'pass' }));
     await createHttpPolicyClient({ url: URL, timeoutMs: 1000 }, impl).getDecision(PAYLOAD);

@@ -15,6 +15,7 @@ import {
   type ClientDecision,
   type EdgeMode,
 } from '@d3-inc/d3-dna-protocol';
+import { MIDDLEWARE_ADAPTER_NAME } from './adapter-name';
 import {
   ipAddress as vercelIpAddress,
   next as vercelNext,
@@ -72,6 +73,7 @@ export function createD3Middleware(config?: D3MiddlewareConfig, deps: Middleware
         url: endpoint,
         bearer: cfg.apiKey,
         timeoutMs: paying ? cfg.paymentTimeoutMs : cfg.timeoutMs,
+        adapterName: MIDDLEWARE_ADAPTER_NAME,
       },
       deps.fetchImpl
     );
