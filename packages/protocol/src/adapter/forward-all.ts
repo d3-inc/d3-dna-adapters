@@ -55,6 +55,22 @@ export function echoedExclusions(exclude: ForwardExclusions): {
   };
 }
 
+/**
+ * What to tell a site whose exclusion list is longer than the payload echoes,
+ * or undefined. Past the cap the worker reads every name of that kind the
+ * request lacks as kept back, so a rule on a missing one is skipped.
+ */
+export function exclusionOverflowWarning(exclude: ForwardExclusions): string | undefined {
+  const lines = (['headers', 'cookies'] as const)
+    .filter((kind) => exclude[kind].length > FORWARDED_MAX_NAMES)
+    .map(
+      (kind) =>
+        `DNA_EXCLUDE_${kind.toUpperCase()} lists ${exclude[kind].length} names, past the ${FORWARDED_MAX_NAMES} DNA is sent: ` +
+        `it reads any ${kind === 'headers' ? 'header' : 'cookie'} a request lacks as kept back, and skips the rules that check one`
+    );
+  return lines.length > 0 ? lines.join('; ') : undefined;
+}
+
 /** A revision 2 payload's account of what it held back: the exclusions echoed, and each kind past its lists flagged. */
 export function withheldOf(
   exclude: ForwardExclusions,

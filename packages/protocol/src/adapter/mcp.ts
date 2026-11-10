@@ -35,6 +35,9 @@ export interface McpFacts {
   source: McpFactsSource;
 }
 
+/** Why a call naming one of our credentials cannot be stripped: too large to read, or not read as one call. */
+export type UnreadableReason = 'too-large' | 'not-one-call';
+
 export interface McpCarriage {
   rpc: JsonRpcRequest | null;
   /** Null when neither the body nor the mirrors name a call. */
@@ -43,8 +46,10 @@ export interface McpCarriage {
   lifted: Record<string, string>;
   /** The body the origin gets in place of the client's; null when nothing was taken out of it. */
   originBody: string | null;
-  /** Too large to read, yet naming one of our credentials: it cannot be stripped, so it must not reach the origin. */
+  /** Not read, yet naming one of our credentials: it cannot be stripped, so it must not reach the origin. */
   unreadableCredential: boolean;
+  /** Set with `unreadableCredential`, for the answer to give. */
+  unreadableReason?: UnreadableReason;
 }
 
 /** One JSON-RPC request in a JSON POST body; null for a batch, a response, a notification without a method, or anything else. */
@@ -76,12 +81,22 @@ export function readJsonRpcRequest(
   };
 }
 
-/** Each `_meta` key and the argument that can carry a credential, as the JSON names them. */
-const CREDENTIAL_KEYS: readonly Uint8Array[] = [
-  MCP_X402_PAYMENT_META,
-  MCP_DNA_KEY_META,
-  MCP_KEY_ARGUMENT,
-].map((key) => new TextEncoder().encode(JSON.stringify(key)));
+/**
+ * Each `_meta` key and the argument that can carry a credential, as JSON spells
+ * them: PHP's encoder writes `/` as `\/` by default, so both spellings count.
+ */
+const CREDENTIAL_KEYS: readonly Uint8Array[] = [MCP_X402_PAYMENT_META, MCP_DNA_KEY_META, MCP_KEY_ARGUMENT]
+  .flatMap((key) => {
+    const quoted = JSON.stringify(key);
+    return quoted.includes('/') ? [quoted, quoted.replaceAll('/', '\\/')] : [quoted];
+  })
+  .map((key) => new TextEncoder().encode(key));
+
+const JSONRPC_KEY = new TextEncoder().encode(JSON.stringify('jsonrpc'));
+
+function namesCredential(bytes: Uint8Array): boolean {
+  return CREDENTIAL_KEYS.some((key) => includesBytes(bytes, key));
+}
 
 /**
  * A JSON POST past `MCP_BODY_MAX_BYTES` whose bytes name a credential key. A
@@ -95,19 +110,80 @@ export function oversizedCallNamesCredential(
 ): boolean {
   if (method !== 'POST' || !isJsonType(contentType) || body.byteLength <= MCP_BODY_MAX_BYTES) return false;
 
-  const bytes = new Uint8Array(body);
-  return CREDENTIAL_KEYS.some((key) => includesBytes(bytes, key));
+  return namesCredential(new Uint8Array(body));
 }
 
+/** A UTF-8 byte order mark, then JSON whitespace: what may precede a JSON body's first value. */
+function firstValueByte(bytes: Uint8Array): number | undefined {
+  let at = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? 3 : 0;
+  while (
+    at < bytes.length &&
+    (bytes[at] === 0x20 || bytes[at] === 0x09 || bytes[at] === 0x0a || bytes[at] === 0x0d)
+  ) {
+    at += 1;
+  }
+
+  return bytes[at];
+}
+
+/** Whether a call carries one of our credentials where `liftMcpPayment` would take it from. */
+function callCarriesCredential(call: Record<string, unknown>): boolean {
+  const params = isRecord(call.params) ? call.params : null;
+  if (!params) return false;
+
+  const meta = isRecord(params._meta) ? params._meta : null;
+  if (meta && (MCP_X402_PAYMENT_META in meta || MCP_DNA_KEY_META in meta)) return true;
+
+  return call.method === 'tools/call' && isRecord(params.arguments) && MCP_KEY_ARGUMENT in params.arguments;
+}
+
+/**
+ * A JSON-RPC body the adapter did not read as one call (a batch, a call sent
+ * under another content type) carrying one of our credentials. The worker
+ * refuses such a call when it prices it; this keeps the key from the origin
+ * where nothing prices it. Only a body that is JSON-RPC at its top level
+ * counts, so an upload or a document that merely holds an example call is left
+ * alone. One that will not parse, or is past the read cap, falls back to the
+ * byte search the 413 uses.
+ */
+export function unreadCallNamesCredential(rpc: JsonRpcRequest | null, body: ArrayBuffer): boolean {
+  if (rpc !== null || body.byteLength === 0) return false;
+
+  const bytes = new Uint8Array(body);
+  const first = firstValueByte(bytes);
+  if (first !== 0x7b && first !== 0x5b) return false;
+
+  if (body.byteLength <= MCP_BODY_MAX_BYTES) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(body));
+    } catch {
+      return includesBytes(bytes, JSONRPC_KEY) && namesCredential(bytes);
+    }
+
+    const calls = (Array.isArray(parsed) ? parsed : [parsed]).filter(
+      (item): item is Record<string, unknown> => isRecord(item) && 'jsonrpc' in item
+    );
+    return calls.some(callCarriesCredential);
+  }
+
+  return includesBytes(bytes, JSONRPC_KEY) && namesCredential(bytes);
+}
+
+/**
+ * Anchored on the needle's second byte: every needle here opens with `"`, and a
+ * body of quotes would otherwise make each position a candidate.
+ */
 function includesBytes(haystack: Uint8Array, needle: Uint8Array): boolean {
   const last = haystack.length - needle.length;
   for (
-    let at = haystack.indexOf(needle[0]);
-    at !== -1 && at <= last;
-    at = haystack.indexOf(needle[0], at + 1)
+    let at = haystack.indexOf(needle[1], 1);
+    at !== -1 && at - 1 <= last;
+    at = haystack.indexOf(needle[1], at + 1)
   ) {
-    let i = 1;
-    while (i < needle.length && haystack[at + i] === needle[i]) i += 1;
+    const start = at - 1;
+    let i = 0;
+    while (i < needle.length && haystack[start + i] === needle[i]) i += 1;
     if (i === needle.length) return true;
   }
 
@@ -242,12 +318,17 @@ export function mcpCarriageOf(
     lifted[PAYMENT_AUTHORIZATION_HEADER] = `Payment ${mirrored}`;
   }
 
-  const unreadableCredential = oversizedCallNamesCredential(
-    request.method,
-    request.headers.get('content-type'),
-    body
-  );
-  return { rpc, facts, lifted, originBody, unreadableCredential };
+  const tooLarge = oversizedCallNamesCredential(request.method, request.headers.get('content-type'), body);
+  const notOneCall = !tooLarge && unreadCallNamesCredential(rpc, body);
+  return {
+    rpc,
+    facts,
+    lifted,
+    originBody,
+    unreadableCredential: tooLarge || notOneCall,
+    ...(tooLarge ? { unreadableReason: 'too-large' as const } : {}),
+    ...(notOneCall ? { unreadableReason: 'not-one-call' as const } : {}),
+  };
 }
 
 /**

@@ -1,7 +1,13 @@
-import { parseExclusionList, type ForwardExclusions } from './forward-all';
+import { edgeLogger } from '../logging/logger';
+import { exclusionOverflowWarning, parseExclusionList, type ForwardExclusions } from './forward-all';
 import { DEFAULT_PAYMENT_TIMEOUT_MS, DEFAULT_POLICY_TIMEOUT_MS } from './http-policy-client';
 
 export const DEFAULT_DNA_ENDPOINT = 'https://edge-api.d3.com/v1/decision';
+
+const log = edgeLogger('adapter-settings');
+
+/** Settings are read on every request; a warning about them is said once per isolate. */
+const warned = new Set<string>();
 
 // Current name first. The later names predate the DNA_ prefix and are still
 // read, so an install configured with them keeps working unchanged.
@@ -57,6 +63,16 @@ export function readAdapterSettings(...sources: SettingLookup[]): AdapterSetting
   // FAIL_MODE stays read everywhere: ignoring it could only ever loosen it.
   const debugNames = hasPolicyWorkerUrl ? names.debugLogRawPayload : (['DNA_DEBUG_LOG_RAW_PAYLOAD'] as const);
 
+  const exclude = {
+    headers: parseExclusionList(read(names.excludeHeaders), { lowercase: true }),
+    cookies: parseExclusionList(read(names.excludeCookies), { lowercase: false }),
+  };
+  const overflow = exclusionOverflowWarning(exclude);
+  if (overflow !== undefined && !warned.has(overflow)) {
+    warned.add(overflow);
+    log.warn(overflow);
+  }
+
   return {
     endpoint: dnaEndpoint({
       endpoint: endpoint?.value,
@@ -68,10 +84,7 @@ export function readAdapterSettings(...sources: SettingLookup[]): AdapterSetting
     timeoutMs: positiveNumber(read(names.timeoutMs), DEFAULT_POLICY_TIMEOUT_MS),
     paymentTimeoutMs: positiveNumber(read(names.paymentTimeoutMs), DEFAULT_PAYMENT_TIMEOUT_MS),
     debugLogRawPayload: read(debugNames) === 'true',
-    exclude: {
-      headers: parseExclusionList(read(names.excludeHeaders), { lowercase: true }),
-      cookies: parseExclusionList(read(names.excludeCookies), { lowercase: false }),
-    },
+    exclude,
   };
 }
 
