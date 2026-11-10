@@ -1,3 +1,4 @@
+import { isNamespaceCookie, isNamespaceParam } from './namespace';
 /**
  * The pay credentials as they travel: header and cookie names, their caps, the
  * URL params, and the readers that parse them. Session signing and the KV
@@ -27,6 +28,9 @@ export const PERSON_PASS_HEADER = 'd3pay-person';
 
 /** `<13-digit expiry>.<43-char signature>` is 57; the cap leaves no room for anything else. */
 export const PERSON_PASS_MAX_LENGTH = 64;
+
+/** The visitor id (ADR 0087). Ours by name, and it rides the cookie map rather than a header of its own. */
+export const VISITOR_ID_COOKIE = '__Secure-d3visitor';
 
 /** The browser check's signals ride back to the page under this name, base64url JSON. */
 export const BROWSER_CHECK_PARAM = 'd3pay_browser';
@@ -73,12 +77,6 @@ export function isWellFormedSessionToken(token: string): boolean {
   return token.length === PAY_SESSION_TOKEN_LENGTH && BASE64URL.test(token);
 }
 
-const OWN_PARAMS: ReadonlySet<string> = new Set([
-  PAY_HANDOFF_PARAM,
-  PAY_AUTH_CHECK_PARAM,
-  BROWSER_CHECK_PARAM,
-]);
-
 function paramName(pair: string): string {
   const name = pair.split('=', 1)[0].replaceAll('+', ' ');
   try {
@@ -105,7 +103,7 @@ export function stripPayParams(url: string): string {
   const kept = url
     .slice(query + 1)
     .split('&')
-    .filter((pair) => !OWN_PARAMS.has(paramName(pair)));
+    .filter((pair) => !isNamespaceParam(paramName(pair)));
   return kept.length > 0 ? `${url.slice(0, query)}?${kept.join('&')}` : url.slice(0, query);
 }
 
@@ -165,26 +163,38 @@ export function cookiesOf(cookieHeader: string | null): [string, string][] {
 export const OWN_COOKIES: readonly string[] = [PAY_SESSION_COOKIE, PERSON_PASS_COOKIE];
 
 /**
+ * The cookies the endpoint sets today. The prefix is a label no browser
+ * enforces, so any script on the host can mint one: a name here keeps its place
+ * however many others turn up wearing it.
+ */
+export const RESERVED_COOKIES: readonly string[] = [...OWN_COOKIES, VISITOR_ID_COOKIE];
+
+/**
  * Names are compared the way `readCookie` reads them, never as a `name=`
  * prefix: `__Host-d3person =x` is one cookie to every browser and to us, and a
  * prefix test leaves it in the header the origin receives.
  */
-function stripCookies(cookieHeader: string, names: readonly string[]): string | null {
+function stripCookies(cookieHeader: string, ours: (name: string) => boolean): string | null {
   const kept = cookieHeader
     .split(';')
     .map((pair) => pair.trim())
-    .filter((pair) => pair.length > 0 && !names.includes(cookieName(pair)));
+    .filter((pair) => pair.length > 0 && !ours(cookieName(pair)));
   return kept.length > 0 ? kept.join('; ') : null;
 }
 
 /** The `Cookie` header without the pay session, kept for callers that predate the browser-check pass. */
 export function stripSessionCookie(cookieHeader: string): string | null {
-  return stripCookies(cookieHeader, [PAY_SESSION_COOKIE]);
+  return stripCookies(cookieHeader, (name) => name === PAY_SESSION_COOKIE);
 }
 
 /** The `Cookie` header with every cookie of ours removed, or null when nothing is left. */
 export function stripOwnCookies(cookieHeader: string): string | null {
-  return stripCookies(cookieHeader, OWN_COOKIES);
+  return stripCookies(cookieHeader, isNamespaceCookie);
+}
+
+/** Whether the jar holds anything of ours, which is what makes a strip worth building a request for. */
+export function holdsOwnCookie(cookieHeader: string): boolean {
+  return cookiesOf(cookieHeader).some(([name]) => isNamespaceCookie(name));
 }
 
 /** The `Set-Cookie` value a redemption rides to the browser; `Lax` is what a top-level redirect sends. */

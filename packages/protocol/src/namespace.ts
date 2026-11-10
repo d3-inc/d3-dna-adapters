@@ -12,6 +12,9 @@ const NAMESPACE_PARAM_PREFIX = 'd3pay_';
 /** Ours travel outside the shared caps, so a visitor's padding can't crowd one out; this bounds how many a visitor can add. */
 export const NAMESPACE_MAX_COOKIES = 8;
 
+/** And how large each may be. Every cookie we set is a token; the longest is 96 characters. */
+export const NAMESPACE_VALUE_MAX_LENGTH = 512;
+
 /** Exact and case-sensitive: pass the name trimmed, as `readCookie` compares it. */
 export function isNamespaceCookie(name: string): boolean {
   return NAMESPACE_COOKIE.test(name);

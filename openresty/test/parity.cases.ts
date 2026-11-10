@@ -66,6 +66,23 @@ const forwardAllCases: { name: string; headers: Pairs; exclude: ForwardExclusion
     exclude: { headers: ['x-internal-token'], cookies: ['sid'] },
   },
   {
+    name: 'ours ride outside the shared cookie cap',
+    headers: [
+      ['Cookie', `${Array.from({ length: 300 }, (_, i) => `c${i}=v`).join('; ')}; __Secure-d3visitor=V`],
+    ],
+    exclude: NONE,
+  },
+  {
+    name: 'the id we set outlasts cookies wearing our prefix',
+    headers: [
+      [
+        'Cookie',
+        `${Array.from({ length: 20 }, (_, i) => `__Secure-d3pad${i}=v`).join('; ')}; __Secure-d3visitor=V`,
+      ],
+    ],
+    exclude: NONE,
+  },
+  {
     name: 'a named cap drops its header, under it the header goes',
     headers: [
       ['accept', long(257)],
@@ -673,15 +690,19 @@ export async function buildParity() {
       'PUBLIC, max-age=1',
       'No-Store',
     ].map((origin) => ({ origin, out: privateCacheControl(origin) })),
-    cookies: ['a=1; b = 2 ;c=; =x; noeq; d=e=f', '', '__Host-d3pay=S; __Host-d3person =P; site=1'].map(
-      (header) => ({
-        header,
-        cookiesOf: cookiesOf(header),
-        readSession: readCookie(header, '__Host-d3pay'),
-        readPerson: readCookie(header, '__Host-d3person'),
-        stripOwn: header === '' ? null : stripOwnCookies(header),
-      })
-    ),
+    cookies: [
+      'a=1; b = 2 ;c=; =x; noeq; d=e=f',
+      '',
+      '__Host-d3pay=S; __Host-d3person =P; site=1',
+      '__Secure-d3visitor=V; site=1',
+      '__Host-d3_acquisition=keep; __Secure-d3-admin.session_token=keep; site=1',
+    ].map((header) => ({
+      header,
+      cookiesOf: cookiesOf(header),
+      readSession: readCookie(header, '__Host-d3pay'),
+      readPerson: readCookie(header, '__Host-d3person'),
+      stripOwn: header === '' ? null : stripOwnCookies(header),
+    })),
     payParams: [
       '/a',
       '/a?x=1',

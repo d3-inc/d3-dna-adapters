@@ -122,6 +122,27 @@ describe('stripPaymentHeaders', () => {
     expect(stripped.url).toBe(request.url);
   });
 
+  // The visitor id is the one cookie of ours a browser carries with no
+  // credential beside it, and a presence check for the credentials alone left
+  // it on the request the origin received.
+  it('removes the visitor id even when it is the only cookie of ours', () => {
+    const stripped = stripPaymentHeaders(
+      new Request('https://ai.d3.com/premium', {
+        headers: { cookie: '__Secure-d3visitor=token; plan=pro' },
+      })
+    );
+
+    expect(stripped.headers.get('cookie')).toBe('plan=pro');
+  });
+
+  it('removes a parameter wearing our prefix, not only the three we read', () => {
+    const stripped = stripPaymentHeaders(
+      new Request('https://ai.d3.com/premium?d3pay_later=x&keep=1&d3pay_handoff=y')
+    );
+
+    expect(stripped.url).toBe('https://ai.d3.com/premium?keep=1');
+  });
+
   it('removes only our cookies from the Cookie header, and the header when they were alone', () => {
     const shared = stripPaymentHeaders(
       new Request('https://ai.d3.com/premium', {

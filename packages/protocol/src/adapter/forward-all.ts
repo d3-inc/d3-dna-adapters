@@ -1,4 +1,5 @@
-import { cookiesOf, OWN_COOKIES } from '../pay-session';
+import { cookiesOf, OWN_COOKIES, RESERVED_COOKIES } from '../pay-session';
+import { isNamespaceCookie, NAMESPACE_MAX_COOKIES, NAMESPACE_VALUE_MAX_LENGTH } from '../namespace';
 import type { RequestPayload } from '../types';
 import { FORWARDED_MAX_COOKIES, FORWARDED_MAX_NAMES, NEVER_FORWARDED_HEADERS } from './forwarding.constants';
 
@@ -133,11 +134,24 @@ export function forwardAll(
 
   // The first of a repeated name, as `readCookie` and most servers read it.
   const seen = new Set<string>();
+  let ours = 0;
+  let theirs = 0;
   for (const [name, value] of cookiesOf(headers.get('cookie'))) {
     if (OWN_COOKIES.includes(name) || excludedCookies.has(name) || seen.has(name)) continue;
 
     seen.add(name);
-    if (seen.size > FORWARDED_MAX_COOKIES) out.droppedCookies.push(name);
+    if (isNamespaceCookie(name)) {
+      if (keepsItsPlace(name, ours)) {
+        if (value.length > NAMESPACE_VALUE_MAX_LENGTH) out.droppedCookies.push(name);
+        else out.cookies[name] = value;
+
+        if (!RESERVED_COOKIES.includes(name)) ours += 1;
+      } else out.droppedCookies.push(name);
+      continue;
+    }
+
+    theirs += 1;
+    if (theirs > FORWARDED_MAX_COOKIES) out.droppedCookies.push(name);
     else pooled.push({ kind: 'cookie', name, value });
   }
 
@@ -147,6 +161,17 @@ export function forwardAll(
   }
 
   return withListedDrops(out);
+}
+
+/**
+ * Ours ride outside the shared caps, so a site's own cookies can never crowd
+ * one out — the visitor id is `Path=/` and newly set, which is last in the jar
+ * a browser sends, and so the first to fall past a shared cap. The prefix is a
+ * label no browser enforces, though: any script on the host can mint one, so a
+ * name we set keeps its place and the rest share a cap of their own.
+ */
+function keepsItsPlace(name: string, ours: number): boolean {
+  return RESERVED_COOKIES.includes(name) || ours < NAMESPACE_MAX_COOKIES;
 }
 
 /** Past a list's length the rest go unnamed, and the payload says some did. */

@@ -66,6 +66,18 @@ const HEADER_LENGTH_CAPS = new Map([
 
 const PAYMENT_HEADERS = ['payment-signature', 'x-payment', 'payment-authorization', 'd3pay-session'];
 
+// Ours on a site: the cookies the endpoint sets, and the params it rides back on.
+// The lowercase letter keeps out our own apps' `__Host-d3_*` and `__Secure-d3-*`.
+const NAMESPACE_COOKIE = /^__(?:Host|Secure)-d3[a-z]/;
+
+function isNamespaceCookie(name) {
+  return NAMESPACE_COOKIE.test(name);
+}
+
+function isNamespaceParam(name) {
+  return name.startsWith('d3pay_');
+}
+
 // `__Host-` pins the cookie to the site's origin: no Domain, Path=/, Secure.
 const PAY_SESSION_COOKIE = '__Host-d3pay';
 
@@ -84,11 +96,6 @@ const PERSON_PASS_MAX_LENGTH = 64;
 
 // Where the credential rides for a caller with no cookie jar.
 const PAY_HANDOFF_PARAM = 'd3pay_handoff';
-
-// The other two params of ours a visitor's navigation can carry back.
-const PAY_AUTH_CHECK_PARAM = 'd3pay_check';
-
-const BROWSER_CHECK_PARAM = 'd3pay_browser';
 
 // What this recipe does with the endpoint's answer (ADR 0068). Bump it only
 // with the behaviour: the worker reads it to decide whether a browser check can
@@ -229,7 +236,10 @@ function stripPayParams(url) {
   if (query === -1) return url;
 
   const params = new URLSearchParams(url.slice(query + 1));
-  for (const name of [PAY_HANDOFF_PARAM, PAY_AUTH_CHECK_PARAM, BROWSER_CHECK_PARAM]) params.delete(name);
+  for (const name of [...params.keys()]) {
+    if (isNamespaceParam(name)) params.delete(name);
+  }
+
   const rest = params.toString();
   return rest ? `${url.slice(0, query)}?${rest}` : url.slice(0, query);
 }
@@ -252,22 +262,33 @@ function readCookie(cookieHeader, name) {
   return null;
 }
 
-// The Cookie header with both of ours removed, or null when nothing is left.
+// Every cookie of ours, matched the way readCookie reads a name: `__Host-d3pay =x`
+// is one cookie to every browser, and a `name=` prefix test leaves it for the origin.
 function stripOwnCookies(cookieHeader) {
-  const ours = [PAY_SESSION_COOKIE, PERSON_PASS_COOKIE];
   const kept = cookieHeader
     .split(';')
     .map((part) => part.trim())
-    .filter((part) => part.length > 0 && !ours.some((name) => part.startsWith(`${name}=`)));
+    .filter((part) => part.length > 0 && !isNamespaceCookie(cookieNameOf(part)));
   return kept.length > 0 ? kept.join('; ') : null;
+}
+
+function cookieNameOf(part) {
+  const eq = part.indexOf('=');
+  return eq === -1 ? part.trim() : part.slice(0, eq).trim();
+}
+
+// Whether the jar holds anything of ours. The visitor id is the one a browser
+// carries with no credential beside it, so a check for the two credentials left
+// it on the request the origin received.
+function holdsOwnCookie(cookieHeader) {
+  return cookieHeader.split(';').some((part) => isNamespaceCookie(cookieNameOf(part)));
 }
 
 // Runs whatever requestPresentsPayment said: an oversized value is not a
 // payment, and it still must not reach the origin.
 function stripPaymentCredential(request) {
   const cookie = request.headers.get('cookie');
-  const ours = [PAY_SESSION_COOKIE, PERSON_PASS_COOKIE];
-  const hasCookie = cookie !== null && ours.some((name) => readCookie(cookie, name) !== null);
+  const hasCookie = cookie !== null && holdsOwnCookie(cookie);
   const url = stripPayParams(request.url);
   // The pass is stripped like a payment though it never counts as one: a visitor
   // can set the header itself, and it must not reach the origin either way.

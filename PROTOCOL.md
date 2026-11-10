@@ -122,7 +122,10 @@ read them, minus three sets:
 
 A value without a cap of its own stops at 2048 chars, and those values
 together at 16 384; past either, the longest go first and each is named in
-`droppedHeaders` or `droppedCookies`. Past 128 names a list stops and
+`droppedHeaders` or `droppedCookies`. [Our own cookies](#our-names) are
+outside both, since a jar full of a site's cookies would otherwise decide
+whether ours arrived; each stops at 512 chars instead, the three we set keep
+their place, and at most eight others wearing the prefix are forwarded. Past 128 names a list stops and
 `droppedUnlisted` says so; an exclusion list past 128 is echoed capped, with
 `droppedUnlisted` set, and every name on it is still withheld. The endpoint
 then reads every unlisted name of that kind as withheld, so a rule on one the
@@ -147,10 +150,21 @@ Plus `d3pay-session`, which is not a client header at all — see
 
 Every cookie named `__Host-d3` or `__Secure-d3` followed by a lowercase
 letter, and every URL parameter named `d3pay_*`, is ours, for example
-`__Host-d3pay`, `__Host-d3person` and `d3pay_handoff`. Names compare
-exactly: a cookie's trimmed, a parameter's percent-decoded, case
-included. A site's own cookie or parameter in that space reads as ours,
-so a site must not name its own that way.
+`__Host-d3pay`, `__Host-d3person`, `__Secure-d3visitor` and `d3pay_handoff`.
+Names compare exactly: a cookie's trimmed, a parameter's percent-decoded, case
+included. A site's own cookie or parameter in that space reads as ours, so a
+site must not name its own that way.
+
+Two things follow, and an adapter owes both. **None of them reaches the
+origin** — the cookie leaves the `Cookie` header and the parameter leaves the
+URL, on a pass and on fail-open alike, whether or not a credential is beside
+it. And they **ride outside the shared caps** above, so a site's own cookies
+can never crowd one out: the browser sends `Path=/` cookies last, which is
+where a freshly set one of ours sits.
+
+The prefix is a label no browser enforces, so any script on the site can mint a
+name wearing it. An adapter therefore keeps a place for the three we set and
+forwards at most eight others, naming the rest in `droppedCookies`.
 
 ### `content-digest` is yours to compute, never to relay
 

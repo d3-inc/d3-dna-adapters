@@ -5,10 +5,9 @@ import {
   PAYMENT_AUTHORIZATION_MAX_LENGTH,
   PAY_SESSION_HEADER,
   PAY_SESSION_MAX_LENGTH,
-  PERSON_PASS_COOKIE,
   PERSON_PASS_HEADER,
   handoffFromUrl,
-  readCookie,
+  holdsOwnCookie,
   readSessionCookie,
   stripOwnCookies,
   stripPayParams,
@@ -117,9 +116,10 @@ export function hasPaymentHeader(headers: Headers | Record<string, string>): boo
  */
 export function stripPaymentHeaders(request: Request): Request {
   const cookie = request.headers.get('cookie');
-  const hasCookie =
-    cookie !== null &&
-    (readSessionCookie(cookie) !== null || readCookie(cookie, PERSON_PASS_COOKIE) !== null);
+  // Every cookie of ours, not the two we read: the visitor id is the one a
+  // browser carries alone, and a check for the credentials alone left it on the
+  // request the origin received.
+  const hasCookie = cookie !== null && holdsOwnCookie(cookie);
   const url = stripPayParams(request.url);
   const hasHeader = ORIGIN_STRIPPED_HEADERS.some((name) => request.headers.has(name));
   if (!hasCookie && !hasHeader && url === request.url) return request;
