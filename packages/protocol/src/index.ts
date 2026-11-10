@@ -38,6 +38,7 @@ export {
   stripSessionCookie,
 } from './pay-session';
 export type { HandoffParts, PayCredential } from './pay-session';
+export { NAMESPACE_MAX_COOKIES, isNamespaceCookie, isNamespaceParam } from './namespace';
 
 export {
   LOG_ROOT,
@@ -63,6 +64,17 @@ export {
   stripPaymentHeaders,
 } from './x402/payment-header';
 
+export {
+  ADAPTER_NAME_MAX_LENGTH,
+  ADAPTER_TYPE_ENDPOINTS,
+  DNA_ADAPTER_HEADER,
+  callsEndpoint,
+  compareAdapterVersions,
+  isAdapterType,
+  isAdapterVersion,
+  parseAdapterName,
+} from './adapter/adapter-name';
+export type { AdapterEndpoint, AdapterName, AdapterType } from './adapter/adapter-name';
 export { DEFAULT_DNA_ENDPOINT, readAdapterSettings } from './adapter/adapter-settings';
 export {
   FORWARDED_MAX_TOTAL_LENGTH,
