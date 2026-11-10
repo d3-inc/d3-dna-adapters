@@ -169,7 +169,7 @@ and a `proxy_pass` should not name `$request_uri`.
 
 ## Testing
 
-`nginx/test/run.sh` runs this install in real OpenResty (Docker) against a mock
+`openresty/test/run.sh` runs this install in real OpenResty (Docker) against a mock
 DNA and checks the port against the protocol package's own answers
 (`test/parity.json`).
 

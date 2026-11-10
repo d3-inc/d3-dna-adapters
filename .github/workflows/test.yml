@@ -71,4 +71,4 @@ jobs:
         with:
           node-version: 22
       # OpenResty runs in Docker, pinned by digest in run.sh: moving it is a deliberate edit there.
-      - run: bash nginx/test/run.sh
+      - run: bash openresty/test/run.sh

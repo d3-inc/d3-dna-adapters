@@ -1,6 +1,6 @@
 -- The OpenResty port checked against the protocol package (parity.json), plus
 -- the reject paths only the port has. Runs under OpenResty's `resty`:
---   resty nginx/test/unit.lua            (from the repo root, or via run.sh)
+--   resty openresty/test/unit.lua        (from the repo root, or via run.sh)
 local here = arg[0]:match("^(.*/)") or "./"
 local dna = dofile(here .. "../dna.lua")
 local cjson = require("cjson.safe").new()

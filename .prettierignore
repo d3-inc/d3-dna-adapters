@@ -2,4 +2,4 @@
 **/dist/**
 **/.wrangler/**
 pnpm-lock.yaml
-nginx/test/parity.json
+openresty/test/parity.json

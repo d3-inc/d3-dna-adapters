@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the OpenResty install in real OpenResty (Docker) against a mock DNA
 # endpoint and the shared echo origin. Needs docker and node on PATH.
-# Usage: nginx/test/run.sh
+# Usage: openresty/test/run.sh
 set -u
 cd "$(dirname "$0")"
 IMAGE=${OPENRESTY_IMAGE:-openresty/openresty:1.27.1.2-13-alpine-fat@sha256:47f3ba33dc95b4abc2bae7a4fa0b5759f0c0b5b338d1e515ca3d8f61a5dbc7b5}
