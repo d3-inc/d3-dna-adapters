@@ -1,5 +1,5 @@
 // What the protocol package answers for each input, written to parity.json so
-// the OpenResty port (nginx/dna.lua) is checked against it under real OpenResty.
+// the OpenResty port (openresty/dna.lua) is checked against it under real OpenResty.
 import { liftedPaymentToForward, mcpCarriageOf } from '../../packages/protocol/src/adapter/mcp.ts';
 import {
   MCP_KEY_ARGUMENT_SCHEMA,

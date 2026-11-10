@@ -1,4 +1,4 @@
-// The origin both proxy suites (caddy/test, nginx/test) put behind DNA. It
+// The origin both proxy suites (caddy/test, openresty/test) put behind DNA. It
 // echoes what reached it, and authors its own Set-Cookie, CORS list and caching
 // so a suite can see ours are appended and its are kept. ORIGIN_PORT moves it.
 import { createServer } from 'node:http';
