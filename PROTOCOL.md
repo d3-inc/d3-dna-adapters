@@ -12,7 +12,8 @@ that contract. If you are installing an existing adapter you don't need
 it; read it to write a new one, or to understand exactly what leaves
 your infrastructure.
 
-Nothing here is negotiated or versioned per adapter. The endpoint accepts
+Nothing here is negotiated. Each decision call [names the adapter build
+that sent it](#naming-your-adapter), and the endpoint accepts
 unknown payload fields and adapters must ignore unknown response fields,
 so the contract grows additively — but a field that exists means what it
 says here.
@@ -23,6 +24,7 @@ says here.
 POST https://edge-api.d3.com/v1/decision
 Authorization: Bearer <your adapter key>
 Content-Type: application/json
+dna-adapter: <type>:<version>
 ```
 
 The key is per-org, created in the dashboard, and carries the org that
@@ -34,6 +36,42 @@ choose — each recipe in this repo documents its own default. It is the
 only blocking call an adapter makes. An adapter that enforces [paid
 routes](#paid-routes) keeps a second, much larger budget for the
 requests that present a payment.
+
+### Naming your adapter
+
+`dna-adapter` names the build that sent the call, on both dialects. The
+endpoint records it, and for one of our types below looks up what that
+build can do. Any other adapter sends a type of its own, such as
+`my-proxy:1.0.0`.
+
+| Type                | Integration                                                        | Calls              |
+| ------------------- | ------------------------------------------------------------------ | ------------------ |
+| `cloudflare`        | `@d3-inc/d3-dna-cloudflare-adapter`                                | `/v1/decision`     |
+| `vercel-middleware` | `@d3-inc/d3-dna-vercel-middleware`'s middleware                    | `/v1/decision`     |
+| `vercel-mcp`        | `@d3-inc/d3-dna-vercel-middleware`'s `withD3Mcp`                   | `/v1/decision`     |
+| `snippet`           | [`cloudflare-snippet/snippet.js`](./cloudflare-snippet/snippet.js) | `/v1/decision`     |
+| `openresty`         | [`nginx/`](./nginx/)                                               | `/v1/decision`     |
+| `caddy`             | [`caddy/dna.caddy`](./caddy/dna.caddy)                             | `/v1/forward-auth` |
+| `nginx`             | [`nginx-auth-request/`](./nginx-auth-request/)                     | `/v1/forward-auth` |
+
+The version is semver and orders by its precedence: a pre-release sits
+below its release, and build metadata is ignored. A published package
+sends the version its release tag sets, without the tag's `v`. A build
+from source sends the nearest release tag reachable from its commit,
+without the `v`, then `+` and the commit's short hash of 7 to 12
+characters (`0.10.1+5ac94a8`). A recipe hardcodes its version.
+
+The endpoint ignores the header, with no error, when the value is over 64
+characters, has no colon, has a type using anything but `a-z`, `0-9` and
+`-`, or has a version that is not semver (`v1.0.0` is not). It also
+ignores one of our types on an endpoint that type does not call. It reads
+such a call, one naming a type it does not know, or a version older than
+every one it knows, by its [`adapterSet`](#declaring-what-you-can-do)
+alone, so send both.
+
+A copy of this repository that changes what an adapter does must send a
+type of its own. Sending ours makes the endpoint answer for what our
+build can do, and that site's visitors pay for it.
 
 ## Request
 
@@ -104,6 +142,15 @@ sent:
 
 Plus `d3pay-session`, which is not a client header at all — see
 [the credential](#the-credential).
+
+### Our names
+
+Every cookie named `__Host-d3` or `__Secure-d3` followed by a lowercase
+letter, and every URL parameter named `d3pay_*`, is ours, for example
+`__Host-d3pay`, `__Host-d3person` and `d3pay_handoff`. Names compare
+exactly: a cookie's trimmed, a parameter's percent-decoded, case
+included. A site's own cookie or parameter in that space reads as ours,
+so a site must not name its own that way.
 
 ### `content-digest` is yours to compute, never to relay
 
@@ -367,6 +414,7 @@ those proxies config-file installs with no adapter code at all:
 ```
 GET https://edge-api.d3.com/v1/forward-auth
 x-d3-adapter-key: <your adapter key>
+dna-adapter: <type>:<version>
 ```
 
 The key rides in `x-d3-adapter-key`, never `Authorization` — proxies
@@ -401,6 +449,8 @@ the connecting IP, which is the enforcement point's own egress. The client's own
 headers to forward](#which-headers-to-forward) — arrive because the proxy
 copies them onto the side-request; below revision 2, recipes must strip
 `Cookie`, `Authorization`, `Proxy-Authorization`, and any inbound `x-d3-*`.
+A recipe must set `dna-adapter` itself, overwriting any copy the visitor
+sent.
 `requestId` is generated server-side, and there are no outcome reports —
 there is no adapter code to send one.
 
