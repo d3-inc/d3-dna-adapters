@@ -2,11 +2,18 @@
 -- @d3-inc/d3-dna-protocol. The phase scripts beside it load it, and
 -- test/unit.lua checks each function against the package's own answers
 -- (test/parity.json), so the TS function named above each one is the spec.
--- Every library loads here, so a missing one fails the load, which fails open with its name logged.
+-- OpenResty bundles these, so a build without one fails the load and dna_access.lua takes over.
 local cjson    = require "cjson.safe"
 local lrucache = require "resty.lrucache"
 local sha256   = require "resty.sha256"
-local http     = require "resty.http"
+
+-- Installed apart from OpenResty, so the one most often missing: without it the
+-- module still loads, and each call fails as one DNA never answered.
+local http_loaded, http = pcall(require, "resty.http")
+if not http_loaded then
+  ngx.log(ngx.ERR, "dna: lua-resty-http cannot load, so every decision call fails: ", http)
+  http = nil
+end
 
 local M = {}
 
@@ -648,15 +655,19 @@ local function names_credential(body)
   return false
 end
 
--- The first byte of a JSON body's first value, past a UTF-8 BOM and whitespace.
-local function first_value_byte(body)
-  local at = string.sub(body, 1, 3) == "\239\187\191" and 4 or 1
-  return string.byte(body, string.find(body, "[^ \t\r\n]", at) or #body + 1)
+local function first_nonspace_byte(s, init)
+  return string.byte(s, string.find(s, "[^ \t\r\n]", init) or #s + 1)
 end
 
+-- The first byte of a JSON body's first value, past a UTF-8 BOM and whitespace.
+local function first_value_byte(body)
+  return first_nonspace_byte(body, string.sub(body, 1, 3) == "\239\187\191" and 4 or 1)
+end
+
+local function opens_json(byte) return byte == 123 or byte == 91 end
+
 local function starts_as_json(body)
-  local first = first_value_byte(body)
-  return first == 123 or first == 91
+  return opens_json(first_value_byte(body))
 end
 
 -- Whether a call carries one of our credentials where lift_mcp_payment takes it from.
@@ -848,17 +859,13 @@ function M.extract(req, opts)
   end
 
   -- Overwritten whenever there is a body or a claimed digest: a forged one never passes through.
-  -- A GET or HEAD signs no body, but nginx still passes one on, so the MCP
-  -- check below reads it whatever the method.
-  local can_have_body = req.method ~= "GET" and req.method ~= "HEAD"
+  -- Whatever the method: nginx passes a GET's body on too.
   local streamed = req.streamed
   local body = (not streamed) and (req.body or "") or nil
-  if can_have_body and streamed then
+  if streamed then
     headers["content-digest"] = streamed.digest
-  elseif can_have_body and (#body > 0 or headers["content-digest"] ~= nil) then
+  elseif #body > 0 or headers["content-digest"] ~= nil then
     headers["content-digest"] = content_digest(body)
-  elseif not can_have_body and headers["content-digest"] ~= nil then
-    headers["content-digest"] = content_digest("")
   end
 
   local mcp = nil
@@ -1114,12 +1121,6 @@ end
 function M.load_state(ref) return ref and states:get(ref) or nil end
 function M.forget_state(ref) if ref then states:delete(ref) end end
 
--- ── The access phase ─────────────────────────────────────────────────────────
-
--- Asks DNA about one request and answers as it says: the page, a block, or a
--- gate's own answer. Fails open, except for a request that pays. `revision` is
--- what the install honours: 3 from dna.server.conf, which also installs the
--- response half, 1 from an access line alone.
 -- ── The phases ───────────────────────────────────────────────────────────────
 
 -- nginx reads `X_D3_Tier` as the same header under underscores_in_headers, so every spelling goes.
@@ -1155,6 +1156,18 @@ end
 
 local BODY_CHUNK = 65536
 
+-- starts_as_json for a body on disk, read past `first` while only whitespace leads,
+-- since padding would otherwise hide a call. Leaves the file just after `first`.
+local function file_starts_as_json(f, first)
+  local byte, chunk = first_value_byte(first), first
+  while byte == nil and chunk ~= nil and chunk ~= "" do
+    chunk = f:read(BODY_CHUNK)
+    byte = chunk and first_nonspace_byte(chunk, 1)
+  end
+  f:seek("set", #first)
+  return opens_json(byte)
+end
+
 -- The body as the payload needs it. In memory, or a JSON call small enough to
 -- read, it comes back whole. Anything else nginx spilled to disk is streamed for
 -- its digest and, for JSON, searched for our credential keys, never held whole.
@@ -1171,7 +1184,7 @@ function M.read_body(method, content_type)
   local size = f:seek("end")
   f:seek("set")
   local first = f:read(BODY_CHUNK) or ""
-  local looks_json = starts_as_json(first)
+  local looks_json = file_starts_as_json(f, first)
   -- Small enough to parse, and a call may be in it: read whole.
   if (json_call or looks_json) and size <= M.MCP_BODY_MAX_BYTES then
     local whole = first .. (f:read("*a") or "")
@@ -1205,6 +1218,29 @@ function M.read_body(method, content_type)
   } }
 end
 
+-- `body` as read_body returns it.
+function M.body_may_carry_credential(body)
+  if body.streamed then return body.streamed.names_credential end
+  return starts_as_json(body.data) and names_credential(body.data)
+end
+
+-- After M.access raised, at whatever point: whether the request may pay, so it is
+-- answered 502 rather than served free. A key in a JSON body counts, read or not.
+function M.may_pay_after_error(by_name, args, body)
+  return M.presents_payment(by_name, args, {})
+    or string_or_nil(by_name[MCP_DNA_KEY_HEADER]) ~= nil
+    or M.body_may_carry_credential(body)
+end
+
+-- For dna_access.lua once M.access has raised: strips the request, returns whether it may pay.
+function M.contain_access_error()
+  local by_name = M.lookup(M.header_entries(ngx.req.get_headers(0)))
+  local body = M.read_body(ngx.req.get_method(), by_name["content-type"])
+  local paying = M.may_pay_after_error(by_name, ngx.var.args, body)
+  M.strip_for_origin(by_name)
+  return paying
+end
+
 local function post_decision(settings, payload, budget_ms)
   local httpc = http.new()
   httpc:set_timeout(budget_ms)
@@ -1223,6 +1259,8 @@ end
 -- answers, or a decision trickled a byte at a time, would hold the request far
 -- past the budget. The call races a sleep, and the loser is killed.
 local function decide(settings, payload, budget_ms)
+  -- Before spawning: a thread that raises is logged by nginx on every request, past log_every.
+  if http == nil then return nil, "lua-resty-http did not load" end
   local call = ngx.thread.spawn(post_decision, settings, payload, budget_ms)
   local clock = ngx.thread.spawn(function() ngx.sleep(budget_ms / 1000) end)
   local ok, res, err = ngx.thread.wait(call, clock)
@@ -1524,7 +1562,7 @@ function M.log()
   end
 
   M.forget_state(state.ref)
-  if not state.mode or state.no_report then return end
+  if not state.mode or state.no_report or http == nil then return end
 
   local settings = M.cached_settings(os.getenv)
   local url = settings.endpoint and M.report_url(settings.endpoint)

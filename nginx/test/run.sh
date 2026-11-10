@@ -35,14 +35,17 @@ MOCK_PORT=9010 node mock-decision.mjs & mock=$!; pids+=($mock)
 up 127.0.0.1:3010; up 127.0.0.1:9010/__log
 
 # Short budgets keep the timeout checks quick; production defaults are 150 ms and 10 s.
+# LUA_DIR swaps the install's files, and HTTP_LIB=0 leaves lua-resty-http out.
 start() {
+  local lib='opm get ledgetech/lua-resty-http >/dev/null 2>&1 && '
+  [ "${HTTP_LIB:-1}" = 0 ] && lib=''
   docker run -d --name "$NAME" "${net[@]}" \
     -e DNA_API_KEY=test-key -e DNA_ENDPOINT="http://$host:9010/v1/decision" \
     -e DNA_TIMEOUT_MS=500 -e DNA_PAYMENT_TIMEOUT_MS=3000 \
     -e DNA_EXCLUDE_HEADERS=x-internal-token -e DNA_EXCLUDE_COOKIES=sid "$@" \
-    -v "$PWD/..":/etc/nginx/lua:ro -v "$work/nginx.conf":/usr/local/openresty/nginx/conf/nginx.conf:ro \
+    -v "${LUA_DIR:-$PWD/..}":/etc/nginx/lua:ro -v "$work/nginx.conf":/usr/local/openresty/nginx/conf/nginx.conf:ro \
     -v "$work/logs":/logs "$IMAGE" \
-    sh -c 'opm get ledgetech/lua-resty-http >/dev/null 2>&1 && exec openresty -g "daemon off;"' >/dev/null || exit 1
+    sh -c "${lib}exec openresty -g 'daemon off;'" >/dev/null || exit 1
   up 127.0.0.1:8120; up 127.0.0.1:8121; up 127.0.0.1:8122
 }
 docker rm -f "$NAME" >/dev/null 2>&1
@@ -57,5 +60,17 @@ ERROR_LOG="$work/logs/error.log" node run.mjs dead; dead=$?
 docker rm -f "$NAME" >/dev/null 2>&1
 start -e DNA_ENABLED=false -e DNA_EXCLUDE_HEADERS="$(seq -s, -f 'x-many-%g' 1 130)"
 ERROR_LOG="$work/logs/error.log" node run.mjs disabled; off=$?
-[ $(( live || dead || off )) -eq 0 ] || { echo "--- error.log"; tail -40 "$work/logs/error.log"; }
-exit $(( live || dead || off ))
+
+# The two installs that cannot run all of DNA's code: no lua-resty-http, and no dna.lua.
+docker rm -f "$NAME" >/dev/null 2>&1
+HTTP_LIB=0 start
+ERROR_LOG="$work/logs/error.log" node run.mjs nolib; nolib=$?
+
+cp -R .. "$work/unloaded" && rm "$work/unloaded/dna.lua"
+docker rm -f "$NAME" >/dev/null 2>&1
+LUA_DIR="$work/unloaded" start
+ERROR_LOG="$work/logs/error.log" node run.mjs unloaded; unloaded=$?
+
+failed=$(( live || dead || off || nolib || unloaded ))
+[ "$failed" -eq 0 ] || { echo "--- error.log"; tail -40 "$work/logs/error.log"; }
+exit "$failed"

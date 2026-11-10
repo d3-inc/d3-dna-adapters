@@ -10,28 +10,7 @@ if dna == nil then
   dna = package.loaded["d3_dna"]
 end
 
-if dna then
-  local ok, err = pcall(dna.access, ngx.ctx.dna_revision or dna.ADAPTER_SET)
-  if ok then return end
-  dna.log_every("access error", 10, ngx.ERR, "dna: the access phase failed, so this request fails open: ", err)
-end
-
--- Unloaded or failed, the origin still gets no visitor's verdict and no payment
--- header, and a request that pays is answered 502, never served free.
-local paying = false
-for name, value in pairs(ngx.req.get_headers(0, true)) do
-  local key = string.lower((string.gsub(name, "_", "-")))
-  if key == "payment-signature" or key == "x-payment" or key == "payment-authorization" or key == "d3pay-session" then
-    paying = paying or value ~= ""
-    ngx.req.clear_header(name)
-  elseif key == "x-d3-tier" or key == "x-d3-identity" or key == "d3pay-person" or key == "mcp-param-dna-key" then
-    ngx.req.clear_header(name)
-  end
-end
-paying = paying or string.find(ngx.var.http_cookie or "", "__Host-d3pay=", 1, true) ~= nil
-  or string.find(ngx.var.args or "", "d3pay_handoff=", 1, true) ~= nil
-
-if paying then
+local function refuse()
   ngx.status = 502
   ngx.header["Content-Type"] = "application/json; charset=utf-8"
   ngx.header["Cache-Control"] = "no-store"
@@ -39,4 +18,73 @@ if paying then
   ngx.print('{"error":"payment_unavailable"}')
   return ngx.exit(ngx.HTTP_OK)
 end
+
+if dna then
+  local ok, err = pcall(dna.access, ngx.ctx.dna_revision or dna.ADAPTER_SET)
+  if ok then return end
+  dna.log_every("access error", 10, ngx.ERR, "dna: the access phase failed, so this request fails open unless it pays: ", err)
+
+  local contained, paying = pcall(dna.contain_access_error)
+  if contained then
+    if paying then return refuse() end
+    ngx.header["x-d3-edge"] = "fail-open"
+    return
+  end
+  dna.log_every("contain error", 10, ngx.ERR, "dna: cannot strip this request, so anything of ours on it is refused: ", paying)
+end
+
+-- Nothing loaded can read a cookie, a query or a body here, so our headers go by
+-- name and any other credential of ours is refused rather than passed on.
+local PAYING_HEADERS = {
+  ["payment-signature"] = true, ["x-payment"] = true, ["payment-authorization"] = true,
+  ["d3pay-session"] = true, ["mcp-param-dna-key"] = true,
+}
+local OTHER_HEADERS = { ["x-d3-tier"] = true, ["x-d3-identity"] = true, ["d3pay-person"] = true }
+-- As a call's JSON spells them, PHP's escaped `\/` included.
+local BODY_KEYS = { "dna_account_key", "dna.d3.com/key", "dna.d3.com\\/key", "x402/payment", "x402\\/payment" }
+
+local function names_key(s)
+  for _, key in ipairs(BODY_KEYS) do
+    if string.find(s, key, 1, true) then return true end
+  end
+  return false
+end
+
+local function body_names_key()
+  ngx.req.read_body()
+  local data = ngx.req.get_body_data()
+  if data then return names_key(data) end
+
+  local file = ngx.req.get_body_file()
+  local f = file and io.open(file, "rb")
+  if not f then return false end
+  -- The previous chunk's tail keeps a key split across two chunks findable.
+  local tail, found = "", false
+  local chunk = f:read(65536)
+  while chunk and not found do
+    found = names_key(tail .. chunk)
+    tail = string.sub(chunk, -16)
+    chunk = f:read(65536)
+  end
+  f:close()
+  return found
+end
+
+local ours = false
+for name, value in pairs(ngx.req.get_headers(0, true)) do
+  local key = string.lower((string.gsub(name, "_", "-")))
+  if PAYING_HEADERS[key] then
+    ours = ours or value ~= ""
+    ngx.req.clear_header(name)
+  elseif OTHER_HEADERS[key] then
+    ngx.req.clear_header(name)
+  end
+end
+-- Matched loosely, so `__Host-d3pay =x` and `d3pay%5Fhandoff` count too.
+ours = ours
+  or string.find(ngx.var.http_cookie or "", "__Host-d3", 1, true) ~= nil
+  or string.find(ngx.unescape_uri(ngx.var.args or ""), "d3pay_", 1, true) ~= nil
+  or body_names_key()
+
+if ours then return refuse() end
 ngx.header["x-d3-edge"] = "fail-open"

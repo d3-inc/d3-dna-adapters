@@ -239,6 +239,23 @@ check("the person pass is not a payment", not dna.presents_payment({ cookie = "_
 check("a handoff on the URL pays", dna.presents_payment({}, "d3pay_handoff=" .. handoff, {}))
 check("a payment lifted onto the payload pays", dna.presents_payment({}, nil, { ["payment-authorization"] = "Payment k" }))
 
+-- After M.access raised: what is still read as paying, and so answered 502.
+local keyed_call = '  {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"arguments":{"dna_account_key":"k"}}}'
+local no_body = { data = "" }
+check("after an error the mirrored key pays", dna.may_pay_after_error({ ["mcp-param-dna-key"] = "k" }, nil, no_body))
+check("after an error a session cookie with a space before its = pays",
+  dna.may_pay_after_error({ cookie = "__Host-d3pay =" .. string.rep("s", 43) }, nil, no_body))
+check("after an error an escaped handoff pays", dna.may_pay_after_error({}, "d3pay%5Fhandoff=" .. handoff, no_body))
+check("after an error a key in a JSON body pays", dna.may_pay_after_error({}, nil, { data = keyed_call }))
+check("after an error a key found in a body on disk pays",
+  dna.may_pay_after_error({}, nil, { streamed = { names_credential = true } }))
+check("after an error a document holding an example call does not",
+  not dna.may_pay_after_error({}, nil, { data = "# Paying\n\n" .. keyed_call }))
+check("after an error the person pass alone does not",
+  not dna.may_pay_after_error({ cookie = "__Host-d3person=p" }, nil, no_body))
+check("after an error an empty mirrored key does not",
+  not dna.may_pay_after_error({ ["mcp-param-dna-key"] = "" }, nil, no_body))
+
 check("an ACME challenge is never decided", dna.is_acme_challenge("/.well-known/acme-challenge/tok"))
 check("other well-known paths are", not dna.is_acme_challenge("/.well-known/security.txt"))
 
@@ -266,6 +283,26 @@ check("revision 3 forwards the site's cookies, not ours", p3.cookies.sid == "1" 
 check("revision 3 lifts the call's key", p3.headers["payment-authorization"] == "Payment k")
 check("revision 3 strips it from the origin's body", m3.origin_body and not m3.origin_body:find("dna.d3.com/key", 1, true))
 check("revision 3 names the call", p3.mcp and p3.mcp.method == "tools/call" and p3.mcp.tool == "a")
+
+-- nginx passes a GET's or HEAD's body on, so its digest is that body's, whatever was claimed.
+local function digest_of(body)
+  local sha = require("resty.sha256"):new()
+  sha:update(body)
+  return "sha-256=:" .. ngx.encode_base64(sha:final()) .. ":"
+end
+for _, method in ipairs({ "GET", "HEAD" }) do
+  local claimed = dna.extract({
+    method = method, url = "/x", host = "site.example", ip = "203.0.113.7", secure = true, timestamp = 1,
+    entries = entries_of({ { "content-digest", digest_of("") } }), body = "smuggled",
+  }, { revision = 3, exclude = { headers = {}, cookies = {} } })
+  check(method .. ": the digest is the body's, not the empty one claimed", claimed.headers["content-digest"] == digest_of("smuggled"))
+
+  local bare = dna.extract({
+    method = method, url = "/x", host = "site.example", ip = "203.0.113.7", secure = true, timestamp = 1,
+    entries = entries_of({}), body = "",
+  }, { revision = 3, exclude = { headers = {}, cookies = {} } })
+  check(method .. ": no body and no claim, no digest", bare.headers["content-digest"] == nil)
+end
 
 local p_ex = dna.extract(req, { revision = 3, exclude = { headers = { "payment-authorization" }, cookies = {} } })
 check("an excluded payment header is not lifted onto the payload", p_ex.headers["payment-authorization"] == nil)

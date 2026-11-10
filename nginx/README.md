@@ -23,9 +23,14 @@ of your rules covers. A visitor's own copies never reach your upstream.
 opm get ledgetech/lua-resty-http
 ```
 
+Without it, every request is handled as if DNA couldn't be reached, so
+`DNA_FAIL_MODE` applies, and the error log says the library is missing.
+
 A plain nginx build with `ngx_http_lua_module` also needs the libraries
 OpenResty bundles: lua-cjson, lua-resty-lrucache and lua-resty-string. Without
-them every request fails open, and the error log says which is missing.
+one, DNA's code can't load and the error log says which is missing. Pages are
+still served, but a request carrying a payment, one of DNA's cookies or a
+`d3pay_*` parameter gets a `502`, since nothing can strip them.
 
 ## Install
 
@@ -47,9 +52,16 @@ them every request fails open, and the error log says which is missing.
    reload keeps the old value; a value written into `nginx.conf` itself as
    `env DNA_API_KEY=…;` does change on reload.
 
-Check it with `curl -sI https://www.example.com/`. `x-d3-edge: pass` means it
-is live. `disabled` means nginx can't see `DNA_API_KEY`: restart it.
-`fail-open` means DNA can't be reached, and the error log says why.
+Check it with `curl -sI https://www.example.com/` and read `x-d3-edge`.
+`nginx -t` can't check this for you: DNA's Lua loads on the first request.
+
+| You see                                                         | It means                                                                                                                                             |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pass`                                                          | DNA is live.                                                                                                                                         |
+| `disabled`                                                      | DNA is off: `DNA_ENABLED=false`, or nginx can't see `DNA_API_KEY` because `dna.main.conf` isn't included or nginx hasn't restarted since you set it. |
+| `fail-open`                                                     | DNA can't be reached, or a library or file it needs is missing. The error log says which.                                                            |
+| No `x-d3-edge`, and a `404`, a `500` or no answer on every page | `dna_access.lua` is missing, or one of DNA's files was edited. The error log names it.                                                               |
+| No `x-d3-edge` on some paths only                               | Those locations run their own `access_by_lua`: see [Locations with their own Lua](#locations-with-their-own-lua).                                    |
 
 ### Upgrading from one access line
 

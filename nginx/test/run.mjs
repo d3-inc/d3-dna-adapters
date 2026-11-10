@@ -1,5 +1,5 @@
 // Drives real OpenResty (run.sh starts it) and checks what the visitor, the
-// origin and DNA each saw. `node run.mjs live` with the mock DNA up, `dead` without.
+// origin and DNA each saw. `node run.mjs <phase>`, one per install run.sh starts.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { request } from 'node:http';
@@ -73,6 +73,8 @@ function headerValues(res, name) {
 }
 
 const session = 's'.repeat(43);
+const handoff = `${'A'.repeat(22)}.${'b'.repeat(43)}`;
+const digestOf = (body) => `sha-256=:${createHash('sha256').update(body).digest('base64')}:`;
 const JSON_TYPE = { 'content-type': 'application/json' };
 const rpc = (method, params, id = 7) => JSON.stringify({ jsonrpc: '2.0', id, method, params });
 
@@ -588,7 +590,12 @@ async function live() {
   check(
     'an ACME challenge is never decided',
     res.status === 200 && s.decisions.length === 0 && res.headers['x-d3-edge'] === 'pass',
-    s.decisions.length
+    {
+      status: res.status,
+      edge: res.headers['x-d3-edge'],
+      n: s.decisions.length,
+      text: res.text.slice(0, 200),
+    }
   );
 
   // ── Found in review: each pinned here ─────────────────────────────────────
@@ -735,6 +742,88 @@ async function live() {
     }
   );
 
+  for (const [label, method, type, padding] of [
+    ['as text/plain', 'POST', 'text/plain', 70_000],
+    ['in a GET', 'GET', 'application/json', 70_000],
+    ['past the 1 MiB read cap', 'POST', 'text/plain', 1_200_000],
+  ]) {
+    id = tag();
+    res = await send(SITES.include, `/mcp?t=${id}`, {
+      method,
+      headers: { 'content-type': type },
+      body: ' '.repeat(padding) + rpc('tools/call', { name: 'a', arguments: { dna_account_key: 'k' } }),
+    });
+    s = await seen(id);
+    check(
+      `a call behind ${padding} spaces of padding, ${label}, is still refused`,
+      res.status === 400 && res.json?.error === 'mcp_call_unreadable' && s.decisions.length === 0,
+      { status: res.status, n: s.decisions.length }
+    );
+  }
+
+  const smuggled = 'bytes no signature covers';
+  id = tag();
+  await send(SITES.include, `/page?t=${id}`, {
+    headers: { 'content-digest': digestOf('') },
+    body: smuggled,
+  });
+  s = await seen(id);
+  check(
+    "a GET's digest is its real body's, not the empty one it claims",
+    s.decisions[0]?.payload.headers['content-digest'] === digestOf(smuggled),
+    s.decisions[0]?.payload.headers
+  );
+
+  // ── M.access raising midway: dna_access.lua's way out ──────────────────────
+  res = await send(SITES.include, `/throws/x?t=${tag()}&d3pay_check=1&keep=1`, {
+    headers: { 'x-d3-tier': 'proven', cookie: '__Host-d3person=p; site=1' },
+  });
+  check(
+    'access raising: the page, tagged fail-open',
+    res.status === 200 && res.json?.origin && res.headers['x-d3-edge'] === 'fail-open',
+    res.headers
+  );
+  check(
+    'access raising: our cookie, our param and a forged verdict still never reach the origin',
+    res.json?.headers.cookie === 'site=1' &&
+      !res.json?.headers['x-d3-tier'] &&
+      !res.json?.url.includes('d3pay_check') &&
+      res.json?.url.includes('keep=1'),
+    res.json
+  );
+  for (const [label, init, query] of [
+    ['the mirrored key', { headers: { 'mcp-param-dna-key': 'k' } }, ''],
+    ['a session cookie with a space before its =', { headers: { cookie: `__Host-d3pay =${session}` } }, ''],
+    ['an escaped handoff', {}, `&d3pay%5Fhandoff=${handoff}`],
+    [
+      'a key in a JSON body',
+      {
+        method: 'POST',
+        headers: JSON_TYPE,
+        body: rpc('tools/call', { name: 'a', arguments: { dna_account_key: 'k' } }),
+      },
+      '',
+    ],
+  ]) {
+    res = await send(SITES.include, `/throws/x?t=${tag()}${query}`, init);
+    check(
+      `access raising: ${label} is a 502, never served free`,
+      res.status === 502 && res.json?.error === 'payment_unavailable',
+      { status: res.status, text: res.text }
+    );
+  }
+
+  res = await send(SITES.include, `/throws/x?t=${tag()}`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/markdown' },
+    body: `# Paying over MCP\n\n${example}\n`,
+  });
+  check(
+    'access raising: a document holding an example call is served',
+    res.status === 200 && res.json?.origin,
+    res.status
+  );
+
   res = await send(SITES.include, `/page?t=${tag()}`, {
     method: 'POST',
     headers: JSON_TYPE,
@@ -783,18 +872,14 @@ async function live() {
 }
 
 async function disabled() {
-  const res = await send(
-    SITES.include,
-    `/page?t=${tag()}&d3pay_handoff=${'A'.repeat(22)}.${'b'.repeat(43)}&keep=1`,
-    {
-      headers: {
-        'x-d3-tier': 'proven',
-        X_D3_Identity: 'googlebot',
-        'payment-authorization': 'Payment k',
-        cookie: `__Host-d3pay=${session}; site=1`,
-      },
-    }
-  );
+  const res = await send(SITES.include, `/page?t=${tag()}&d3pay_handoff=${handoff}&keep=1`, {
+    headers: {
+      'x-d3-tier': 'proven',
+      X_D3_Identity: 'googlebot',
+      'payment-authorization': 'Payment k',
+      cookie: `__Host-d3pay=${session}; site=1`,
+    },
+  });
   const h = res.json?.headers ?? {};
   check(
     'disabled: the page, tagged disabled',
@@ -844,6 +929,112 @@ async function dead() {
   check('dead: @app is served too', res.status === 200 && res.json?.origin, res.headers);
 }
 
-await (mode === 'dead' ? dead() : mode === 'disabled' ? disabled() : live());
+const logCount = (re) => (readFileSync(process.env.ERROR_LOG, 'utf8').match(re) ?? []).length;
+
+async function nolib() {
+  // run.sh's readiness request already loaded the module, so lines from load are counted whole.
+  const calls = logCount(/decision call failed \(lua-resty-http did not load\)/g);
+  const aborted = logCount(/thread aborted/g);
+  for (let i = 0; i < 20; i++) await send(SITES.include, `/page?t=${tag()}`);
+  await sleep(200);
+  check('no lua-resty-http: named once, at load', logCount(/lua-resty-http cannot load/g) === 1);
+  check(
+    'no lua-resty-http: twenty requests log at most one failed call, and no aborted thread',
+    calls >= 1 &&
+      logCount(/decision call failed \(lua-resty-http did not load\)/g) - calls <= 1 &&
+      logCount(/thread aborted/g) === aborted
+  );
+
+  let res = await send(SITES.include, `/page?t=${tag()}&d3pay_check=1`, {
+    headers: { cookie: '__Host-d3person=p; site=1' },
+  });
+  check(
+    'no lua-resty-http: the page, fail-open, our cookie and param stripped as when DNA is down',
+    res.status === 200 &&
+      res.headers['x-d3-edge'] === 'fail-open' &&
+      res.json?.headers.cookie === 'site=1' &&
+      !res.json?.url.includes('d3pay_check'),
+    res.json ?? res.status
+  );
+  res = await send(SITES.include, `/mcp?t=${tag()}`, {
+    method: 'POST',
+    headers: JSON_TYPE,
+    body: rpc('tools/call', { name: 'a', _meta: { 'dna.d3.com/key': 'k' } }),
+  });
+  check(
+    'no lua-resty-http: a call paying with its key is a 502, as when DNA is down',
+    res.status === 502 && res.json?.error === 'payment_unavailable',
+    res.text
+  );
+  // Refused before deciding, so the one answer here that would otherwise be reported.
+  res = await send(SITES.include, `/mcp?t=${tag()}`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain' },
+    body: rpc('tools/call', { name: 'a', arguments: { dna_account_key: 'k' } }),
+  });
+  await sleep(200);
+  check(
+    'no lua-resty-http: an answer of our own is not reported, and nothing aborts',
+    res.status === 400 && logCount(/thread aborted/g) === aborted,
+    { status: res.status }
+  );
+}
+
+async function unloaded() {
+  let res = await send(SITES.include, `/page?t=${tag()}`, {
+    headers: { X_D3_Tier: 'proven', 'x-d3-identity': 'googlebot', cookie: 'site=1' },
+  });
+  check(
+    'no dna.lua: the page, tagged fail-open',
+    res.status === 200 && res.json?.origin && res.headers['x-d3-edge'] === 'fail-open',
+    res.headers
+  );
+  check(
+    'no dna.lua: a forged verdict never reaches the origin',
+    !res.json?.headers.x_d3_tier &&
+      !res.json?.headers['x-d3-identity'] &&
+      res.json?.headers.cookie === 'site=1',
+    res.json?.headers
+  );
+
+  const call = rpc('tools/call', { name: 'a', arguments: { dna_account_key: 'k' } });
+  // The key straddles the first 64 KiB chunk read from disk.
+  const split = `${'x'.repeat(65_536 - 7)}"dna_account_key":"k"`;
+  for (const [label, init, query] of [
+    ['our person pass', { headers: { cookie: '__Host-d3person=p; site=1' } }, ''],
+    ['a session cookie with a space before its =', { headers: { cookie: `__Host-d3pay =${session}` } }, ''],
+    ['an escaped check param', {}, '&d3pay%5Fcheck=1'],
+    ['the mirrored key', { headers: { 'mcp-param-dna-key': 'k' } }, ''],
+    ['a key in a JSON body', { method: 'POST', headers: JSON_TYPE, body: call }, ''],
+    ['a key in a body on disk', { method: 'POST', headers: JSON_TYPE, body: ' '.repeat(40_000) + call }, ''],
+    [
+      'a key split across two chunks on disk',
+      { method: 'POST', headers: { 'content-type': 'text/plain' }, body: split },
+      '',
+    ],
+  ]) {
+    res = await send(SITES.include, `/page?t=${tag()}${query}`, init);
+    check(
+      `no dna.lua: ${label} is refused, not passed on`,
+      res.status === 502 && res.headers['x-d3-edge'] === 'fail-closed',
+      { status: res.status, text: res.text.slice(0, 200) }
+    );
+  }
+
+  res = await send(SITES.include, `/page?t=${tag()}`, {
+    method: 'POST',
+    headers: JSON_TYPE,
+    body: JSON.stringify({ q: 'x'.repeat(40_000) }),
+  });
+  check(
+    'no dna.lua: a body with nothing of ours is served',
+    res.status === 200 && res.json?.origin,
+    res.status
+  );
+  check('no dna.lua: named once, at load', logCount(/cannot load dna\.lua/g) === 1);
+}
+
+const PHASES = { live, dead, disabled, nolib, unloaded };
+await PHASES[mode]();
 console.log(`${mode}: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
