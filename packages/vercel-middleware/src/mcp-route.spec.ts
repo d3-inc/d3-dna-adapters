@@ -31,10 +31,13 @@ function harness(decision: ClientDecision | 'throw') {
   return { deps, decisions, names, handled, handler };
 }
 
-const call = (params: Record<string, unknown>) =>
-  new Request('https://mcp.example/mcp', {
+const call = (
+  params: Record<string, unknown>,
+  { url = 'https://mcp.example/mcp', headers = {} }: { url?: string; headers?: Record<string, string> } = {}
+) =>
+  new Request(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params }),
   });
 
@@ -163,6 +166,95 @@ describe('withD3Mcp', () => {
     await route(paid, context);
     expect(seen[0].request).toBeInstanceOf(NextLikeRequest);
     expect(seen[0].context).toBe(context);
+  });
+
+  it("keeps every credential and name of ours from the route, and the site's own on it, on a pass and when it fails open", async () => {
+    // A paying call never falls open, so the fail-open call's credentials are each past their cap.
+    for (const [mode, decision, credential] of [
+      ['pass', { action: 'pass' }, 'c'.repeat(43)],
+      ['fail-open', 'throw', 'c'.repeat(4097)],
+    ] as const) {
+      const h = harness(decision);
+      const res = await withD3Mcp(
+        h.handler,
+        CONFIG,
+        h.deps
+      )(
+        call(
+          { name: 'a' },
+          {
+            url: 'https://mcp.example/mcp?x=1&d3pay_browser=e30&d3pay_later=1',
+            headers: {
+              cookie: `theme=dark; __Host-d3pay=${credential}; __Host-d3person=${credential}; __Host-d3visitor=V1`,
+              'd3pay-session': credential,
+              'payment-signature': credential,
+            },
+          }
+        )
+      );
+
+      expect(res.headers.get('x-d3-edge')).toBe(mode);
+      const route = h.handled[0];
+      expect(route.url).toBe('https://mcp.example/mcp?x=1');
+      expect(route.headers.get('cookie')).toBe('theme=dark');
+      expect(route.headers.get('d3pay-session')).toBeNull();
+      expect(route.headers.get('payment-signature')).toBeNull();
+    }
+  });
+
+  it('forwards every header and cookie but what the config keeps back, and echoes it', async () => {
+    const h = harness({ action: 'pass' });
+    await withD3Mcp(
+      h.handler,
+      { ...CONFIG, excludeHeaders: ['X-Api-Key'], excludeCookies: 'sid' },
+      h.deps
+    )(call({ name: 'a' }, { headers: { 'x-api-key': 'k', 'x-partner': 'acme', cookie: 'sid=s; plan=pro' } }));
+
+    expect(h.decisions[0].headers['x-partner']).toBe('acme');
+    expect(h.decisions[0].headers['x-api-key']).toBeUndefined();
+    expect(h.decisions[0].cookies).toEqual({ plan: 'pro' });
+    expect(h.decisions[0].excluded).toEqual({ headers: ['x-api-key'], cookies: ['sid'] });
+  });
+
+  it("puts our Set-Cookie after the route's own, and the receipt, on the route's response", async () => {
+    const h = harness({
+      action: 'pass',
+      payment: {
+        headers: { 'set-cookie': '__Host-d3pay=new; Path=/; Secure; HttpOnly', 'payment-receipt': 'abc' },
+      },
+    });
+    const route = async () =>
+      new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), {
+        headers: [
+          ['content-type', 'application/json'],
+          ['set-cookie', 'site=1; Path=/'],
+        ],
+      });
+    const res = await withD3Mcp(route, CONFIG, h.deps)(call({ name: 'a' }));
+
+    expect(res.headers.getSetCookie()).toEqual([
+      'site=1; Path=/',
+      '__Host-d3pay=new; Path=/; Secure; HttpOnly',
+    ]);
+    expect(res.headers.get('payment-receipt')).toBe('abc');
+  });
+
+  it('hands the route only what the caller sent, building nothing from the verdict', async () => {
+    const h = harness({
+      action: 'pass',
+      verdict: { verified: false, tier: 'claimed', reason: 'unknown-key', identity: 'test-bot' },
+    });
+    await withD3Mcp(
+      h.handler,
+      CONFIG,
+      h.deps
+    )(call({ name: 'a' }, { headers: { 'user-agent': 'TestBot/1.0', 'x-d3-tier': 'verified' } }));
+
+    expect(Object.fromEntries(h.handled[0].headers)).toEqual({
+      'content-type': 'application/json',
+      'user-agent': 'TestBot/1.0',
+      'x-d3-tier': 'verified',
+    });
   });
 
   it('runs the route untouched when DNA is off', async () => {

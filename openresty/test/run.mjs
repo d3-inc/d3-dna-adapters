@@ -158,15 +158,20 @@ async function live() {
   );
 
   // ── The verdict to the upstream, only DNA's ────────────────────────────────
-  res = await send(SITES.include, `/page?t=${tag()}&scenario=early`, {
+  id = tag();
+  res = await send(SITES.include, `/page?t=${id}&scenario=early`, {
     headers: { 'x-d3-tier': 'proven', 'x-d3-identity': 'forged' },
   });
+  s = await seen(id);
+  // A pass, not a crash that fails open: both reach the origin without a verdict.
   check(
     "early pass: no verdict, so no verdict headers, and never the visitor's",
     res.status === 200 &&
+      res.headers['x-d3-edge'] === 'pass' &&
+      s.reports[0]?.mode === 'pass' &&
       res.json?.headers['x-d3-tier'] === undefined &&
       res.json?.headers['x-d3-identity'] === undefined,
-    res.json?.headers
+    { edge: res.headers['x-d3-edge'], reports: s.reports, origin: res.json?.headers }
   );
   res = await send(SITES.include, `/page?t=${tag()}&scenario=error500`, {
     headers: { 'x-d3-tier': 'proven' },
@@ -182,6 +187,23 @@ async function live() {
     res.json?.headers['x-d3-tier'] === 'claimed' && res.json?.headers['x-d3-identity'] === 'test-bot',
     res.json?.headers
   );
+
+  // ── Ours beyond the credentials: to DNA in the cookie map, never to the origin ─
+  // The visitor id is often the only cookie of ours a request holds, which is when stripping once went missing.
+  for (const name of ['__Host-d3visitor', '__Secure-d3visitor']) {
+    for (const scenario of ['pass', 'error500']) {
+      id = tag();
+      res = await send(SITES.include, `/page?t=${id}&scenario=${scenario}`, {
+        headers: { cookie: `${name}=V1; site=1` },
+      });
+      s = await seen(id);
+      check(
+        `ours: ${name} alone reaches DNA on ${scenario}, and never the origin`,
+        s.decisions[0]?.payload.cookies?.[name] === 'V1' && res.json?.headers.cookie === 'site=1',
+        { dna: s.decisions[0]?.payload.cookies, origin: res.json?.headers.cookie }
+      );
+    }
+  }
 
   // ── Credentials never reach the origin ─────────────────────────────────────
   id = tag();

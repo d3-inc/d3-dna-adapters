@@ -67,6 +67,12 @@ provenance naming this repo and `publish.yml`:
 - A fix for an older line is tagged on a `release/X.Y` branch and publishes
   under `release-X.Y`.
 
+A release that does something new for DNA adds its build to
+[`proven-mechanisms.json`](./proven-mechanisms.json) before it is tagged: each
+mechanism it does, and the tests that fail if it stops. DNA serves a build only
+what that file proves, and CI fails a cited test that is missing or skipped, a
+build proving less than the one before it, or an entry a release already holds.
+
 Each run waits for a reviewer other than the person who tagged it. Each name's
 first version, 0.10.0, is published by hand from that tag's CI tarballs, because
 npm attaches a trusted publisher only to a package that already exists.

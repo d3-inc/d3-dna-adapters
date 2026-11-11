@@ -118,6 +118,30 @@ describe('enforcement', () => {
     expect(call.payload.headers['user-agent']).toBe('GPTBot/1.0');
   });
 
+  it('should build nothing for the origin from a pass verdict', async () => {
+    const log = stubOutbound({
+      action: 'pass',
+      verdict: { verified: false, tier: 'claimed', reason: 'no-signature', identity: 'test-bot' },
+    });
+    await run(siteRequest({ headers: { 'user-agent': 'GPTBot/1.0', 'x-site': 'kept' } }));
+
+    const sent = [...log.originCalls[0].headers];
+    expect(sent.filter(([name, value]) => name.startsWith('x-d3') || value.includes('test-bot'))).toEqual([]);
+    expect(log.originCalls[0].headers.get('x-site')).toBe('kept');
+  });
+
+  it('should forward a lone visitor id to DNA and keep it from the origin, on a pass and when it fails open', async () => {
+    const visitor = { headers: { 'user-agent': 'GPTBot/1.0', cookie: '__Host-d3visitor=V1; theme=dark' } };
+    const passed = stubOutbound({ action: 'pass' });
+    await run(siteRequest(visitor));
+    const failedOpen = stubOutbound({ status: 500 });
+    await run(siteRequest(visitor));
+
+    expect(passed.policyCalls[0].payload.cookies?.['__Host-d3visitor']).toBe('V1');
+    expect(passed.originCalls[0].headers.get('cookie')).toBe('theme=dark');
+    expect(failedOpen.originCalls[0].headers.get('cookie')).toBe('theme=dark');
+  });
+
   it('should return a machine-readable 403 on block without touching the origin', async () => {
     const log = stubOutbound({
       action: 'block',

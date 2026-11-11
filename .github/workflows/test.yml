@@ -34,6 +34,10 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: node scripts/check-recipe-versions.ts "origin/$BASE_REF"
+      # The worker grants a build no mechanism this record does not prove. On a push there is no base.
+      - env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-proven-mechanisms.ts ${BASE_REF:+"origin/$BASE_REF"}
       # tsup's declaration build is the check that the published types still compile.
       - run: pnpm build
 

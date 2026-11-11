@@ -11,6 +11,7 @@ const BASE_CONFIG: D3MiddlewareConfig = { endpoint: URL, apiKey: KEY, timeoutMs:
 interface Harness {
   deps: MiddlewareDeps;
   nextCalls: Array<{ headers?: HeadersInit; request?: { headers?: Headers } }>;
+  rewriteCalls: Array<{ destination: string; request?: { headers?: Headers } }>;
   policyCalls: Array<{ headers: Record<string, string>; body: unknown }>;
   reportCalls: Array<{ headers: Record<string, string>; report: ResponseReport }>;
   flushReports: () => Promise<void>;
@@ -20,12 +21,17 @@ interface Harness {
 // only when the middleware's own budget aborts the call.
 function harness(decision: ClientDecision | { status: number } | 'throw' | 'hang'): Harness {
   const nextCalls: Harness['nextCalls'] = [];
+  const rewriteCalls: Harness['rewriteCalls'] = [];
   const policyCalls: Harness['policyCalls'] = [];
   const reportCalls: Harness['reportCalls'] = [];
   const pendingReports: Promise<unknown>[] = [];
   const deps: MiddlewareDeps = {
     next: (init) => {
       nextCalls.push(init ?? {});
+      return new Response(null, { status: 200, headers: init?.headers });
+    },
+    rewrite: (destination, init) => {
+      rewriteCalls.push({ destination, request: init?.request });
       return new Response(null, { status: 200, headers: init?.headers });
     },
     ipAddress: () => '203.0.113.7',
@@ -63,6 +69,7 @@ function harness(decision: ClientDecision | { status: number } | 'throw' | 'hang
   return {
     deps,
     nextCalls,
+    rewriteCalls,
     policyCalls,
     reportCalls,
     flushReports: async () => void (await Promise.all(pendingReports)),
@@ -496,5 +503,72 @@ describe('payment headers never reach the origin', () => {
     expect(upstream?.get('payment-authorization')).toBeNull();
     expect(upstream?.get('x-payment')).toBeNull();
     expect(upstream?.get('user-agent')).toBe('agent');
+  });
+});
+
+describe('the request the site receives', () => {
+  const PASS_AND_FAIL_OPEN = [
+    ['pass', { action: 'pass' }],
+    ['fail-open', 'throw'],
+  ] as const;
+
+  it('serves the site its own URL and cookies, none of ours, on a pass and when it fails open', async () => {
+    for (const [mode, decision] of PASS_AND_FAIL_OPEN) {
+      const h = harness(decision);
+      const res = await createD3Middleware(
+        BASE_CONFIG,
+        h.deps
+      )(
+        new Request('https://ai.d3.com/page?x=1&d3pay_browser=e30&y=2&d3pay_later=1', {
+          headers: { 'user-agent': 'GPTBot/1.0', cookie: 'theme=dark; __Host-d3visitor=V1' },
+        })
+      );
+
+      expect(res.headers.get('x-d3-edge')).toBe(mode);
+      expect(h.nextCalls).toHaveLength(0);
+      expect(h.rewriteCalls[0]?.destination).toBe('https://ai.d3.com/page?x=1&y=2');
+      expect(h.rewriteCalls[0]?.request?.headers?.get('cookie')).toBe('theme=dark');
+    }
+  });
+
+  it('forwards a lone visitor id to DNA and keeps it from the site, on a pass and when it fails open', async () => {
+    for (const [mode, decision] of PASS_AND_FAIL_OPEN) {
+      const h = harness(decision);
+      const res = await createD3Middleware(
+        BASE_CONFIG,
+        h.deps
+      )(
+        new Request('https://ai.d3.com/page', {
+          headers: { 'user-agent': 'GPTBot/1.0', cookie: 'theme=dark; __Host-d3visitor=V1' },
+        })
+      );
+
+      expect(res.headers.get('x-d3-edge')).toBe(mode);
+      expect((h.policyCalls[0].body as { cookies: unknown }).cookies).toEqual({
+        theme: 'dark',
+        '__Host-d3visitor': 'V1',
+      });
+      expect(h.nextCalls[0]?.request?.headers?.get('cookie')).toBe('theme=dark');
+    }
+  });
+
+  it('continues with only what the visitor sent, building nothing from the verdict', async () => {
+    const h = harness({
+      action: 'pass',
+      verdict: { verified: false, tier: 'claimed', reason: 'unknown-key', identity: 'test-bot' },
+    });
+    await createD3Middleware(
+      BASE_CONFIG,
+      h.deps
+    )(
+      new Request('https://ai.d3.com/page', {
+        headers: { 'user-agent': 'TestBot/1.0', 'x-d3-tier': 'verified' },
+      })
+    );
+
+    expect(Object.fromEntries(h.nextCalls[0]?.request?.headers ?? [])).toEqual({
+      'user-agent': 'TestBot/1.0',
+      'x-d3-tier': 'verified',
+    });
   });
 });

@@ -87,6 +87,8 @@ export {
   sourceBuildVersion,
 } from './adapter/adapter-name';
 export type { AdapterEndpoint, AdapterName, AdapterType } from './adapter/adapter-name';
+export { ADAPTER_MECHANISMS, isAdapterMechanism } from './adapter/mechanisms';
+export type { AdapterMechanism } from './adapter/mechanisms';
 export { DEFAULT_DNA_ENDPOINT, readAdapterSettings } from './adapter/adapter-settings';
 export {
   FORWARDED_MAX_TOTAL_LENGTH,
