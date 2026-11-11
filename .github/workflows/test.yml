@@ -73,6 +73,17 @@ jobs:
           sudo install caddy /usr/local/bin/caddy
       - run: bash caddy/test/run.sh
 
+  # The check the ruleset requires: the matrix jobs carry their Caddy version in their names.
+  caddy-all:
+    name: caddy
+    needs: caddy
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULT: ${{ needs.caddy.result }}
+        run: test "$RESULT" = success
+
   openresty:
     runs-on: ubuntu-latest
     steps:
