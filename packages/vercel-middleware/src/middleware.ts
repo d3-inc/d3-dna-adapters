@@ -55,7 +55,13 @@ export function createD3Middleware(config?: D3MiddlewareConfig, deps: Middleware
   const waitUntilFn: WaitUntilFn = deps.waitUntil ?? ((promise) => vercelWaitUntil(promise));
 
   return async function d3Middleware(request: Request): Promise<Response> {
-    if (!cfg.endpoint) return nextFn({ headers: { 'x-d3-edge': 'disabled' } });
+    // Stripped even here: a browser holding our cookies from before DNA was
+    // turned off is no reason to hand them to the site's origin.
+    if (!cfg.endpoint) {
+      const clean = stripPaymentHeaders(request);
+      const init = { headers: { 'x-d3-edge': 'disabled' }, request: { headers: clean.headers } };
+      return clean.url === request.url ? nextFn(init) : rewriteFn(clean.url, init);
+    }
 
     const endpoint = cfg.endpoint;
     const paying = requestPresentsPayment(request);

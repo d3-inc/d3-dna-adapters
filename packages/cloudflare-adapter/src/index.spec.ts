@@ -233,6 +233,19 @@ describe('certificate challenges', () => {
     expect(log.originCalls).toHaveLength(1);
   });
 
+  // PROTOCOL.md: no cookie of ours reaches the origin. This path answers without
+  // asking DNA, and a browser can still be holding one.
+  it('strips ours from the challenge it sends on', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    await run(
+      siteRequest({
+        url: 'https://ai.d3.com/.well-known/acme-challenge/tok3n',
+        headers: { cookie: 'plan=pro; __Secure-d3visitor=V' },
+      })
+    );
+    expect(log.originCalls[0].headers.get('cookie')).toBe('plan=pro');
+  });
+
   it('still decides on a path that merely mentions the challenge directory', async () => {
     const log = stubOutbound({ action: 'block' });
     const res = await run(siteRequest({ url: 'https://ai.d3.com/blog/.well-known/acme-challenge/' }));
@@ -242,6 +255,12 @@ describe('certificate challenges', () => {
 });
 
 describe('passthrough + proxying modes', () => {
+  it('strips ours even with nothing configured', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    await run(siteRequest({ headers: { cookie: 'plan=pro; __Secure-d3visitor=V' } }), UNCONFIGURED);
+    expect(log.originCalls[0].headers.get('cookie')).toBe('plan=pro');
+  });
+
   it('should pass straight through when nothing is configured (M0 mode)', async () => {
     const log = stubOutbound({ action: 'pass' });
     const res = await run(siteRequest(), UNCONFIGURED);
