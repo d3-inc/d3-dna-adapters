@@ -40,9 +40,9 @@ old name, the key never reaches DNA and nothing is enforced.
 
 ## Revisions
 
-`dna.caddy` sends its revision in `x-d3-adapter-set`, and DNA answers only with
-what that revision can show. To upgrade, replace `dna.caddy` and reload; your
-Caddyfile does not change.
+`dna.caddy` sends its revision in `x-d3-adapter-set`, and its own version in
+`dna-adapter`, and DNA answers only with what that build can
+show. To upgrade, replace `dna.caddy` and reload; your Caddyfile does not change.
 
 | Revision                                | Carries                                                                                                                        |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |

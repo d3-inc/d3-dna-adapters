@@ -88,6 +88,7 @@ async function live() {
       'x-internal-token': 'keep-home',
       authorization: 'Bearer site-token',
       cookie: `sid=private; theme=dark; __Host-d3pay=${session}; __Host-d3person=pass1`,
+      'dna-adapter': 'caddy:9.9.9',
     },
   });
   let s = await seen(id);
@@ -104,6 +105,11 @@ async function live() {
     s.decisions.length
   );
   check('pass: the key as a bearer', s.decisions[0]?.auth === 'Bearer test-key');
+  check(
+    "pass: names this install, never the visitor's dna-adapter",
+    s.decisions[0]?.adapter === 'openresty:1.0.0',
+    s.decisions[0]?.adapter
+  );
   check(
     'pass: every header but authorization and the excluded',
     p.headers?.['x-custom'] === 'c' && !p.headers?.authorization && !p.headers?.['x-internal-token'],
@@ -853,6 +859,11 @@ async function live() {
     'legacy: revision 1, the fixed list, no cookies',
     lp.adapterSet === 1 && lp.headers && !lp.headers['x-custom'] && lp.cookies === undefined,
     lp
+  );
+  check(
+    'legacy: names no build, so DNA reads its revision alone',
+    s.decisions[0]?.adapter === undefined,
+    s.decisions[0]?.adapter
   );
   check(
     'legacy: the page, no marker, no report',

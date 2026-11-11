@@ -64,6 +64,9 @@ const HEADER_LENGTH_CAPS = new Map([
   ['payment-authorization', 4096],
 ]);
 
+// Our build of this file, by its own version. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter).
+const DNA_ADAPTER = 'snippet:1.0.0';
+
 const PAYMENT_HEADERS = ['payment-signature', 'x-payment', 'payment-authorization', 'd3pay-session'];
 
 // Ours on a site: the cookies the endpoint sets, and the params it rides back on.
@@ -149,6 +152,7 @@ export function createSnippet(config) {
           headers: {
             'content-type': 'application/json',
             authorization: `Bearer ${apiKey}`,
+            'dna-adapter': DNA_ADAPTER,
           },
           body: JSON.stringify(await extractPayload(request)),
           signal: AbortSignal.timeout(paying ? config.paymentTimeoutMs : config.timeoutMs),

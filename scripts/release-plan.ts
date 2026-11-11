@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { latestVersion } from './registry.ts';
 import {
+  bakedNameProblem,
   compareReleases,
   distTagFor,
   packedManifestProblems,
@@ -59,10 +60,11 @@ export async function planRelease(): Promise<ReleasePlan> {
 export const tarballName = (name: string, version: string) =>
   `${name.replace('@', '').replace('/', '-')}-${version}.tgz`;
 
+const tar = (...args: string[]) =>
+  execFileSync('tar', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+
 /** A tarball's manifest and its paths with the `package/` prefix removed. */
 export function readTarball(path: string): { manifest: PackedManifest; files: string[] } {
-  const tar = (...args: string[]) =>
-    execFileSync('tar', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   const files = tar('-tzf', path)
     .split('\n')
     .filter(Boolean)
@@ -73,8 +75,12 @@ export function readTarball(path: string): { manifest: PackedManifest; files: st
 /** Throws with every problem the release's tarballs in `dir` have. */
 export function assertTarballs(dir: string, version: string): void {
   const problems = RELEASE_PACKAGES.flatMap((p) => {
-    const { manifest, files } = readTarball(join(dir, tarballName(p.name, version)));
-    return packedManifestProblems(manifest, { name: p.name, version }, files);
+    const path = join(dir, tarballName(p.name, version));
+    const { manifest, files } = readTarball(path);
+    const named = p.namesItself
+      ? bakedNameProblem(p.name, version, tar('-xOzf', path, 'package/dist/index.js'))
+      : null;
+    return [...packedManifestProblems(manifest, { name: p.name, version }, files), ...(named ? [named] : [])];
   });
   if (problems.length) throw new Error(`the tarballs cannot publish:\n- ${problems.join('\n- ')}`);
 }

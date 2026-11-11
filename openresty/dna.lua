@@ -1311,6 +1311,10 @@ function M.contain_access_error()
   return paying
 end
 
+-- Our build of this install, by its own version. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter).
+-- Only the full install sends it: web_bot_auth_verify.lua runs revision 1, a different build.
+local DNA_ADAPTER = "openresty:1.0.0"
+
 local function post_decision(settings, payload, budget_ms)
   local httpc = http.new()
   httpc:set_timeout(budget_ms)
@@ -1321,6 +1325,7 @@ local function post_decision(settings, payload, budget_ms)
     headers = {
       ["Content-Type"] = "application/json",
       ["Authorization"] = settings.api_key and ("Bearer " .. settings.api_key) or nil,
+      ["dna-adapter"] = payload.adapterSet == M.ADAPTER_SET and DNA_ADAPTER or nil,
     },
   })
 end

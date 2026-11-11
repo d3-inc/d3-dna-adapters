@@ -18,8 +18,12 @@ for (const p of RELEASE_PACKAGES) {
   writeFileSync(file, `${JSON.stringify({ ...manifest, version: plan.version }, null, 2)}\n`);
 }
 
-// `pnpm pack` alone ships no dist/: prepublishOnly runs only on publish.
-run('pnpm', ['build']);
+// `pnpm pack` alone ships no dist/: prepublishOnly runs only on publish. The
+// SDKs bake this version into the `dna-adapter` name they send.
+execFileSync('pnpm', ['build'], {
+  stdio: 'inherit',
+  env: { ...process.env, DNA_PACKED_VERSION: plan.version },
+});
 mkdirSync(OUT, { recursive: true });
 for (const p of RELEASE_PACKAGES) {
   // pnpm, not npm: it rewrites workspace:* to the exact version and applies publishConfig.

@@ -23,6 +23,7 @@ import {
   type AdapterSettings,
   type EdgeMode,
 } from '@d3-inc/d3-dna-protocol';
+import { ADAPTER_NAME } from './adapter-name';
 import type { Env } from './env';
 import { handshakeFromTlsClientAuth } from './handshake';
 import { networkFactsFromCf } from './network-facts';
@@ -84,6 +85,7 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
         url: policy.url,
         bearer: policy.bearer,
         timeoutMs: paying ? settings.paymentTimeoutMs : settings.timeoutMs,
+        adapterName: ADAPTER_NAME,
       },
       policy.fetch
     );

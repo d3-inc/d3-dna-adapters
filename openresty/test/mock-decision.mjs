@@ -92,7 +92,7 @@ createServer((req, res) => {
     }
 
     const payload = JSON.parse(text);
-    decisions.push({ auth: req.headers.authorization, payload });
+    decisions.push({ auth: req.headers.authorization, adapter: req.headers['dna-adapter'], payload });
     const scenario = new URL(payload.url, 'http://x').searchParams.get('scenario') ?? 'pass';
     // A byte every 100 ms: each read beats a per-read timeout, the whole answer never does.
     if (scenario === 'trickle') {

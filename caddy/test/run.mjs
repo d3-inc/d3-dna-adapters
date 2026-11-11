@@ -202,6 +202,7 @@ if (process.argv[2] === 'live') {
       'd3pay-session': 'SPOOF',
       'd3pay-person': 'SPOOF',
       'x-d3-adapter-set': '99',
+      'dna-adapter': 'cloudflare:99.0.0',
       'x-d3-adapter-key': 'forged',
       'x-forwarded-host': 'other.example',
       authorization: 'Bearer site-token',
@@ -234,6 +235,11 @@ if (process.argv[2] === 'live') {
       sub.headers['x-partner-id'] === 'acme' &&
       sub.headers['x-d3-adapter-set'] === '2',
     `cookie=${sub.headers.cookie}`
+  );
+  ok(
+    "to DNA: names this file's build, never the visitor's dna-adapter",
+    sub.headers['dna-adapter'] === 'caddy:1.0.0',
+    `dna-adapter=${sub.headers['dna-adapter']}`
   );
   ok(
     "to DNA: the key from DNA_API_KEY, never the visitor's",

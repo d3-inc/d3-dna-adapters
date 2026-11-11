@@ -97,6 +97,8 @@ http://:8114 {
 			header_up X-Forwarded-Host {http.request.hostport}
 			header_up X-Forwarded-Proto {scheme}
 			header_up x-d3-adapter-set 2
+			# Our build of this file, by its own version. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter).
+			header_up dna-adapter caddy:1.0.0
 			header_up x-d3-adapter-key {env.DNA_API_KEY}
 			# The pinned client IP: the endpoint never trusts X-Forwarded-For.
 			header_up x-d3-real-ip {client_ip}

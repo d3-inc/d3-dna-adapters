@@ -1,4 +1,5 @@
 import { edgeLogger } from '../logging/logger';
+import { DNA_ADAPTER_HEADER } from './adapter-name';
 import type { BuiltAnswer, ClientDecision, PolicyClient, RequestPayload, ResponseReport } from '../types';
 
 const log = edgeLogger('policy-client');
@@ -10,6 +11,8 @@ export interface HttpPolicyClientOptions {
    *  over a service binding, which is itself the credential. */
   bearer?: string;
   timeoutMs: number;
+  /** This build's `dna-adapter` value (`adapterNameOf`); absent, the call names no build. */
+  adapterName?: string;
 }
 
 const REPORT_TIMEOUT_MS = 3000;
@@ -45,7 +48,10 @@ export function createHttpPolicyClient(
       try {
         const res = await fetchImpl(opts.url, {
           method: 'POST',
-          headers: jsonHeaders(opts.bearer),
+          headers: {
+            ...jsonHeaders(opts.bearer),
+            ...(opts.adapterName === undefined ? {} : { [DNA_ADAPTER_HEADER]: opts.adapterName }),
+          },
           body: JSON.stringify(payload),
           signal: controller.signal,
         });

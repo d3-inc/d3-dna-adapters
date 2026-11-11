@@ -8,6 +8,7 @@ const CONFIG = { endpoint: URL, apiKey: 'd3_k_' + 'a'.repeat(43) + 'AAAAAA', tim
 
 function harness(decision: ClientDecision | 'throw') {
   const decisions: RequestPayload[] = [];
+  const names: (string | null)[] = [];
   const handled: Request[] = [];
   const deps: McpRouteDeps = {
     ipAddress: () => '203.0.113.7',
@@ -16,6 +17,7 @@ function harness(decision: ClientDecision | 'throw') {
       if (String(url) === REPORT_URL) return new Response(null, { status: 202 });
 
       decisions.push(JSON.parse(init?.body as string) as RequestPayload);
+      names.push(new Headers(init?.headers).get('dna-adapter'));
       if (decision === 'throw') throw new Error('boom');
 
       return Response.json(decision);
@@ -26,7 +28,7 @@ function harness(decision: ClientDecision | 'throw') {
     return Response.json({ jsonrpc: '2.0', id: 1, result: { content: [] } });
   };
 
-  return { deps, decisions, handled, handler };
+  return { deps, decisions, names, handled, handler };
 }
 
 const call = (params: Record<string, unknown>) =>
@@ -42,6 +44,7 @@ describe('withD3Mcp', () => {
     await withD3Mcp(h.handler, CONFIG, h.deps)(call({ name: 'a', _meta: { 'dna.d3.com/key': 'dna_k_1' } }));
 
     expect(h.decisions).toHaveLength(1);
+    expect(h.names).toEqual(['vercel-mcp:0.0.0-test']);
     expect(h.decisions[0]).toMatchObject({
       adapterSet: ADAPTER_SET,
       mcp: { method: 'tools/call', tool: 'a' },
