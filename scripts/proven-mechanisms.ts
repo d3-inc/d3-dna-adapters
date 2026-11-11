@@ -72,8 +72,9 @@ export function citationProblem(citation: string, source: (file: string) => stri
 
   if (SKIPS.test(text)) return `${parsed.file} skips a test, so none in it is cited`;
 
-  if (!opensTest(text.split('\n'), parsed.title))
-    {return `${parsed.file} has no test titled "${parsed.title}"`;}
+  if (!opensTest(text.split('\n'), parsed.title)) {
+    return `${parsed.file} has no test titled "${parsed.title}"`;
+  }
 
   return null;
 }

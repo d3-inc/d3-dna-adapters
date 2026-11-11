@@ -168,7 +168,10 @@ describe('provenMechanismProblems', () => {
         build('0.11.0', { 'bare-pass': ['packages/protocol/src/x.spec.ts: never'] }, 3),
       ],
     };
-    const ship = { ...FILES, 'packages/protocol/src/x.spec.ts': "it('never', () => {});" };
+    const ship: Record<string, string> = {
+      ...FILES,
+      'packages/protocol/src/x.spec.ts': "it('never', () => {});",
+    };
 
     expect(
       provenMechanismProblems(record, context({ base: {}, source: (file) => ship[file] ?? null }))

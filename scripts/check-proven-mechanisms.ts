@@ -68,8 +68,9 @@ function recipeVersions(): Record<string, string> {
 const record = JSON.parse(readFileSync(RECORD, 'utf8')) as ProvenMechanisms;
 const previous = atBase();
 const released = newestRelease();
-if (previous !== null && released === null)
-  {stop('no v* tag here, so a new build cannot be dated: fetch tags');}
+if (previous !== null && released === null) {
+  stop('no v* tag here, so a new build cannot be dated: fetch tags');
+}
 
 const problems = provenMechanismProblems(record, {
   base: previous,
