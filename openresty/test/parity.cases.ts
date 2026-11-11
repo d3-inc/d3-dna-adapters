@@ -696,6 +696,8 @@ export async function buildParity() {
       '__Host-d3pay=S; __Host-d3person =P; site=1',
       '__Secure-d3visitor=V; site=1',
       '__Host-d3_acquisition=keep; __Secure-d3-admin.session_token=keep; site=1',
+      '__Secure-d3visitor; site=1',
+      '__Host-d3pay =S; site=1',
     ].map((header) => ({
       header,
       cookiesOf: cookiesOf(header),
@@ -710,6 +712,8 @@ export async function buildParity() {
       '/a?x=1&d3pay_check=1&d3pay_browser=abc&y=%2F',
       '/a?d3pay_handoff=1',
       '/a?d3pay_handoffx=1&d3pay_handoff',
+      '/a?d3pay%5Flater%FF=secret&keep=1',
+      '/a?d3pay%5Fcheck=1&keep=2',
     ].map((url) => ({ url, out: stripPayParams(url) })),
     mcp: mcpCases.map(mcpCase),
     answers: await Promise.all(answerCases.map(answerCase)),

@@ -135,6 +135,15 @@ describe('stripPaymentHeaders', () => {
     expect(stripped.headers.get('cookie')).toBe('plan=pro');
   });
 
+  // One bad escape must not hide the rest of the name.
+  it('removes a parameter whose name only decodes in part', () => {
+    const stripped = stripPaymentHeaders(
+      new Request('https://ai.d3.com/premium?d3pay%5Flater%FF=secret&keep=1')
+    );
+
+    expect(stripped.url).toBe('https://ai.d3.com/premium?keep=1');
+  });
+
   it('removes a parameter wearing our prefix, not only the three we read', () => {
     const stripped = stripPaymentHeaders(
       new Request('https://ai.d3.com/premium?d3pay_later=x&keep=1&d3pay_handoff=y')

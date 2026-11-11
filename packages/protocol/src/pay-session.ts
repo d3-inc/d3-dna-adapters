@@ -77,13 +77,22 @@ export function isWellFormedSessionToken(token: string): boolean {
   return token.length === PAY_SESSION_TOKEN_LENGTH && BASE64URL.test(token);
 }
 
+/**
+ * Escape by escape, because one bad byte must not hide the rest: a whole-string
+ * `decodeURIComponent` throws on `%FF` and hands back the name still encoded, so
+ * `d3pay%5Flater%FF` read as a site's parameter and reached its origin.
+ */
 function paramName(pair: string): string {
-  const name = pair.split('=', 1)[0].replaceAll('+', ' ');
-  try {
-    return decodeURIComponent(name);
-  } catch {
-    return name;
-  }
+  return pair
+    .split('=', 1)[0]
+    .replaceAll('+', ' ')
+    .replace(/%[0-9A-Fa-f]{2}/g, (escape) => {
+      try {
+        return decodeURIComponent(escape);
+      } catch {
+        return escape;
+      }
+    });
 }
 
 /** The handoff a caller with no cookie jar appends to the URL; null when absent or malformed. */

@@ -2707,6 +2707,34 @@
       "readSession": null,
       "readPerson": null,
       "stripOwn": "__Host-d3_acquisition=keep; __Secure-d3-admin.session_token=keep; site=1"
+    },
+    {
+      "header": "__Secure-d3visitor; site=1",
+      "cookiesOf": [
+        [
+          "site",
+          "1"
+        ]
+      ],
+      "readSession": null,
+      "readPerson": null,
+      "stripOwn": "site=1"
+    },
+    {
+      "header": "__Host-d3pay =S; site=1",
+      "cookiesOf": [
+        [
+          "__Host-d3pay",
+          "S"
+        ],
+        [
+          "site",
+          "1"
+        ]
+      ],
+      "readSession": "S",
+      "readPerson": null,
+      "stripOwn": "site=1"
     }
   ],
   "payParams": [
@@ -2733,6 +2761,14 @@
     {
       "url": "/a?d3pay_handoffx=1&d3pay_handoff",
       "out": "/a"
+    },
+    {
+      "url": "/a?d3pay%5Flater%FF=secret&keep=1",
+      "out": "/a?keep=1"
+    },
+    {
+      "url": "/a?d3pay%5Fcheck=1&keep=2",
+      "out": "/a?keep=2"
     }
   ],
   "mcp": [

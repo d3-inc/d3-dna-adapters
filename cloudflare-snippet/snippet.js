@@ -245,13 +245,20 @@ function stripPayParams(url) {
   return kept.length > 0 ? `${url.slice(0, query)}?${kept.join('&')}` : url.slice(0, query);
 }
 
+// Escape by escape, because one bad byte must not hide the rest: a whole-string
+// decodeURIComponent throws on `%FF` and hands back the name still encoded, so
+// `d3pay%5Flater%FF` read as a site's parameter and reached its origin.
 function paramName(pair) {
-  const name = pair.split('=', 1)[0].replaceAll('+', ' ');
-  try {
-    return decodeURIComponent(name);
-  } catch {
-    return name;
-  }
+  return pair
+    .split('=', 1)[0]
+    .replaceAll('+', ' ')
+    .replace(/%[0-9A-Fa-f]{2}/g, (escape) => {
+      try {
+        return decodeURIComponent(escape);
+      } catch {
+        return escape;
+      }
+    });
 }
 
 // One of our cookies as a header of its own, when it is there and short enough.

@@ -103,9 +103,14 @@ http://:8114 {
 			# Our two cookies by name. The rest of the jar goes too: revision 2
 			# forwards every header and cookie but the site's exclusions. Ours leave
 			# the jar, so an oversized one never crosses twice.
+			#
+			# Only the two lifted here. Every other cookie of ours — the visitor id
+			# — rides the jar and is DNA's only sight of it on this path; stripping
+			# the prefix here would make every returning visitor look new. The
+			# origin's copy goes below.
 			header_up d3pay-session {http.request.cookie.__Host-d3pay}
 			header_up d3pay-person {http.request.cookie.__Host-d3person}
-			header_up Cookie "(^|;\s*)__(?:Host|Secure)-d3[a-z][^=;]*\s*=[^;]*" ""
+			header_up Cookie "(^|;\s*)__Host-d3(?:pay|person)\s*=[^;]*" ""
 			header_up Cookie "^;\s*" ""
 			header_up -Authorization
 			header_up -Proxy-Authorization
@@ -180,9 +185,11 @@ http://:8114 {
 		request_header -D3pay-Session
 		request_header -D3pay-Person
 		request_header -Mcp-Param-Dna-Key
-		# Spaces before `=` too: Caddy's cookie reader trims them, so a cookie DNA
-		# was handed must not survive here under a spelling the regex skipped.
-		request_header Cookie "(^|;\s*)__(?:Host|Secure)-d3[a-z][^=;]*\s*=[^;]*" ""
+		# Every cookie of ours, the visitor id included. Spaces before `=` too, and
+		# the `=` itself optional: Caddy's cookie reader trims the one and the
+		# package treats a bare name as a cookie, so a name DNA was handed must not
+		# survive here under a spelling the regex skipped.
+		request_header Cookie "(^|;\s*)__(?:Host|Secure)-d3[a-z][^=;]*(\s*=[^;]*)?" ""
 		request_header Cookie "^;\s*" ""
 		# Only when ours are present: `uri query` re-encodes and reorders the query.
 		# By name, not by prefix: a Caddyfile cannot match `d3pay_*`, so a new
