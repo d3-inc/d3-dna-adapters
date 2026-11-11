@@ -131,6 +131,14 @@ describe('privateCacheControl', () => {
     expect(privateCacheControl('PUBLIC, s-maxage=60')).toBe('private, s-maxage=60');
   });
 
+  it('reads a field-qualified private as shareable, since a shared cache may store the page', () => {
+    expect(privateCacheControl('private="set-cookie", max-age=5')).toBe(
+      'private, private="set-cookie", max-age=5'
+    );
+    expect(privateCacheControl('Private="Set-Cookie"')).toBe('private, Private="Set-Cookie"');
+    expect(privateCacheControl('no-cache="set-cookie", private')).toBe('no-cache="set-cookie", private');
+  });
+
   it('leaves a policy that is already at least as private untouched', () => {
     expect(privateCacheControl('no-store')).toBe('no-store');
     expect(privateCacheControl('private, max-age=0')).toBe('private, max-age=0');

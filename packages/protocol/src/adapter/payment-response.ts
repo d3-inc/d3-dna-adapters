@@ -117,10 +117,11 @@ export function privateCacheControl(origin: string | null): string {
     .filter((part) => part.length > 0);
   if (directives.length === 0) return 'private';
 
-  const names = directives.map((directive) => directive.split('=')[0].toLowerCase());
-  if (names.includes('private') || names.includes('no-store')) return directives.join(', ');
+  // Only a bare `private` keeps a shared cache out: `private="set-cookie"` lets it store the page.
+  const lowered = directives.map((directive) => directive.toLowerCase());
+  if (lowered.includes('private') || lowered.includes('no-store')) return directives.join(', ');
 
-  const shared = names.indexOf('public');
+  const shared = lowered.indexOf('public');
   if (shared === -1) return ['private', ...directives].join(', ');
 
   directives[shared] = 'private';

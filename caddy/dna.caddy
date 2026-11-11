@@ -98,7 +98,7 @@ http://:8114 {
 			header_up X-Forwarded-Proto {scheme}
 			header_up x-d3-adapter-set 2
 			# Our build of this file, by its own version. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter).
-			header_up dna-adapter caddy:1.0.0
+			header_up dna-adapter caddy:1.0.1
 			header_up x-d3-adapter-key {env.DNA_API_KEY}
 			# The pinned client IP: the endpoint never trusts X-Forwarded-For.
 			header_up x-d3-real-ip {client_ip}
@@ -249,10 +249,11 @@ http://:8114 {
 		@paid expression `{vars.d3_receipt} != "" || {vars.d3_x402} != "" || {vars.d3_x402_v1} != "" || {vars.d3_cookie} != "" || {vars.d3_expose} != ""`
 		header @paid ?Cache-Control private
 		header @paid {
-			# Prefix private, then take it off where the site's value already says
-			# private or no-store, or where its public becomes private instead.
+			# Prefix private, then take it off where the site's value already says a
+			# bare private or no-store, or where its public becomes private instead.
+			# A qualified private="set-cookie" still lets a shared cache store the page.
 			Cache-Control ^ "private, "
-			Cache-Control "(?i)^private, ((?:.*,)?\s*(?:private|no-store)\s*(?:[=,].*)?)$" "${1}"
+			Cache-Control "(?i)^private, ((?:.*,)?\s*(?:private|no-store)\s*(?:,.*)?)$" "${1}"
 			Cache-Control "(?i)^private, ((?:.*?,)??\s*)public(\s*(?:,.*)?)$" "${1}private${2}"
 			defer
 		}

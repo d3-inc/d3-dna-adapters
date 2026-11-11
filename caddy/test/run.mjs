@@ -181,7 +181,7 @@ if (process.argv[2] === 'live') {
     ['no-store', 'no-store'],
     ['(absent)', 'private'],
     ['max-age=0, must-revalidate, public', 'max-age=0, must-revalidate, private'],
-    ['private="set-cookie", max-age=5', 'private="set-cookie", max-age=5'],
+    ['private="set-cookie", max-age=5', 'private, private="set-cookie", max-age=5'],
     ['no-cache', 'private, no-cache'],
     ['public, max-age=60, public', 'private, max-age=60, public'],
   ];
@@ -238,7 +238,7 @@ if (process.argv[2] === 'live') {
   );
   ok(
     "to DNA: names this file's build, never the visitor's dna-adapter",
-    sub.headers['dna-adapter'] === 'caddy:1.0.0',
+    sub.headers['dna-adapter'] === 'caddy:1.0.1',
     `dna-adapter=${sub.headers['dna-adapter']}`
   );
   ok(
