@@ -66,6 +66,34 @@ const forwardAllCases: { name: string; headers: Pairs; exclude: ForwardExclusion
     exclude: { headers: ['x-internal-token'], cookies: ['sid'] },
   },
   {
+    name: 'ours ride outside the shared cookie cap',
+    headers: [
+      ['Cookie', `${Array.from({ length: 300 }, (_, i) => `c${i}=v`).join('; ')}; __Secure-d3visitor=V`],
+    ],
+    exclude: NONE,
+  },
+  {
+    name: 'the id we set outlasts cookies wearing our prefix',
+    headers: [
+      [
+        'Cookie',
+        `${Array.from({ length: 20 }, (_, i) => `__Secure-d3pad${i}=v`).join('; ')}; __Secure-d3visitor=V`,
+      ],
+    ],
+    exclude: NONE,
+  },
+  {
+    // A key install's id is `__Host-`, a zone's `__Secure-`: both are ours to keep.
+    name: 'a host-scoped id outlasts them too',
+    headers: [
+      [
+        'Cookie',
+        `${Array.from({ length: 20 }, (_, i) => `__Host-d3pad${i}=v`).join('; ')}; __Host-d3visitor=V`,
+      ],
+    ],
+    exclude: NONE,
+  },
+  {
     name: 'a named cap drops its header, under it the header goes',
     headers: [
       ['accept', long(257)],
@@ -673,15 +701,21 @@ export async function buildParity() {
       'PUBLIC, max-age=1',
       'No-Store',
     ].map((origin) => ({ origin, out: privateCacheControl(origin) })),
-    cookies: ['a=1; b = 2 ;c=; =x; noeq; d=e=f', '', '__Host-d3pay=S; __Host-d3person =P; site=1'].map(
-      (header) => ({
-        header,
-        cookiesOf: cookiesOf(header),
-        readSession: readCookie(header, '__Host-d3pay'),
-        readPerson: readCookie(header, '__Host-d3person'),
-        stripOwn: header === '' ? null : stripOwnCookies(header),
-      })
-    ),
+    cookies: [
+      'a=1; b = 2 ;c=; =x; noeq; d=e=f',
+      '',
+      '__Host-d3pay=S; __Host-d3person =P; site=1',
+      '__Secure-d3visitor=V; site=1',
+      '__Host-d3_acquisition=keep; __Secure-d3-admin.session_token=keep; site=1',
+      '__Secure-d3visitor; site=1',
+      '__Host-d3pay =S; site=1',
+    ].map((header) => ({
+      header,
+      cookiesOf: cookiesOf(header),
+      readSession: readCookie(header, '__Host-d3pay'),
+      readPerson: readCookie(header, '__Host-d3person'),
+      stripOwn: header === '' ? null : stripOwnCookies(header),
+    })),
     payParams: [
       '/a',
       '/a?x=1',
@@ -689,6 +723,8 @@ export async function buildParity() {
       '/a?x=1&d3pay_check=1&d3pay_browser=abc&y=%2F',
       '/a?d3pay_handoff=1',
       '/a?d3pay_handoffx=1&d3pay_handoff',
+      '/a?d3pay%5Flater%FF=secret&keep=1',
+      '/a?d3pay%5Fcheck=1&keep=2',
     ].map((url) => ({ url, out: stripPayParams(url) })),
     mcp: mcpCases.map(mcpCase),
     answers: await Promise.all(answerCases.map(answerCase)),

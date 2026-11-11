@@ -47,15 +47,17 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
   return async (request: Request, env: E, ctx: ExecutionContext): Promise<Response> => {
     const settings = readAdapterSettings((name) => envSetting(env, name));
     const policy = policyTransport(env, settings);
+    // Stripped even here: a browser holding our cookies from before DNA was
+    // turned off is no reason to hand them to the site's origin.
     if (!policy) {
-      const response = await originFetch(request, env, ctx);
+      const response = await originFetch(stripPaymentHeaders(request), env, ctx);
       return withEdgeHeader(response, 'disabled');
     }
 
     // Never a decision: Shopify and Vercel renew certificates over this path, and
     // a block here is a certificate that silently expires.
     if (isAcmeChallenge(request)) {
-      const response = await originFetch(request, env, ctx);
+      const response = await originFetch(stripPaymentHeaders(request), env, ctx);
       return withEdgeHeader(response, 'pass');
     }
 

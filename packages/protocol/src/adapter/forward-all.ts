@@ -1,4 +1,10 @@
-import { cookiesOf, OWN_COOKIES } from '../pay-session';
+import { cookiesOf, OWN_COOKIES, RESERVED_COOKIES } from '../pay-session';
+import {
+  isNamespaceCookie,
+  NAMESPACE_MAX_COOKIES,
+  NAMESPACE_MAX_TOTAL_LENGTH,
+  NAMESPACE_NAME_MAX_LENGTH,
+} from '../namespace';
 import type { RequestPayload } from '../types';
 import { FORWARDED_MAX_COOKIES, FORWARDED_MAX_NAMES, NEVER_FORWARDED_HEADERS } from './forwarding.constants';
 
@@ -133,11 +139,19 @@ export function forwardAll(
 
   // The first of a repeated name, as `readCookie` and most servers read it.
   const seen = new Set<string>();
+  const budget = { count: 0, length: 0 };
+  let theirs = 0;
   for (const [name, value] of cookiesOf(headers.get('cookie'))) {
     if (OWN_COOKIES.includes(name) || excludedCookies.has(name) || seen.has(name)) continue;
 
     seen.add(name);
-    if (seen.size > FORWARDED_MAX_COOKIES) out.droppedCookies.push(name);
+    if (isNamespaceCookie(name)) {
+      keepOurs(out, name, value, budget);
+      continue;
+    }
+
+    theirs += 1;
+    if (theirs > FORWARDED_MAX_COOKIES) out.droppedCookies.push(name);
     else pooled.push({ kind: 'cookie', name, value });
   }
 
@@ -147,6 +161,39 @@ export function forwardAll(
   }
 
   return withListedDrops(out);
+}
+
+/**
+ * Ours ride outside the shared caps, so a site's own cookies can never crowd
+ * one out — the visitor id is `Path=/` and newly set, which is last in the jar
+ * a browser sends, and so the first to fall past a shared cap.
+ *
+ * The prefix is a label no browser enforces, though: any script on the host can
+ * mint a name wearing it. So the ones we set keep their place, and the rest
+ * share a budget and are dropped **unnamed** past it — a list of them would
+ * reach `FORWARDED_MAX_NAMES`, and the endpoint reads an overflowing list as
+ * "a cookie of ours may be missing", which is its reason never to mint one.
+ */
+function keepOurs(
+  out: ForwardedRequest,
+  name: string,
+  value: string,
+  budget: { count: number; length: number }
+): void {
+  if (RESERVED_COOKIES.includes(name)) {
+    if (value.length > FORWARDED_VALUE_MAX_LENGTH) out.droppedCookies.push(name);
+    else out.cookies[name] = value;
+    return;
+  }
+
+  if (name.length > NAMESPACE_NAME_MAX_LENGTH || budget.count >= NAMESPACE_MAX_COOKIES) return;
+
+  const size = name.length + value.length;
+  if (budget.length + size > NAMESPACE_MAX_TOTAL_LENGTH) return;
+
+  budget.count += 1;
+  budget.length += size;
+  out.cookies[name] = value;
 }
 
 /** Past a list's length the rest go unnamed, and the payload says some did. */

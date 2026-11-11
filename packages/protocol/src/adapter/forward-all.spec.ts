@@ -10,6 +10,7 @@ import {
   withheldOf,
 } from './forward-all';
 import { FORWARDED_MAX_NAMES, MCP_DNA_KEY_HEADER, NEVER_FORWARDED_HEADERS } from './forwarding.constants';
+import { NAMESPACE_MAX_TOTAL_LENGTH, NAMESPACE_NAME_MAX_LENGTH } from '../namespace';
 
 const NO_CAPS = new Map<string, number>();
 
@@ -186,5 +187,107 @@ describe('withheldOf', () => {
     expect(withheld.excluded?.headers).toHaveLength(FORWARDED_MAX_NAMES);
     expect(withheld.excluded?.cookies).toEqual(['sid']);
     expect(withheld.droppedUnlisted).toEqual({ headers: true, cookies: true });
+  });
+});
+
+/**
+ * The visitor id is `Path=/` and newly set, which is last in the jar a browser
+ * sends (RFC 6265 section 5.4) and so the first to fall past a shared cap.
+ */
+describe('forwardAll and the names that are ours', () => {
+  const jarOf = (pairs: Record<string, string>): Headers =>
+    new Headers({
+      cookie: Object.entries(pairs)
+        .map(([name, value]) => `${name}=${value}`)
+        .join('; '),
+    });
+
+  const crowd = (count: number): Record<string, string> =>
+    Object.fromEntries(Array.from({ length: count }, (_, i) => [`c${i}`, 'v']));
+
+  it('forwards the visitor id behind a jar past the shared cap', () => {
+    const out = forwardAll(jarOf({ ...crowd(400), '__Secure-d3visitor': 'token' }), NO_EXCLUSIONS, NO_CAPS);
+
+    expect(out.cookies['__Secure-d3visitor']).toBe('token');
+    expect(Object.keys(out.cookies).filter((n) => n.startsWith('c'))).toHaveLength(256);
+    expect(out.droppedCookies.length).toBeGreaterThan(0);
+  });
+
+  it('forwards a host-scoped id behind them too', () => {
+    const pad = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`__Host-d3pad${i}`, 'v']));
+    const out = forwardAll(jarOf({ ...pad, '__Host-d3visitor': 'token' }), NO_EXCLUSIONS, NO_CAPS);
+
+    expect(out.cookies['__Host-d3visitor']).toBe('token');
+  });
+
+  it('forwards it behind any number of cookies wearing our prefix', () => {
+    const pad = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`__Secure-d3pad${i}`, 'v']));
+    const out = forwardAll(jarOf({ ...pad, '__Secure-d3visitor': 'token' }), NO_EXCLUSIONS, NO_CAPS);
+
+    expect(out.cookies['__Secure-d3visitor']).toBe('token');
+    expect(Object.keys(out.cookies).filter((n) => n.startsWith('__Secure-d3pad'))).toHaveLength(8);
+    expect(out.droppedCookies).toEqual([]);
+  });
+
+  it('forwards it where the jar fills the total budget', () => {
+    const fat = Object.fromEntries(
+      Array.from({ length: 20 }, (_, i) => [`c${i}`, 'v'.repeat(FORWARDED_VALUE_MAX_LENGTH)])
+    );
+    const out = forwardAll(jarOf({ ...fat, '__Secure-d3visitor': 'token' }), NO_EXCLUSIONS, NO_CAPS);
+
+    expect(out.cookies['__Secure-d3visitor']).toBe('token');
+    expect(out.droppedCookies.length).toBeGreaterThan(0);
+  });
+
+  it('names a cookie we set that it had to drop for size, and no other', () => {
+    const out = forwardAll(
+      jarOf({
+        '__Secure-d3visitor': 'v'.repeat(FORWARDED_VALUE_MAX_LENGTH + 1),
+        '__Secure-d3pad': 'v'.repeat(FORWARDED_VALUE_MAX_LENGTH + 1),
+      }),
+      NO_EXCLUSIONS,
+      NO_CAPS
+    );
+
+    expect(out.cookies['__Secure-d3visitor']).toBeUndefined();
+    expect(out.droppedCookies).toEqual(['__Secure-d3visitor']);
+  });
+
+  // Each of these used to reach FORWARDED_MAX_NAMES, and an overflowing list is
+  // the endpoint's reason never to mint an id.
+  it('drops a squatter unnamed, whatever its name length or number', () => {
+    const long = { [`__Secure-d3${'x'.repeat(NAMESPACE_NAME_MAX_LENGTH)}`]: 'v' };
+    const many = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`__Secure-d3pad${i}`, 'v']));
+    const out = forwardAll(
+      jarOf({ ...long, ...many, '__Secure-d3visitor': 'V', sid: '1' }),
+      NO_EXCLUSIONS,
+      NO_CAPS
+    );
+
+    expect(out.cookies['__Secure-d3visitor']).toBe('V');
+    expect(out.cookies.sid).toBe('1');
+    expect(out.droppedCookies).toEqual([]);
+    expect(out.droppedUnlisted.cookies).toBe(false);
+  });
+
+  it('bounds what a visitor can add outside the shared total', () => {
+    const fat = Object.fromEntries(
+      Array.from({ length: 8 }, (_, i) => [`__Secure-d3pad${i}`, 'v'.repeat(2000)])
+    );
+    const out = forwardAll(jarOf({ ...fat, '__Secure-d3visitor': 'V' }), NO_EXCLUSIONS, NO_CAPS);
+
+    const ours = Object.entries(out.cookies).filter(([n]) => n.startsWith('__Secure-d3'));
+    const size = ours.reduce((sum, [n, v]) => sum + n.length + v.length, 0);
+    expect(out.cookies['__Secure-d3visitor']).toBe('V');
+    expect(size).toBeLessThanOrEqual(NAMESPACE_MAX_TOTAL_LENGTH + '__Secure-d3visitor'.length + 1);
+  });
+
+  it('still lets a site keep ours back by name', () => {
+    const out = forwardAll(
+      jarOf({ '__Secure-d3visitor': 'token' }),
+      { headers: [], cookies: ['__Secure-d3visitor'] },
+      NO_CAPS
+    );
+    expect(out.cookies['__Secure-d3visitor']).toBeUndefined();
   });
 });

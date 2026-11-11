@@ -26,11 +26,15 @@ export {
   handoffFetchUrl,
   handoffFromUrl,
   OWN_COOKIES,
+  RESERVED_COOKIES,
+  VISITOR_ID_ZONE_COOKIE,
+  VISITOR_ID_HOST_COOKIE,
   cookiesOf,
   presentsPayCredential,
   readCookie,
   readSessionCookie,
   sessionSetCookie,
+  holdsOwnCookie,
   stripOwnCookies,
   stripPayParams,
   isWellFormedSessionToken,
@@ -38,7 +42,13 @@ export {
   stripSessionCookie,
 } from './pay-session';
 export type { HandoffParts, PayCredential } from './pay-session';
-export { NAMESPACE_MAX_COOKIES, isNamespaceCookie, isNamespaceParam } from './namespace';
+export {
+  NAMESPACE_MAX_COOKIES,
+  NAMESPACE_MAX_TOTAL_LENGTH,
+  NAMESPACE_NAME_MAX_LENGTH,
+  isNamespaceCookie,
+  isNamespaceParam,
+} from './namespace';
 
 export {
   LOG_ROOT,

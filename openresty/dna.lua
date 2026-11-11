@@ -51,6 +51,8 @@ local PAY_SESSION_HEADER  = "d3pay-session"
 local PERSON_PASS_COOKIE  = "__Host-d3person"
 local PERSON_PASS_HEADER  = "d3pay-person"
 local COOKIE_TOKEN_MAX    = 64
+local VISITOR_ID_ZONE_COOKIE = "__Secure-d3visitor"
+local VISITOR_ID_HOST_COOKIE = "__Host-d3visitor"
 local PAY_HANDOFF_PARAM   = "d3pay_handoff"
 local MCP_DNA_KEY_HEADER  = "mcp-param-dna-key"
 local MCP_KEY_ARGUMENT    = "dna_account_key"
@@ -108,7 +110,33 @@ end
 
 local NEVER_FORWARDED = set_of(M.NEVER_FORWARDED_HEADERS)
 local OWN_COOKIES     = set_of({ PAY_SESSION_COOKIE, PERSON_PASS_COOKIE })
-local OWN_PARAMS      = set_of({ PAY_HANDOFF_PARAM, "d3pay_check", "d3pay_browser" })
+-- namespace.ts: ours on a site. The lowercase letter keeps out our own apps'
+-- `__Host-d3_*` and `__Secure-d3-*` cookies, which no adapter should touch.
+local RESERVED_COOKIES = set_of({
+  PAY_SESSION_COOKIE, PERSON_PASS_COOKIE, VISITOR_ID_ZONE_COOKIE, VISITOR_ID_HOST_COOKIE,
+})
+local NAMESPACE_MAX_COOKIES = 8
+local NAMESPACE_MAX_TOTAL_LENGTH = 4096
+local NAMESPACE_NAME_MAX_LENGTH = 256
+
+local function is_namespace_cookie(name)
+  if name == nil then return false end
+
+  local next_char
+  if string.sub(name, 1, 9) == "__Host-d3" then
+    next_char = string.sub(name, 10, 10)
+  elseif string.sub(name, 1, 11) == "__Secure-d3" then
+    next_char = string.sub(name, 12, 12)
+  else
+    return false
+  end
+
+  return string.match(next_char, "^[a-z]$") ~= nil
+end
+
+local function is_namespace_param(name)
+  return name ~= nil and string.sub(name, 1, 6) == "d3pay_"
+end
 
 local function array(t) return setmetatable(t or {}, ARRAY_MT) end
 local function is_array(v) return type(v) == "table" and getmetatable(v) == ARRAY_MT end
@@ -359,11 +387,19 @@ function M.strip_own_cookies(header)
   local kept = {}
   for _, pair in ipairs(split(header, ";")) do
     local trimmed = trim(pair)
-    if #trimmed > 0 and not OWN_COOKIES[cookie_name(trimmed)] then kept[#kept + 1] = trimmed end
+    if #trimmed > 0 and not is_namespace_cookie(cookie_name(trimmed)) then kept[#kept + 1] = trimmed end
   end
 
   if #kept == 0 then return nil end
   return table.concat(kept, "; ")
+end
+
+-- Whether the jar holds anything of ours, which is what makes a strip worth doing.
+function M.holds_own_cookie(header)
+  for _, pair in ipairs(split(header, ";")) do
+    if is_namespace_cookie(cookie_name(trim(pair))) then return true end
+  end
+  return false
 end
 
 local function unescape(s)
@@ -397,7 +433,7 @@ function M.strip_pay_params(url)
 
   local kept = {}
   for _, pair in ipairs(split(string.sub(url, query + 1), "&")) do
-    if not OWN_PARAMS[unescape(split(pair, "=")[1])] then kept[#kept + 1] = pair end
+    if not is_namespace_param(unescape(split(pair, "=")[1])) then kept[#kept + 1] = pair end
   end
 
   if #kept == 0 then return string.sub(url, 1, query - 1) end
@@ -484,6 +520,31 @@ local function with_listed_drops(out)
   return out
 end
 
+-- keepOurs: ours ride outside the shared caps, so a site's own cookies can
+-- never crowd one out. The prefix is a label no browser enforces, though, so
+-- the ones we set keep their place and the rest share a budget — dropped
+-- unnamed past it, because a list of them would reach FORWARDED_MAX_NAMES and
+-- the endpoint reads an overflowing list as its reason never to mint an id.
+local function keep_ours(out, name, value, budget)
+  if RESERVED_COOKIES[name] then
+    if #value > FORWARDED_VALUE_MAX_LENGTH then
+      out.droppedCookies[#out.droppedCookies + 1] = name
+    else
+      out.cookies[name] = value
+    end
+    return
+  end
+
+  if #name > NAMESPACE_NAME_MAX_LENGTH or budget.count >= NAMESPACE_MAX_COOKIES then return end
+
+  local size = #name + #value
+  if budget.length + size > NAMESPACE_MAX_TOTAL_LENGTH then return end
+
+  budget.count = budget.count + 1
+  budget.length = budget.length + size
+  out.cookies[name] = value
+end
+
 -- forwardAll: every header and cookie but the never-sent, the excluded and our two cookies.
 function M.forward_all(entries, exclude, caps)
   local excluded_headers = set_of(exclude.headers)
@@ -504,16 +565,23 @@ function M.forward_all(entries, exclude, caps)
   end
 
   -- The first of a repeated name, as readCookie and most servers read it.
-  local seen, seen_count = {}, 0
+  -- Ours ride outside the shared caps, so a site's own cookies can never crowd
+  -- one out; see keep_ours for what the prefix costs.
+  local seen, theirs = {}, 0
+  local budget = { count = 0, length = 0 }
   for _, cookie in ipairs(M.cookies_of(entry_lookup(entries)["cookie"])) do
     local name, value = cookie[1], cookie[2]
     if not OWN_COOKIES[name] and not excluded_cookies[name] and not seen[name] then
       seen[name] = true
-      seen_count = seen_count + 1
-      if seen_count > FORWARDED_MAX_COOKIES then
-        out.droppedCookies[#out.droppedCookies + 1] = name
+      if is_namespace_cookie(name) then
+        keep_ours(out, name, value, budget)
       else
-        pooled[#pooled + 1] = { kind = "cookie", name = name, value = value }
+        theirs = theirs + 1
+        if theirs > FORWARDED_MAX_COOKIES then
+          out.droppedCookies[#out.droppedCookies + 1] = name
+        else
+          pooled[#pooled + 1] = { kind = "cookie", name = name, value = value }
+        end
       end
     end
   end
@@ -1140,7 +1208,9 @@ function M.strip_for_origin(by_name)
   M.clear_verdict_headers()
 
   local cookie = by_name["cookie"]
-  if cookie and (M.read_cookie(cookie, PAY_SESSION_COOKIE) or M.read_cookie(cookie, PERSON_PASS_COOKIE)) then
+  -- Every cookie of ours: the visitor id is the one a browser carries with no
+  -- credential beside it, and a check for the two credentials left it behind.
+  if cookie and M.holds_own_cookie(cookie) then
     local kept = M.strip_own_cookies(cookie)
     if kept == nil then ngx.req.clear_header("Cookie") else ngx.req.set_header("Cookie", kept) end
   end
