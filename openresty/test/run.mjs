@@ -107,7 +107,7 @@ async function live() {
   check('pass: the key as a bearer', s.decisions[0]?.auth === 'Bearer test-key');
   check(
     "pass: names this install, never the visitor's dna-adapter",
-    s.decisions[0]?.adapter === 'openresty:1.0.0',
+    s.decisions[0]?.adapter === 'openresty:1.0.1',
     s.decisions[0]?.adapter
   );
   check(

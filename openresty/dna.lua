@@ -1089,9 +1089,10 @@ function M.private_cache_control(origin)
 
   local shared
   for i, directive in ipairs(directives) do
-    local name = string.lower(string.match(directive, "^[^=]*"))
-    if name == "private" or name == "no-store" then return table.concat(directives, ", ") end
-    if name == "public" and shared == nil then shared = i end
+    -- Only a bare `private` keeps a shared cache out: `private="set-cookie"` lets it store the page.
+    local lowered = string.lower(directive)
+    if lowered == "private" or lowered == "no-store" then return table.concat(directives, ", ") end
+    if lowered == "public" and shared == nil then shared = i end
   end
   if shared == nil then return "private, " .. table.concat(directives, ", ") end
 
@@ -1313,7 +1314,7 @@ end
 
 -- Our build of this install, by its own version. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter).
 -- Only the full install sends it: web_bot_auth_verify.lua runs revision 1, a different build.
-local DNA_ADAPTER = "openresty:1.0.0"
+local DNA_ADAPTER = "openresty:1.0.1"
 
 local function post_decision(settings, payload, budget_ms)
   local httpc = http.new()

@@ -2634,7 +2634,7 @@
     },
     {
       "origin": "private=\"set-cookie\", max-age=5",
-      "out": "private=\"set-cookie\", max-age=5"
+      "out": "private, private=\"set-cookie\", max-age=5"
     },
     {
       "origin": "no-cache",
