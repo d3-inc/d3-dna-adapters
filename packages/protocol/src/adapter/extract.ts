@@ -227,7 +227,8 @@ export async function sha256ContentDigest(body: ArrayBuffer): Promise<string> {
   return `sha-256=:${btoa(binary)}:`;
 }
 
-function forwardCookie(
+/** Lifts one of our cookies into the header it travels under, when it is there and under its cap. */
+export function forwardCookie(
   headers: Record<string, string>,
   cookie: string | null,
   name: string,

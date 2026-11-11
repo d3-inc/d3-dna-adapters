@@ -1,5 +1,6 @@
 import {
   ADAPTER_SET,
+  blockResponse,
   buildPaymentResponse,
   builtAnswerOf,
   configureEdgeLogging,
@@ -12,9 +13,11 @@ import {
   readAdapterSettings,
   pathOf,
   paymentEdgeMode,
+  paymentUnavailableResponse,
   sendReport,
   stripPaymentHeaders,
   unreadableCallResponse,
+  withEdgeHeader,
   withMcpResult,
   withPaymentHeaders,
   type BuiltAnswer,
@@ -338,40 +341,8 @@ function withBodyByteCount(response: Response): {
   return { response: new Response(counted, response), bodyBytes };
 }
 
-function blockResponse(decision: ClientDecision, mode: string): Response {
-  return new Response(
-    JSON.stringify({
-      blocked: true,
-      ruleId: decision.ruleId,
-      tier: decision.verdict?.tier,
-      identity: decision.verdict?.identity,
-    }),
-    {
-      status: 403,
-      headers: { 'content-type': 'application/json; charset=utf-8', 'x-d3-edge': mode },
-    }
-  );
-}
-
-function withEdgeHeader(response: Response, mode: string): Response {
-  const out = new Response(response.body, response);
-  out.headers.set('x-d3-edge', mode);
-  return out;
-}
-
 const ACME_CHALLENGE_PREFIX = '/.well-known/acme-challenge/';
 
 export function isAcmeChallenge(request: Request): boolean {
   return new URL(request.url).pathname.startsWith(ACME_CHALLENGE_PREFIX);
-}
-
-function paymentUnavailableResponse(): Response {
-  return new Response(JSON.stringify({ error: 'payment_unavailable' }), {
-    status: 502,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
-      'x-d3-edge': 'fail-closed',
-    },
-  });
 }

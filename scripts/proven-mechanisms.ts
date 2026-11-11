@@ -34,7 +34,9 @@ const OWN_TESTS: Readonly<Record<AdapterType, readonly string[]>> = {
   cloudflare: ['packages/cloudflare-adapter/', 'packages/protocol/'],
   'vercel-middleware': ['packages/vercel-middleware/src/middleware.spec.ts', 'packages/protocol/'],
   'vercel-mcp': ['packages/vercel-middleware/src/mcp-route.spec.ts', 'packages/protocol/'],
-  snippet: ['cloudflare-snippet/'],
+  // From 2.0.0 the pasted file is packages/protocol bundled, so its tests cover
+  // the code the snippet runs, exactly as they do for an SDK.
+  snippet: ['cloudflare-snippet/', 'packages/protocol/'],
   openresty: ['openresty/test/'],
   caddy: ['caddy/test/'],
   nginx: ['nginx-auth-request/'],

@@ -253,9 +253,9 @@ this repo implements identically.
    { "blocked": true, "ruleId": "…", "tier": "…", "identity": "…" }
    ```
 5. **Tag every response** with `x-d3-edge`: `pass`, `block`, `fail-open`,
-   `fail-closed`, or `disabled` — plus `payment-required` and
-   `payment-redirect` on an adapter that enforces [paid
-   routes](#paid-routes).
+   `fail-closed`, or `disabled` — plus `payment-required`,
+   `payment-redirect` and `payment-stub` on an adapter that enforces
+   [paid routes](#paid-routes).
 
 Passed traffic then flows to the origin without touching our
 infrastructure.
@@ -558,8 +558,10 @@ receives and verifies fully.
 ## Writing a new adapter
 
 The shortest correct implementation in this repo is
-[`cloudflare-snippet/snippet.js`](./cloudflare-snippet/snippet.js) — one
-self-contained file, no imports, all of the above in about 160 lines.
-Read it as the reference, then port. If you build one for a platform we
+[`cloudflare-snippet/src/snippet.ts`](./cloudflare-snippet/src/snippet.ts)
+— all of the above over the helpers in
+`packages/protocol`. Read it as the reference, then port. The pasted
+`snippet.js` beside it is that source bundled into one self-contained
+file, so read the source rather than the artifact. If you build one for a platform we
 don't cover, we'd like to hear about it:
 [hello@d3.com](mailto:hello@d3.com).

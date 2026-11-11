@@ -24,6 +24,9 @@ jobs:
         with:
           cache: true
       - run: pnpm install --frozen-lockfile
+      # Before the rest: a stale snippet.js means every check below ran against
+      # a file that is not what cloudflare-snippet/src/ builds.
+      - run: pnpm check:snippet
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck

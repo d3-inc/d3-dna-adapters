@@ -43,9 +43,27 @@ export default defineConfig(
     },
   },
   {
-    // Pasted as plain JS into Cloudflare Snippets, which run on the Workers runtime.
+    // The generated paste. Still linted, because `no-undef` under the Workers
+    // globals is the only check that a bundled module did not reach for an API
+    // the runtime lacks — the spec runs it under Node, where such a gap is
+    // masked. Style rules are off instead: a bundler's output can only be fixed
+    // by hand, and the next build loses the fix.
     files: ['cloudflare-snippet/snippet.js'],
+    languageOptions: { globals: { ...globals.serviceworker, CONFIG: 'readonly' } },
+    rules: {
+      '@stylistic/padding-line-between-statements': 'off',
+      // A constant esbuild kept because its module had other live exports; the
+      // author cannot delete it here and the next build would bring it back.
+      '@typescript-eslint/no-unused-vars': 'off',
+      'no-undef': 'error',
+    },
+  },
+  {
+    // CONFIG is what the customer edits and what the generated bundle reads; the
+    // block is prepended to that bundle, so nothing in this file uses it.
+    files: ['cloudflare-snippet/src/config.js'],
     languageOptions: { globals: globals.serviceworker },
+    rules: { '@typescript-eslint/no-unused-vars': 'off' },
   },
   {
     files: ['caddy/test/**/*.mjs', 'openresty/test/**/*.mjs', 'test/**/*.mjs'],
