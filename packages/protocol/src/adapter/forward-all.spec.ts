@@ -213,6 +213,13 @@ describe('forwardAll and the names that are ours', () => {
     expect(out.droppedCookies.length).toBeGreaterThan(0);
   });
 
+  it('forwards a host-scoped id behind them too', () => {
+    const pad = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`__Host-d3pad${i}`, 'v']));
+    const out = forwardAll(jarOf({ ...pad, '__Host-d3visitor': 'token' }), NO_EXCLUSIONS, NO_CAPS);
+
+    expect(out.cookies['__Host-d3visitor']).toBe('token');
+  });
+
   it('forwards it behind any number of cookies wearing our prefix', () => {
     const pad = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`__Secure-d3pad${i}`, 'v']));
     const out = forwardAll(jarOf({ ...pad, '__Secure-d3visitor': 'token' }), NO_EXCLUSIONS, NO_CAPS);

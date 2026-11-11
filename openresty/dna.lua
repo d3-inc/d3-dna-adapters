@@ -51,7 +51,8 @@ local PAY_SESSION_HEADER  = "d3pay-session"
 local PERSON_PASS_COOKIE  = "__Host-d3person"
 local PERSON_PASS_HEADER  = "d3pay-person"
 local COOKIE_TOKEN_MAX    = 64
-local VISITOR_ID_COOKIE   = "__Secure-d3visitor"
+local VISITOR_ID_ZONE_COOKIE = "__Secure-d3visitor"
+local VISITOR_ID_HOST_COOKIE = "__Host-d3visitor"
 local PAY_HANDOFF_PARAM   = "d3pay_handoff"
 local MCP_DNA_KEY_HEADER  = "mcp-param-dna-key"
 local MCP_KEY_ARGUMENT    = "dna_account_key"
@@ -111,7 +112,9 @@ local NEVER_FORWARDED = set_of(M.NEVER_FORWARDED_HEADERS)
 local OWN_COOKIES     = set_of({ PAY_SESSION_COOKIE, PERSON_PASS_COOKIE })
 -- namespace.ts: ours on a site. The lowercase letter keeps out our own apps'
 -- `__Host-d3_*` and `__Secure-d3-*` cookies, which no adapter should touch.
-local RESERVED_COOKIES = set_of({ PAY_SESSION_COOKIE, PERSON_PASS_COOKIE, VISITOR_ID_COOKIE })
+local RESERVED_COOKIES = set_of({
+  PAY_SESSION_COOKIE, PERSON_PASS_COOKIE, VISITOR_ID_ZONE_COOKIE, VISITOR_ID_HOST_COOKIE,
+})
 local NAMESPACE_MAX_COOKIES = 8
 local NAMESPACE_MAX_TOTAL_LENGTH = 4096
 local NAMESPACE_NAME_MAX_LENGTH = 256

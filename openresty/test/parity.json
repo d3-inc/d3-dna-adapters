@@ -537,6 +537,39 @@
       }
     },
     {
+      "name": "a host-scoped id outlasts them too",
+      "headers": [
+        [
+          "Cookie",
+          "__Host-d3pad0=v; __Host-d3pad1=v; __Host-d3pad2=v; __Host-d3pad3=v; __Host-d3pad4=v; __Host-d3pad5=v; __Host-d3pad6=v; __Host-d3pad7=v; __Host-d3pad8=v; __Host-d3pad9=v; __Host-d3pad10=v; __Host-d3pad11=v; __Host-d3pad12=v; __Host-d3pad13=v; __Host-d3pad14=v; __Host-d3pad15=v; __Host-d3pad16=v; __Host-d3pad17=v; __Host-d3pad18=v; __Host-d3pad19=v; __Host-d3visitor=V"
+        ]
+      ],
+      "exclude": {
+        "headers": [],
+        "cookies": []
+      },
+      "out": {
+        "headers": {},
+        "cookies": {
+          "__Host-d3pad0": "v",
+          "__Host-d3pad1": "v",
+          "__Host-d3pad2": "v",
+          "__Host-d3pad3": "v",
+          "__Host-d3pad4": "v",
+          "__Host-d3pad5": "v",
+          "__Host-d3pad6": "v",
+          "__Host-d3pad7": "v",
+          "__Host-d3visitor": "V"
+        },
+        "droppedHeaders": [],
+        "droppedCookies": [],
+        "droppedUnlisted": {
+          "headers": false,
+          "cookies": false
+        }
+      }
+    },
+    {
       "name": "a named cap drops its header, under it the header goes",
       "headers": [
         [

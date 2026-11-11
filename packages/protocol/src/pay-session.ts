@@ -29,8 +29,15 @@ export const PERSON_PASS_HEADER = 'd3pay-person';
 /** `<13-digit expiry>.<43-char signature>` is 57; the cap leaves no room for anything else. */
 export const PERSON_PASS_MAX_LENGTH = 64;
 
-/** The visitor id (ADR 0087). Ours by name, and it rides the cookie map rather than a header of its own. */
-export const VISITOR_ID_COOKIE = '__Secure-d3visitor';
+/**
+ * The visitor id (ADR 0087), two names because the scope decides: a delegated
+ * zone shares one id across its hosts with a `Domain`, which `__Host-` forbids,
+ * and a host we know on its own takes `__Host-`, which no sibling can plant.
+ * Both ride the cookie map rather than a header of their own.
+ */
+export const VISITOR_ID_ZONE_COOKIE = '__Secure-d3visitor';
+
+export const VISITOR_ID_HOST_COOKIE = '__Host-d3visitor';
 
 /** The browser check's signals ride back to the page under this name, base64url JSON. */
 export const BROWSER_CHECK_PARAM = 'd3pay_browser';
@@ -176,7 +183,11 @@ export const OWN_COOKIES: readonly string[] = [PAY_SESSION_COOKIE, PERSON_PASS_C
  * enforces, so any script on the host can mint one: a name here keeps its place
  * however many others turn up wearing it.
  */
-export const RESERVED_COOKIES: readonly string[] = [...OWN_COOKIES, VISITOR_ID_COOKIE];
+export const RESERVED_COOKIES: readonly string[] = [
+  ...OWN_COOKIES,
+  VISITOR_ID_ZONE_COOKIE,
+  VISITOR_ID_HOST_COOKIE,
+];
 
 /**
  * Names are compared the way `readCookie` reads them, never as a `name=`

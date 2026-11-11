@@ -149,7 +149,8 @@ Plus `d3pay-session`, which is not a client header at all — see
 
 Every cookie named `__Host-d3` or `__Secure-d3` followed by a lowercase
 letter, and every URL parameter named `d3pay_*`, is ours, for example
-`__Host-d3pay`, `__Host-d3person`, `__Secure-d3visitor` and `d3pay_handoff`.
+`__Host-d3pay`, `__Host-d3person`, `__Secure-d3visitor`, `__Host-d3visitor` and
+`d3pay_handoff`.
 Names compare exactly: a cookie's trimmed, a parameter's percent-decoded, case
 included. A site's own cookie or parameter in that space reads as ours, so a
 site must not name its own that way.

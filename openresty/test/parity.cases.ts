@@ -83,6 +83,17 @@ const forwardAllCases: { name: string; headers: Pairs; exclude: ForwardExclusion
     exclude: NONE,
   },
   {
+    // A key install's id is `__Host-`, a zone's `__Secure-`: both are ours to keep.
+    name: 'a host-scoped id outlasts them too',
+    headers: [
+      [
+        'Cookie',
+        `${Array.from({ length: 20 }, (_, i) => `__Host-d3pad${i}=v`).join('; ')}; __Host-d3visitor=V`,
+      ],
+    ],
+    exclude: NONE,
+  },
+  {
     name: 'a named cap drops its header, under it the header goes',
     headers: [
       ['accept', long(257)],
