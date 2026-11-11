@@ -498,9 +498,9 @@ function privateCacheControl(origin) {
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
   if (directives.length === 0) return 'private';
-  const names = directives.map((directive) => directive.split('=')[0].toLowerCase());
-  if (names.includes('private') || names.includes('no-store')) return directives.join(', ');
-  const shared = names.indexOf('public');
+  const lowered = directives.map((directive) => directive.toLowerCase());
+  if (lowered.includes('private') || lowered.includes('no-store')) return directives.join(', ');
+  const shared = lowered.indexOf('public');
   if (shared === -1) return ['private', ...directives].join(', ');
   directives[shared] = 'private';
   return directives.join(', ');
@@ -598,7 +598,7 @@ async function extractPayload(request, exclude) {
     if (body === null) {
       if ('content-digest' in headers) {
         delete headers['content-digest'];
-        droppedHeaders.push('content-digest');
+        nameDropped(forwarded, 'content-digest');
       }
     } else if (body.byteLength > 0 || 'content-digest' in headers) {
       headers['content-digest'] = await sha256ContentDigest(body);
@@ -622,6 +622,10 @@ async function extractPayload(request, exclude) {
     ...(droppedCookies.length > 0 ? { droppedCookies } : {}),
     ...withheldOf(exclude, droppedUnlisted),
   };
+}
+function nameDropped(forwarded, name) {
+  if (forwarded.droppedHeaders.length < FORWARDED_MAX_NAMES) forwarded.droppedHeaders.push(name);
+  else forwarded.droppedUnlisted.headers = true;
 }
 async function readBodyUpTo(request, maxBytes) {
   const reader = request.clone().body.getReader();

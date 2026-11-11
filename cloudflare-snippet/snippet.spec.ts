@@ -773,3 +773,25 @@ describe('caps the snippet applies on top of the protocol', () => {
     expect(payload.droppedUnlisted?.cookies).toBe(true);
   });
 });
+
+describe('the drop list the snippet adds to', () => {
+  it('should leave a full list full and flag the name it could not add', async () => {
+    // 128 is what the payload's list carries; a 129th name is not a list the
+    // endpoint reads, so the overflow flag has to carry it instead.
+    const headers: Record<string, string> = {
+      'content-digest': 'sha-256=:AAAA:',
+      'cf-connecting-ip': '203.0.113.7',
+    };
+    for (let i = 0; i < 128; i++) headers[`x-big-${i}`] = 'v'.repeat(2049);
+
+    const log = stubOutbound({ action: 'pass' });
+    await run(
+      siteRequest({ method: 'POST', url: 'https://ai.d3.com/upload', body: 'x'.repeat(1_000_001), headers })
+    );
+
+    const { payload } = log.policyCalls[0];
+    expect(payload.droppedHeaders).toHaveLength(128);
+    expect(payload.droppedHeaders).not.toContain('content-digest');
+    expect(payload.droppedUnlisted?.headers).toBe(true);
+  });
+});

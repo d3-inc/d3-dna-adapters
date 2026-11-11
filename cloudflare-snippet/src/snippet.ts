@@ -25,7 +25,9 @@ import {
   parseExclusionList,
   withheldOf,
   type ForwardExclusions,
+  type ForwardedRequest,
 } from '../../packages/protocol/src/adapter/forward-all';
+import { FORWARDED_MAX_NAMES } from '../../packages/protocol/src/adapter/forwarding.constants';
 import {
   blockResponse,
   paymentUnavailableResponse,
@@ -212,7 +214,7 @@ async function extractPayload(request: Request, exclude: ForwardExclusions): Pro
       // whether or not the claim was there, so the presence test decides.
       if ('content-digest' in headers) {
         delete headers['content-digest'];
-        droppedHeaders.push('content-digest');
+        nameDropped(forwarded, 'content-digest');
       }
     } else if (body.byteLength > 0 || 'content-digest' in headers) {
       headers['content-digest'] = await sha256ContentDigest(body);
@@ -238,6 +240,17 @@ async function extractPayload(request: Request, exclude: ForwardExclusions): Pro
     ...(droppedCookies.length > 0 ? { droppedCookies } : {}),
     ...withheldOf(exclude, droppedUnlisted),
   };
+}
+
+/**
+ * Names a header this file dropped after `forwardAll` finalised its list. The
+ * list is already at its limit when it is full, so a name added past that goes
+ * unlisted and the flag says so — a 129th name is a list the endpoint does not
+ * read as one, and every unnamed drop would read as a header the agent never sent.
+ */
+function nameDropped(forwarded: ForwardedRequest, name: string): void {
+  if (forwarded.droppedHeaders.length < FORWARDED_MAX_NAMES) forwarded.droppedHeaders.push(name);
+  else forwarded.droppedUnlisted.headers = true;
 }
 
 /**
