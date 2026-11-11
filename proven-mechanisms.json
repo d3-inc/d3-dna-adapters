@@ -1,0 +1,217 @@
+{
+  "cloudflare": [
+    {
+      "since": "0.11.0",
+      "sends": 3,
+      "proves": {
+        "credentials": [
+          "packages/cloudflare-adapter/src/index.spec.ts: forwards only our cookie, strips it before the origin, and appends the Set-Cookie a redemption returns",
+          "packages/cloudflare-adapter/src/index.spec.ts: should still keep our credentials off the origin when it fails open",
+          "packages/protocol/src/adapter/extract.spec.ts: forwards the browser-check pass under its own name, and only under its cap"
+        ],
+        "namespace": [
+          "packages/cloudflare-adapter/src/index.spec.ts: strips ours from the challenge it sends on",
+          "packages/cloudflare-adapter/src/index.spec.ts: strips ours even with nothing configured",
+          "packages/protocol/src/x402/payment-header.spec.ts: removes the visitor id even when it is the only cookie of ours",
+          "packages/protocol/src/x402/payment-header.spec.ts: removes a parameter wearing our prefix, not only the three we read",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards the visitor id behind a jar past the shared cap",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards it behind any number of cookies wearing our prefix"
+        ],
+        "forward-all": [
+          "packages/cloudflare-adapter/src/index.spec.ts: declares revision 3, forwards every header and cookie, and keeps back what the site lists",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards every header but the never-forwarded, lowercased"
+        ],
+        "answer": [
+          "packages/cloudflare-adapter/src/index.spec.ts: should return a machine-readable 403 on block without touching the origin",
+          "packages/cloudflare-adapter/src/index.spec.ts: never reaches the origin for a status it was handed",
+          "packages/cloudflare-adapter/src/index.spec.ts: fails closed with 502 payment_unavailable when the decision call throws and a payment header is present",
+          "packages/cloudflare-adapter/src/index.spec.ts: never falls open on a payment lifted from the body"
+        ],
+        "decorate": [
+          "packages/cloudflare-adapter/src/index.spec.ts: carries a receipt onto the origin response when nothing terminates",
+          "packages/protocol/src/adapter/payment-response.spec.ts: appends our Set-Cookie after the origin cookie rather than replacing it"
+        ],
+        "bare-pass": [
+          "packages/cloudflare-adapter/src/index.spec.ts: should proxy to origin on pass and tags the response",
+          "packages/cloudflare-adapter/src/index.spec.ts: should build nothing for the origin from a pass verdict"
+        ],
+        "rewrite-body": [
+          "packages/cloudflare-adapter/src/index.spec.ts: lifts a call's payment for the decision and never lets it reach the origin",
+          "packages/cloudflare-adapter/src/index.spec.ts: adds the receipt to the origin's JSON result"
+        ]
+      }
+    }
+  ],
+  "vercel-middleware": [
+    {
+      "since": "0.11.0",
+      "sends": 2,
+      "proves": {
+        "credentials": [
+          "packages/vercel-middleware/src/middleware.spec.ts: forwards only our cookie, strips it from the upstream request, and sets the cookie a redemption returns",
+          "packages/vercel-middleware/src/middleware.spec.ts: still keeps our credentials off the upstream when it fails open",
+          "packages/vercel-middleware/src/middleware.spec.ts: serves the site its own URL and cookies, none of ours, on a pass and when it fails open",
+          "packages/protocol/src/adapter/extract.spec.ts: forwards the browser-check pass under its own name, and only under its cap"
+        ],
+        "namespace": [
+          "packages/vercel-middleware/src/middleware.spec.ts: forwards a lone visitor id to DNA and keeps it from the site, on a pass and when it fails open",
+          "packages/vercel-middleware/src/middleware.spec.ts: serves the site its own URL and cookies, none of ours, on a pass and when it fails open",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards the visitor id behind a jar past the shared cap",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards it behind any number of cookies wearing our prefix"
+        ],
+        "forward-all": [
+          "packages/vercel-middleware/src/middleware.spec.ts: forwards every header and cookie but what the config keeps back, and echoes it",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards every header but the never-forwarded, lowercased"
+        ],
+        "answer": [
+          "packages/vercel-middleware/src/middleware.spec.ts: never continues to the site for a status it was handed",
+          "packages/vercel-middleware/src/middleware.spec.ts: returns a machine-readable 403 on block, without calling next()",
+          "packages/vercel-middleware/src/middleware.spec.ts: fails closed with 502 payment_unavailable when the decision call throws and a payment header is present",
+          "packages/vercel-middleware/src/middleware.spec.ts: treats a handoff on the URL as paying: 502 rather than a fail-open pass"
+        ],
+        "decorate": [
+          "packages/vercel-middleware/src/middleware.spec.ts: carries a receipt onto the continuation when nothing terminates",
+          "packages/vercel-middleware/src/middleware.spec.ts: forwards only our cookie, strips it from the upstream request, and sets the cookie a redemption returns"
+        ],
+        "bare-pass": [
+          "packages/vercel-middleware/src/middleware.spec.ts: continues with only what the visitor sent, building nothing from the verdict"
+        ]
+      }
+    }
+  ],
+  "vercel-mcp": [
+    {
+      "since": "0.11.0",
+      "sends": 3,
+      "proves": {
+        "credentials": [
+          "packages/vercel-middleware/src/mcp-route.spec.ts: keeps every credential and name of ours from the route, and the site's own on it, on a pass and when it fails open",
+          "packages/protocol/src/adapter/extract.spec.ts: forwards the navigation tells and only our cookie, under its own name",
+          "packages/protocol/src/adapter/extract.spec.ts: forwards the browser-check pass under its own name, and only under its cap"
+        ],
+        "namespace": [
+          "packages/vercel-middleware/src/mcp-route.spec.ts: keeps every credential and name of ours from the route, and the site's own on it, on a pass and when it fails open",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards the visitor id behind a jar past the shared cap",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards it behind any number of cookies wearing our prefix"
+        ],
+        "forward-all": [
+          "packages/vercel-middleware/src/mcp-route.spec.ts: forwards every header and cookie but what the config keeps back, and echoes it",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards every header but the never-forwarded, lowercased"
+        ],
+        "answer": [
+          "packages/vercel-middleware/src/mcp-route.spec.ts: answers an unpaid call itself and never runs the route",
+          "packages/vercel-middleware/src/mcp-route.spec.ts: fails open to the route without the credential, and closed when the call carried a payment"
+        ],
+        "decorate": [
+          "packages/vercel-middleware/src/mcp-route.spec.ts: puts our Set-Cookie after the route's own, and the receipt, on the route's response"
+        ],
+        "bare-pass": [
+          "packages/vercel-middleware/src/mcp-route.spec.ts: hands the route only what the caller sent, building nothing from the verdict"
+        ],
+        "rewrite-body": [
+          "packages/vercel-middleware/src/mcp-route.spec.ts: decides a call once, at revision 3, and hands the route the call without its payment",
+          "packages/vercel-middleware/src/mcp-route.spec.ts: puts the receipt in the route's result"
+        ]
+      }
+    }
+  ],
+  "snippet": [
+    {
+      "since": "1.0.0",
+      "sends": 1,
+      "proves": {
+        "credentials": [
+          "cloudflare-snippet/snippet.spec.ts: should forward the pay cookie as d3pay-session and no other cookie",
+          "cloudflare-snippet/snippet.spec.ts: should forward the browser-check pass as d3pay-person, and declare the revision that carries it",
+          "cloudflare-snippet/snippet.spec.ts: should let no credential reach the origin: header, cookie, or URL",
+          "cloudflare-snippet/snippet.spec.ts: should keep the pass off the origin, cookie and header alike",
+          "cloudflare-snippet/snippet.spec.ts: should strip every param of ours before the origin, not just the handoff"
+        ],
+        "answer": [
+          "cloudflare-snippet/snippet.spec.ts: should return a machine-readable 403 on block without touching the origin",
+          "cloudflare-snippet/snippet.spec.ts: should render the 402 the worker handed it, without reaching the origin",
+          "cloudflare-snippet/snippet.spec.ts: should answer 502 rather than fall open when a paying request gets no decision",
+          "cloudflare-snippet/snippet.spec.ts: should answer 502 for a timed-out redemption carrying its handoff on the URL"
+        ],
+        "decorate": [
+          "cloudflare-snippet/snippet.spec.ts: should append the session cookie to the origin's own Set-Cookie, never replace it"
+        ]
+      }
+    }
+  ],
+  "openresty": [
+    {
+      "since": "1.0.0",
+      "sends": 3,
+      "proves": {
+        "credentials": [
+          "openresty/test/run.mjs: pass: our cookies on their own headers",
+          "openresty/test/run.mjs: pass: the origin gets the verdict, not the credentials",
+          "openresty/test/run.mjs: strip: no payment header, mirrored key or cookie of ours at the origin",
+          "openresty/test/run.mjs: strip: our params gone, the rest in order",
+          "openresty/test/run.mjs: ${scenario}: still no credential at the origin"
+        ],
+        "namespace": [
+          "openresty/test/parity.cases.ts: ours ride outside the shared cookie cap",
+          "openresty/test/parity.cases.ts: the id we set outlasts cookies wearing our prefix",
+          "openresty/test/parity.cases.ts: a host-scoped id outlasts them too",
+          "openresty/test/run.mjs: ours: ${name} alone reaches DNA on ${scenario}, and never the origin",
+          "openresty/test/run.mjs: access raising: our cookie, our param and a forged verdict still never reach the origin"
+        ],
+        "forward-all": [
+          "openresty/test/run.mjs: pass: every header but authorization and the excluded",
+          "openresty/test/run.mjs: pass: the site cookies but sid and ours",
+          "openresty/test/run.mjs: pass: the exclusions echoed"
+        ],
+        "answer": [
+          "openresty/test/run.mjs: block: a 403 with its rule",
+          "openresty/test/run.mjs: 402: the gate as DNA sent it",
+          "openresty/test/run.mjs: a paying request never falls open",
+          "openresty/test/run.mjs: dead: a paying one is a 502"
+        ],
+        "decorate": [
+          "openresty/test/run.mjs: paid: our Set-Cookie beside the site's",
+          "openresty/test/run.mjs: paid: the page with our receipt"
+        ],
+        "bare-pass": [
+          "openresty/test/run.mjs: early pass: no verdict, so no verdict headers, and never the visitor's"
+        ],
+        "rewrite-body": [
+          "openresty/test/run.mjs: mcp: the key in _meta lifted onto the payload",
+          "openresty/test/run.mjs: mcp: the origin gets the call without it",
+          "openresty/test/run.mjs: mcp: the receipt added to the result's _meta"
+        ]
+      }
+    }
+  ],
+  "caddy": [
+    {
+      "since": "1.0.0",
+      "sends": 2,
+      "proves": {
+        "credentials": [
+          "caddy/test/run.mjs: to DNA: our two cookies by name, never the visitor's spoofed headers",
+          "caddy/test/run.mjs: to DNA: a spoofed d3pay-session with no cookie is dropped",
+          "caddy/test/run.mjs: to origin: only the site's own cookies",
+          "caddy/test/run.mjs: to origin: no payment header, no d3pay header, no DNA key",
+          "caddy/test/run.mjs: to origin: our params gone, the site's kept"
+        ],
+        "forward-all": [
+          "caddy/test/run.mjs: to DNA: the cookie jar and every header, revision 2 over the visitor's 99",
+          "caddy/test/run.mjs: to DNA: never Authorization",
+          "caddy/test/run.mjs: to DNA: the site's exclusions, never the visitor's"
+        ],
+        "answer": [
+          "caddy/test/run.mjs: block: 403 with its body, origin not reached",
+          "caddy/test/run.mjs: charge: 402 with the challenge body",
+          "caddy/test/run.mjs: payment unavailable: 502, never the page",
+          "caddy/test/run.mjs: paying: 502 payment_unavailable, never the page"
+        ],
+        "decorate": [
+          "caddy/test/run.mjs: pass: origin served, x-d3-edge: pass",
+          "caddy/test/run.mjs: DNA charge: our Set-Cookie appended, the site's kept"
+        ]
+      }
+    }
+  ]
+}
