@@ -10,6 +10,7 @@
           "packages/protocol/src/adapter/extract.spec.ts: forwards the browser-check pass under its own name, and only under its cap"
         ],
         "namespace": [
+          "packages/cloudflare-adapter/src/index.spec.ts: should forward a lone visitor id to DNA and keep it from the origin, on a pass and when it fails open",
           "packages/cloudflare-adapter/src/index.spec.ts: strips ours from the challenge it sends on",
           "packages/cloudflare-adapter/src/index.spec.ts: strips ours even with nothing configured",
           "packages/protocol/src/x402/payment-header.spec.ts: removes the visitor id even when it is the only cookie of ours",
@@ -74,6 +75,7 @@
           "packages/vercel-middleware/src/middleware.spec.ts: forwards only our cookie, strips it from the upstream request, and sets the cookie a redemption returns"
         ],
         "bare-pass": [
+          "packages/vercel-middleware/src/middleware.spec.ts: serves the site its own URL and cookies, none of ours, on a pass and when it fails open",
           "packages/vercel-middleware/src/middleware.spec.ts: continues with only what the visitor sent, building nothing from the verdict"
         ]
       }
@@ -106,6 +108,7 @@
           "packages/vercel-middleware/src/mcp-route.spec.ts: puts our Set-Cookie after the route's own, and the receipt, on the route's response"
         ],
         "bare-pass": [
+          "packages/vercel-middleware/src/mcp-route.spec.ts: keeps every credential and name of ours from the route, and the site's own on it, on a pass and when it fails open",
           "packages/vercel-middleware/src/mcp-route.spec.ts: hands the route only what the caller sent, building nothing from the verdict"
         ],
         "rewrite-body": [
