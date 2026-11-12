@@ -5,6 +5,7 @@
 export const ADAPTER_MECHANISMS = [
   'credentials',
   'namespace',
+  'namespace-cookies',
   'forward-all',
   'answer',
   'decorate',
