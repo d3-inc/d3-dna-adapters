@@ -32,7 +32,7 @@ shaped for a human reviewer.
 
 ```sh
 pnpm install
-pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build
+pnpm check:snippet && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build
 ```
 
 ## Comments

@@ -136,6 +136,7 @@ export {
   sendReport,
 } from './adapter/http-policy-client';
 export type { HttpPolicyClientOptions } from './adapter/http-policy-client';
+export { blockResponse, paymentUnavailableResponse, withEdgeHeader } from './adapter/edge-response';
 export {
   buildPaymentResponse,
   headerSafePaymentHeaders,

@@ -54,7 +54,8 @@ pnpm test
 ```
 
 `pnpm test` runs the recipes' tests and each package's suite. CI also runs
-`pnpm format:check`, `pnpm lint`, `pnpm typecheck` and `pnpm build`.
+`pnpm check:snippet`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck` and
+`pnpm build`.
 
 ## Releases
 

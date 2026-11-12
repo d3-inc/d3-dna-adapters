@@ -124,8 +124,7 @@
       "sends": 1,
       "proves": {
         "credentials": [
-          "cloudflare-snippet/snippet.spec.ts: should forward the pay cookie as d3pay-session and no other cookie",
-          "cloudflare-snippet/snippet.spec.ts: should forward the browser-check pass as d3pay-person, and declare the revision that carries it",
+          "cloudflare-snippet/snippet.spec.ts: should forward the pay cookie under its own name, never in the jar",
           "cloudflare-snippet/snippet.spec.ts: should let no credential reach the origin: header, cookie, or URL",
           "cloudflare-snippet/snippet.spec.ts: should keep the pass off the origin, cookie and header alike",
           "cloudflare-snippet/snippet.spec.ts: should strip every param of ours before the origin, not just the handoff"
@@ -138,6 +137,45 @@
         ],
         "decorate": [
           "cloudflare-snippet/snippet.spec.ts: should append the session cookie to the origin's own Set-Cookie, never replace it"
+        ]
+      }
+    },
+    {
+      "since": "2.0.0",
+      "sends": 2,
+      "proves": {
+        "credentials": [
+          "cloudflare-snippet/snippet.spec.ts: should forward the pay cookie under its own name, never in the jar",
+          "cloudflare-snippet/snippet.spec.ts: should forward the browser-check pass as d3pay-person, and declare the revision that carries it",
+          "cloudflare-snippet/snippet.spec.ts: should let no credential reach the origin: header, cookie, or URL",
+          "cloudflare-snippet/snippet.spec.ts: should keep the pass off the origin, cookie and header alike"
+        ],
+        "namespace": [
+          "cloudflare-snippet/snippet.spec.ts: should carry a visitor id back in the cookie map (ADR 0087)",
+          "cloudflare-snippet/snippet.spec.ts: should strip every param of ours before the origin, not just the handoff",
+          "cloudflare-snippet/snippet.spec.ts: should let no credential reach the origin: header, cookie, or URL",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards the visitor id behind a jar past the shared cap",
+          "packages/protocol/src/x402/payment-header.spec.ts: removes the visitor id even when it is the only cookie of ours"
+        ],
+        "forward-all": [
+          "cloudflare-snippet/snippet.spec.ts: should send the site every header and cookie it did not keep back",
+          "cloudflare-snippet/snippet.spec.ts: should keep back the names CONFIG excludes, and say which",
+          "cloudflare-snippet/snippet.spec.ts: should never forward the credentials the platform owns",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards every header but the never-forwarded, lowercased"
+        ],
+        "answer": [
+          "cloudflare-snippet/snippet.spec.ts: should return a machine-readable 403 on block without touching the origin",
+          "cloudflare-snippet/snippet.spec.ts: should render the 402 the worker handed it, without reaching the origin",
+          "cloudflare-snippet/snippet.spec.ts: should answer 502 rather than fall open when a paying request gets no decision",
+          "cloudflare-snippet/snippet.spec.ts: should answer 502 for a timed-out redemption carrying its handoff on the URL"
+        ],
+        "decorate": [
+          "cloudflare-snippet/snippet.spec.ts: should append the session cookie to the origin's own Set-Cookie, never replace it",
+          "cloudflare-snippet/snippet.spec.ts: should hand a minted visitor id to the browser without caching it anywhere shared"
+        ],
+        "bare-pass": [
+          "cloudflare-snippet/snippet.spec.ts: should build nothing for the origin from a pass verdict",
+          "cloudflare-snippet/snippet.spec.ts: should pass a request the endpoint answered with no verdict at all"
         ]
       }
     }

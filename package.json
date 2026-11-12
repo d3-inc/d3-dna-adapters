@@ -6,6 +6,8 @@
   "packageManager": "pnpm@10.34.4",
   "scripts": {
     "test": "vitest run && pnpm -r test",
+    "generate:snippet": "node scripts/generate-snippet.ts",
+    "check:snippet": "node scripts/generate-snippet.ts --check",
     "typecheck": "pnpm -r typecheck && tsc --noEmit",
     "build": "pnpm -r build",
     "lint": "eslint .",
@@ -15,6 +17,7 @@
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^26.6.6",
+    "esbuild": "0.28.2",
     "eslint": "^10.13.0",
     "globals": "^17.14.0",
     "prettier": "3.9.6",

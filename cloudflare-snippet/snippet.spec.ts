@@ -1,40 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import snippetDefault, { createSnippet, dnaEndpoint, type SnippetConfig } from './snippet.js';
+import { extractPayload } from '../packages/protocol/src/adapter/extract';
+import { NO_EXCLUSIONS } from '../packages/protocol/src/adapter/forward-all';
+import type { ClientDecision, RequestPayload } from '../packages/protocol/src/types';
 
-// Mirrors ClientDecision / RequestPayload in packages/protocol/src/types.ts,
-// inlined so the recipe tests need nothing from packages/.
-interface Verdict {
-  verified: boolean;
-  tier: string;
-  reason?: string;
-  identity?: string;
-}
-
-interface PaymentInstruction {
-  status?: number;
-  headers?: Record<string, string>;
-  body?: string;
-}
-
-interface ClientDecision {
-  action: string;
-  policyAction?: string;
-  ruleId?: string;
-  verdict?: Verdict;
-  payment?: PaymentInstruction;
-}
-
-interface RequestPayload {
-  adapterSet?: number;
-  requestId?: string;
-  ip?: string;
-  method: string;
-  url: string;
-  host: string;
-  timestamp?: string | number;
-  headers: Record<string, string>;
-}
+// A 22-char base64url id, the shape `generateVisitorId` mints.
+const VISITOR_ID = 'v'.repeat(22);
 
 const POLICY_URL = 'https://edge-api.d3.com/v1/decision';
 const KEY = 'd3_k_' + 'a'.repeat(43) + 'AAAAAA';
@@ -129,7 +101,7 @@ describe('enforcement', () => {
 
     const call = log.policyCalls[0];
     expect(call.headers.get('authorization')).toBe(`Bearer ${KEY}`);
-    expect(call.headers.get('dna-adapter')).toBe('snippet:1.0.0');
+    expect(call.headers.get('dna-adapter')).toBe('snippet:2.0.0');
     expect(call.payload).toMatchObject({
       method: 'GET',
       url: '/page?x=1',
@@ -214,13 +186,15 @@ describe('D3 Pay', () => {
     return budgets;
   }
 
-  it('should forward the pay cookie as d3pay-session and no other cookie', async () => {
+  it('should forward the pay cookie under its own name, never in the jar', async () => {
     const log = stubOutbound({ action: 'pass' });
     await run(siteRequest({ headers: { cookie: `sid=abc; __Host-d3pay=${SESSION}; theme=dark` } }));
 
-    const headers = log.policyCalls[0].payload.headers;
+    const { headers, cookies } = log.policyCalls[0].payload;
     expect(headers['d3pay-session']).toBe(SESSION);
+    // The raw header never travels, and the credential is not repeated in the map.
     expect(headers['cookie']).toBeUndefined();
+    expect(cookies?.['__Host-d3pay']).toBeUndefined();
   });
 
   it('should forward the browser-check pass as d3pay-person, and declare the revision that carries it', async () => {
@@ -233,7 +207,7 @@ describe('D3 Pay', () => {
     expect(payload.headers['d3pay-person']).toBe(PASS);
     expect(payload.headers['d3pay-session']).toBe(SESSION);
     expect(payload.headers['cookie']).toBeUndefined();
-    expect(payload.adapterSet).toBe(1);
+    expect(payload.adapterSet).toBe(2);
   });
 
   it('should keep the pass off the origin, cookie and header alike', async () => {
@@ -609,5 +583,215 @@ describe('snippet-specific behavior', () => {
     const source = readFileSync(new URL('./snippet.js', import.meta.url), 'utf8');
     expect(/^import\s/m.test(source)).toBe(false);
     expect(new TextEncoder().encode(source).length).toBeLessThan(32 * 1024);
+  });
+});
+
+describe('revision 2 forwarding', () => {
+  function jarRequest(cookie: string, headers: Record<string, string> = {}): Request {
+    return siteRequest({ headers: { 'user-agent': 'Mozilla/5.0', cookie, ...headers } });
+  }
+
+  it('should send the site every header and cookie it did not keep back', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    await run(jarRequest('sid=abc; theme=dark', { 'x-tenant': 'acme' }));
+
+    const { payload } = log.policyCalls[0];
+    expect(payload.headers['x-tenant']).toBe('acme');
+    expect(payload.cookies).toMatchObject({ sid: 'abc', theme: 'dark' });
+    expect(payload.headerSet).toBeGreaterThanOrEqual(2);
+    expect(payload.secure).toBe(true);
+  });
+
+  it('should keep back the names CONFIG excludes, and say which', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    await run(jarRequest('sid=abc; theme=dark', { 'x-tenant': 'acme' }), {
+      excludeHeaders: 'X-Tenant',
+      excludeCookies: 'sid',
+    });
+
+    const { payload } = log.policyCalls[0];
+    expect(payload.headers['x-tenant']).toBeUndefined();
+    expect(payload.cookies?.sid).toBeUndefined();
+    expect(payload.cookies?.theme).toBe('dark');
+    // Echoed, not silent: a rule on an excluded name is skipped rather than
+    // matching on a value the site never sent.
+    expect(payload.excluded).toEqual({ headers: ['x-tenant'], cookies: ['sid'] });
+  });
+
+  it('should never forward the credentials the platform owns', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    await run(
+      jarRequest('sid=abc', {
+        authorization: 'Bearer site-token',
+        'proxy-authorization': 'Bearer proxy-token',
+        'cf-access-jwt-assertion': 'access-jwt',
+        'cf-access-client-id': 'access-id',
+        'cf-access-client-secret': 'access-secret',
+        'x-vercel-oidc-token': 'oidc',
+      })
+    );
+
+    const { payload } = log.policyCalls[0];
+    for (const name of [
+      'authorization',
+      'proxy-authorization',
+      'cookie',
+      'cf-access-jwt-assertion',
+      'cf-access-client-id',
+      'cf-access-client-secret',
+      'x-vercel-oidc-token',
+    ]) {
+      expect(payload.headers[name]).toBeUndefined();
+    }
+
+    // Not quietly: a name we never send must not read as one the site withheld.
+    expect(payload.droppedHeaders ?? []).not.toContain('authorization');
+  });
+
+  it('should carry a visitor id back in the cookie map (ADR 0087)', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    await run(jarRequest(`__Host-d3visitor=${VISITOR_ID}; sid=abc`));
+
+    // The id has no header of its own: the jar is the endpoint's only sight of
+    // it, and a revision that does not forward one reads every visit as new.
+    expect(log.policyCalls[0].payload.cookies?.['__Host-d3visitor']).toBe(VISITOR_ID);
+  });
+
+  it('should hand a minted visitor id to the browser without caching it anywhere shared', async () => {
+    const log = stubOutbound(
+      { action: 'pass', payment: { headers: { 'set-cookie': `__Host-d3visitor=${VISITOR_ID}; Path=/` } } },
+      { headers: { 'set-cookie': 'sid=abc; Path=/', 'cache-control': 'public, max-age=600' } }
+    );
+    const res = await run(siteRequest());
+
+    expect(res.headers.getSetCookie()).toEqual(['sid=abc; Path=/', `__Host-d3visitor=${VISITOR_ID}; Path=/`]);
+    // `public` would let a CDN serve one visitor's id to the next.
+    expect(res.headers.get('cache-control')).toBe('private, max-age=600');
+    expect(log.originCalls).toHaveLength(1);
+  });
+
+  it('should build the payload the protocol builds, field for field', async () => {
+    // The one part of the snippet still written by hand is the payload
+    // assembly; everything it calls comes from packages/protocol. This pins the
+    // assembly to `extractPayload` so a protocol change cannot pass unnoticed.
+    const request = jarRequest('sid=abc; theme=dark', {
+      'x-tenant': 'acme',
+      accept: 'text/html',
+      // Restored, because jarRequest replaces siteRequest's headers: without it
+      // both sides read  and the field is never compared.
+      'cf-connecting-ip': '203.0.113.7',
+    });
+    const log = stubOutbound({ action: 'pass' });
+    await run(request.clone());
+
+    const expected = await extractPayload(request, {
+      ip: '203.0.113.7',
+      adapterSet: 2,
+      exclude: NO_EXCLUSIONS,
+    });
+    // Through JSON both sides, so a key the snippet drops by serialising is not a difference.
+    const strip = (payload: RequestPayload) => {
+      const { requestId: _id, timestamp: _at, ...rest } = JSON.parse(JSON.stringify(payload));
+      return rest;
+    };
+
+    expect(strip(log.policyCalls[0].payload)).toEqual(strip(expected));
+  });
+});
+
+describe('a pass the endpoint answered without resolving identity', () => {
+  it('should build nothing for the origin from a pass verdict', async () => {
+    // Nothing here reads `verdict` on a pass, so the endpoint may answer one
+    // before it knows who is asking (ADR 0072). A build that put the tier on
+    // the origin request would take that early answer away.
+    const log = stubOutbound({
+      action: 'pass',
+      verdict: { verified: false, tier: 'claimed', reason: 'no-signature', identity: 'test-bot' },
+    });
+    await run(siteRequest({ headers: { 'user-agent': 'GPTBot/1.0', 'x-site': 'kept' } }));
+
+    const sent = [...log.originCalls[0].headers];
+    expect(sent.filter(([name, value]) => name.startsWith('x-d3') || value.includes('test-bot'))).toEqual([]);
+    expect(log.originCalls[0].headers.get('x-site')).toBe('kept');
+  });
+
+  it('should pass a request the endpoint answered with no verdict at all', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    const res = await run(siteRequest());
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-d3-edge')).toBe('pass');
+    expect(log.originCalls).toHaveLength(1);
+  });
+});
+
+describe('an exclusion list longer than the payload echoes', () => {
+  it('should warn the site that its rules on a missing name will be skipped', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    stubOutbound({ action: 'pass' });
+    await run(siteRequest(), {
+      excludeCookies: Array.from({ length: 129 }, (_, i) => `cookie_${i}`).join(','),
+    });
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('skips the rules that check one'));
+    warn.mockRestore();
+  });
+});
+
+describe('caps the snippet applies on top of the protocol', () => {
+  it('should name content-digest when the body is past the hashable cap', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    await run(
+      siteRequest({
+        method: 'POST',
+        url: 'https://ai.d3.com/upload',
+        body: 'x'.repeat(1_000_001),
+        headers: { 'content-digest': 'sha-256=:AAAA:', 'cf-connecting-ip': '203.0.113.7' },
+      })
+    );
+
+    const { payload } = log.policyCalls[0];
+    // Dropped because 2 MB of memory cannot hash it — and named, so the endpoint
+    // reads a signature over it as our cap rather than a header the agent omitted.
+    expect(payload.headers['content-digest']).toBeUndefined();
+    expect(payload.droppedHeaders).toContain('content-digest');
+  });
+
+  it('should not name content-digest on a large body that claimed none', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    await run(siteRequest({ method: 'POST', url: 'https://ai.d3.com/upload', body: 'x'.repeat(1_000_001) }));
+
+    expect(log.policyCalls[0].payload.droppedHeaders ?? []).not.toContain('content-digest');
+  });
+
+  it('should flag a jar past the cap, so an unlisted cookie reads as withheld', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    const jar = Array.from({ length: 400 }, (_, i) => `c${i}=v`).join('; ');
+    await run(siteRequest({ headers: { 'user-agent': 'Mozilla/5.0', cookie: jar } }));
+
+    const { payload } = log.policyCalls[0];
+    expect(payload.droppedUnlisted?.cookies).toBe(true);
+  });
+});
+
+describe('the drop list the snippet adds to', () => {
+  it('should leave a full list full and flag the name it could not add', async () => {
+    // 128 is what the payload's list carries; a 129th name is not a list the
+    // endpoint reads, so the overflow flag has to carry it instead.
+    const headers: Record<string, string> = {
+      'content-digest': 'sha-256=:AAAA:',
+      'cf-connecting-ip': '203.0.113.7',
+    };
+    for (let i = 0; i < 128; i++) headers[`x-big-${i}`] = 'v'.repeat(2049);
+
+    const log = stubOutbound({ action: 'pass' });
+    await run(
+      siteRequest({ method: 'POST', url: 'https://ai.d3.com/upload', body: 'x'.repeat(1_000_001), headers })
+    );
+
+    const { payload } = log.policyCalls[0];
+    expect(payload.droppedHeaders).toHaveLength(128);
+    expect(payload.droppedHeaders).not.toContain('content-digest');
+    expect(payload.droppedUnlisted?.headers).toBe(true);
   });
 });

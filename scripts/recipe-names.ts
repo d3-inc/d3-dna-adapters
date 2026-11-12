@@ -8,8 +8,15 @@ import { compareAdapterVersions, parseAdapterName } from '../packages/protocol/s
  */
 export const RECIPES = [
   {
-    files: ['cloudflare-snippet/snippet.js'],
-    literalFile: 'cloudflare-snippet/snippet.js',
+    // The pasted artifact is listed too: it is rebuilt from packages/protocol,
+    // so a protocol change that reaches a customer's paste raises the version
+    // like an edit to the source does.
+    files: [
+      'cloudflare-snippet/src/snippet.ts',
+      'cloudflare-snippet/src/config.js',
+      'cloudflare-snippet/snippet.js',
+    ],
+    literalFile: 'cloudflare-snippet/src/snippet.ts',
     type: 'snippet',
     endpoint: 'decision',
     literal: /const DNA_ADAPTER = '([^']+)';/g,
