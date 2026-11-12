@@ -253,6 +253,37 @@
           "caddy/test/run.mjs: DNA charge: our Set-Cookie appended, the site's kept"
         ]
       }
+    },
+    {
+      "since": "1.0.1",
+      "sends": 2,
+      "proves": {
+        "credentials": [
+          "caddy/test/run.mjs: to DNA: our two cookies by name, never the visitor's spoofed headers",
+          "caddy/test/run.mjs: to DNA: a spoofed d3pay-session with no cookie is dropped",
+          "caddy/test/run.mjs: to origin: only the site's own cookies",
+          "caddy/test/run.mjs: to origin: no payment header, no d3pay header, no DNA key",
+          "caddy/test/run.mjs: to origin: our params gone, the site's kept"
+        ],
+        "namespace-cookies": [
+          "caddy/test/run.mjs: ours: ${name} alone reaches DNA on ${scenario}, and never the origin"
+        ],
+        "forward-all": [
+          "caddy/test/run.mjs: to DNA: the cookie jar and every header, revision 2 over the visitor's 99",
+          "caddy/test/run.mjs: to DNA: never Authorization",
+          "caddy/test/run.mjs: to DNA: the site's exclusions, never the visitor's"
+        ],
+        "answer": [
+          "caddy/test/run.mjs: block: 403 with its body, origin not reached",
+          "caddy/test/run.mjs: charge: 402 with the challenge body",
+          "caddy/test/run.mjs: payment unavailable: 502, never the page",
+          "caddy/test/run.mjs: paying: 502 payment_unavailable, never the page"
+        ],
+        "decorate": [
+          "caddy/test/run.mjs: pass: origin served, x-d3-edge: pass",
+          "caddy/test/run.mjs: DNA charge: our Set-Cookie appended, the site's kept"
+        ]
+      }
     }
   ]
 }

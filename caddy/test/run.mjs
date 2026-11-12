@@ -297,6 +297,20 @@ if (process.argv[2] === 'live') {
     !/d3pay|d3person/.test(r.json?.headers?.cookie ?? ''),
     `cookie=${r.json?.headers?.cookie}`
   );
+
+  // The visitor id is often the only cookie of ours a request holds.
+  for (const name of ['__Host-d3visitor', '__Secure-d3visitor']) {
+    for (const scenario of ['pass', 'infra500']) {
+      r = await visit('/a', { scenario, headers: { cookie: `site=1; ${name}=V1` } });
+      sub = await lastSubrequest();
+      ok(
+        `ours: ${name} alone reaches DNA on ${scenario}, and never the origin`,
+        (sub.headers.cookie ?? '').includes(`${name}=V1`) && r.json?.headers?.cookie === 'site=1',
+        `dna=${sub.headers.cookie} origin=${r.json?.headers?.cookie}`
+      );
+    }
+  }
+
   const raw = '/q?b=2&a=1&s=%20x&plus=a+b&flag&enc=%2F';
   r = await visit(raw, { scenario: 'pass' });
   ok('to origin: a query with none of ours, byte for byte', r.json?.url === raw, r.json?.url);
