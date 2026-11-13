@@ -31,6 +31,9 @@ half of that contract: a site prices a route, and the adapter answers
 keeps only the answer's status. The worker template carries whatever the
 Cloudflare adapter it installs carries.
 
+[`cloudflare-worker-devnet/`](./cloudflare-worker-devnet) is that template pointed at D3's internal
+devnet. It is for D3 staff and does not work with a production key.
+
 The npm SDKs live in [`packages/`](./packages), beside the recipes:
 
 | Package                                                | npm                                                                                                    | What it is                                                |

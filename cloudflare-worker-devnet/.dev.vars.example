@@ -1,0 +1,3 @@
+# Your org's API key — create one at https://dashboard-dev.d3.com/keys.
+# The deploy flow stores it as a Worker secret; it never lands in code.
+DNA_API_KEY=d3_k_…
