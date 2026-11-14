@@ -13,7 +13,7 @@ export interface D3MiddlewareConfig {
   endpoint?: string;
   /** `false` turns DNA off without removing the key. */
   enabled?: boolean;
-  /** Hot-path budget for the policy call, ms (default 2000). */
+  /** Hot-path budget for the policy call, ms (default 10000). */
   timeoutMs?: number;
   /** Budget for a request presenting a payment, ms (default 10000). Sized in
    *  seconds, not the hot path's milliseconds: settlement happens inside it. */
