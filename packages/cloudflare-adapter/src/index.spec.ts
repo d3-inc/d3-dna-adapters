@@ -221,14 +221,16 @@ describe('fail-open (§8: enforcement failure must never take the site down)', (
 
   it('should fall back to the shared default budget when the var is unusable', async () => {
     const log = stubOutbound('hang');
-    const started = Date.now();
+    // Each timer fires at once, so the 10 s budget is read off the call instead of waited out.
+    const budgets: (number | undefined)[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    vi.stubGlobal('setTimeout', (fire: () => void, ms?: number) => {
+      budgets.push(ms);
+      return realSetTimeout(fire, 0);
+    });
     const res = await run(siteRequest(), { DNA_TIMEOUT_MS: 'soon' });
-    const elapsed = Date.now() - started;
 
-    // Bounded both ways: a lower bound alone also passes on a fallback that
-    // picked up some other, larger budget — the payment one is 5x this.
-    expect(elapsed).toBeGreaterThanOrEqual(DEFAULT_POLICY_TIMEOUT_MS * 0.8);
-    expect(elapsed).toBeLessThan(DEFAULT_POLICY_TIMEOUT_MS * 2);
+    expect(budgets).toContain(DEFAULT_POLICY_TIMEOUT_MS);
     expect(res.headers.get('x-d3-edge')).toBe('fail-open');
     expect(log.originCalls).toHaveLength(1);
   });
