@@ -40,6 +40,7 @@ export const RECIPES = [
       'wordpress/d3-dna/src/Protocol.php',
       'wordpress/d3-dna/src/Runtime.php',
       'wordpress/d3-dna/src/InputStream.php',
+      'wordpress/d3-dna/src/Memory.php',
       'wordpress/d3-dna/src/Admin.php',
     ],
     literalFile: 'wordpress/d3-dna/src/Runtime.php',

@@ -32,8 +32,17 @@ add_action('init', function () {
     $path = strtok($_SERVER['REQUEST_URI'], '?');
     if (strncmp($path, '/wp-', 4) === 0) return;
 
+    // A site's own callback, which header_register_callback gives one slot.
+    if (isset($_SERVER['HTTP_X_TEST_OWN_CALLBACK'])) {
+        header_register_callback(function () {
+            header('x-site-callback: ran');
+        });
+    }
+
     // Reads php://input itself, as a plugin outside the REST API would.
     if ($path === '/mcp-raw') {
+        // A plugin clearing the buffers it finds before it answers.
+        if (isset($_SERVER['HTTP_X_TEST_OB_CLEAN'])) ob_clean();
         $call = json_decode(file_get_contents('php://input'), true);
         header('Content-Type: application/json');
         echo dna_test_json(['jsonrpc' => '2.0', 'id' => $call['id'] ?? null, 'result' => dna_test_mcp_result($call)]);
@@ -66,6 +75,10 @@ add_action('init', function () {
         'request' => (object) wp_unslash($_REQUEST),
         'cookies' => (object) wp_unslash($_COOKIE),
         'files' => array_keys($_FILES),
+        // The other copies of the request PHP keeps.
+        'argv' => $_SERVER['argv'] ?? null,
+        'redirectQuery' => $_SERVER['REDIRECT_QUERY_STRING'] ?? null,
+        'env' => array_intersect_key($_ENV, array_flip(['HTTP_COOKIE', 'HTTP_X_PAYMENT', 'HTTP_X_D3_TIER', 'QUERY_STRING', 'REQUEST_URI'])),
         'bodyBytes' => strlen($raw),
         'body' => strlen($raw) <= 65536 ? $raw : null,
     ]);

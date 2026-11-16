@@ -3,6 +3,8 @@
 // what the package answers, read by both ports), plus the reject paths only the
 // port has. `php wordpress/test/unit.php` from the repo root, or via run.sh.
 require __DIR__ . '/../d3-dna/src/Protocol.php';
+require __DIR__ . '/../d3-dna/src/Memory.php';
+require __DIR__ . '/../d3-dna/src/InputStream.php';
 require __DIR__ . '/../d3-dna/src/Runtime.php';
 
 use D3\Dna\Protocol as P;
@@ -54,6 +56,33 @@ function same($name, $got, $want)
     check($name, $g === $w, "got  " . substr($g, 0, 400) . "\n       want " . substr($w, 0, 400));
 }
 
+/**
+ * JSON as it is on the wire: an object is not an array, and a null field is not
+ * an absent one. For what the port writes as JSON, where `{}` against `[]` is the
+ * bug PHP is prone to.
+ */
+function wire($v)
+{
+    if ($v instanceof stdClass) {
+        $keys = array_keys(get_object_vars($v));
+        sort($keys, SORT_STRING);
+        return '{' . implode(',', array_map(function ($k) use ($v) {
+            return json_encode((string) $k) . ':' . wire($v->{$k});
+        }, $keys)) . '}';
+    }
+    if (is_array($v)) return '[' . implode(',', array_map('wire', $v)) . ']';
+    if (is_float($v) && floor($v) === $v && abs($v) < 1e15) return (string) (int) $v;
+    return json_encode($v, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+}
+
+/** $got is JSON text the port wrote (or null); $want is the package's value. */
+function exact($name, $got, $want)
+{
+    $g = $got === null ? 'null' : wire(json_decode($got));
+    $w = wire($want);
+    check($name, $g === $w, "got  " . substr($g, 0, 400) . "\n       want " . substr($w, 0, 400));
+}
+
 /** `{ $repeat, n }` back to the long run parity.spec.ts compacted it from. */
 function expand($v)
 {
@@ -72,6 +101,14 @@ function to_array($v)
 }
 
 $parity = expand(json_decode(file_get_contents(__DIR__ . '/../../openresty/test/parity.json')));
+// A section the file lost would otherwise run no checks and pass.
+foreach (['constants', 'forwardAll', 'withheld', 'exclusionList', 'privateCacheControl', 'cookies', 'payParams', 'mcp', 'answers',
+    'results', 'exclusionOverflow', 'unreadableAnswers', 'edgeModes', 'recordableName', 'debugHeaders', 'settings'] as $section) {
+    if (empty($parity->{$section})) {
+        echo "parity.json has no $section section\n";
+        exit(1);
+    }
+}
 
 /** What fetch's Headers makes of the pairs: lowercase names, repeats joined. */
 function raw_headers(array $pairs)
@@ -164,7 +201,7 @@ foreach ($parity->mcp as $case) {
     same("$label (rpc)", $rpc, $case->rpc);
     same("$label (facts)", $carriage['facts'], $case->facts);
     same("$label (lifted)", lifted_view($carriage['lifted']), lifted_view($case->lifted));
-    same("$label (origin body)", decoded($carriage['origin_body']), $case->originBody);
+    exact("$label (origin body)", $carriage['origin_body'], $case->originBody);
     same("$label (unreadable)", $carriage['unreadable_credential'], $case->unreadableCredential);
     same("$label (why)", $carriage['unreadable_reason'], $case->unreadableReason);
     same("$label (forwarded)", lifted_view(P::liftedPaymentToForward($raw, $carriage['lifted'])), lifted_view($case->forwarded));
@@ -179,14 +216,18 @@ foreach ($parity->answers as $case) {
     same("$label (status)", $built['status'], $case->status);
     same("$label (headers)", headers_object($built['headers']), $case->headers);
     $want = $case->body ?? null;
-    same("$label (body)", decoded($built['body']) ?? $built['body'], decoded($want) ?? $want);
+    if (P::jsonDecode($want) !== null) {
+        exact("$label (body)", $built['body'], P::jsonDecode($want));
+    } else {
+        same("$label (body)", $built['body'], $want);
+    }
 }
 
 foreach ($parity->results as $case) {
     $edits = P::mcpResultEdits($case->method ?? null, $case->meta ?? null, $case->keyArgument);
     $rewritten = null;
     if ($edits !== null && P::isJsonType($case->contentType)) $rewritten = P::rewriteResult($case->body, $edits['meta'], $edits['lists_tools']);
-    same('withMcpResult: ' . $case->name, decoded($rewritten), $case->rewritten);
+    exact('withMcpResult: ' . $case->name, $rewritten, $case->rewritten ?? null);
 }
 
 foreach ($parity->exclusionOverflow as $case) {
@@ -282,8 +323,6 @@ check('the person pass is not a payment', !P::presentsPayment(['cookie' => '__Ho
 check('a handoff on the URL pays', P::presentsPayment([], "d3pay_handoff=$handoff", []));
 check('a payment lifted onto the payload pays', P::presentsPayment([], null, ['payment-authorization' => 'Payment k']));
 
-check('an ACME challenge is never decided', P::isAcmeChallenge('/.well-known/acme-challenge/tok'));
-check('other well-known paths are', !P::isAcmeChallenge('/.well-known/security.txt'));
 
 check('namespace: a lowercase letter after the prefix is ours', P::isNamespaceCookie('__Host-d3visitor') && P::isNamespaceCookie('__Secure-d3x'));
 check("namespace: our apps' own cookies are not", !P::isNamespaceCookie('__Host-d3_session') && !P::isNamespaceCookie('__Secure-d3-x') && !P::isNamespaceCookie('__Host-d3'));
@@ -395,6 +434,20 @@ check('a streamed body that never says jsonrpc is left alone',
 $notifId = P::readJsonRpcRequest('POST', 'application/json', '{"jsonrpc":"2.0","method":"tools/call","params":{"_meta":{"dna.d3.com/key":"k"}}}');
 check('a notification has no id', $notifId['hasId'] === false);
 check('the lifted body of a notification keeps it one', strpos(P::liftMcpPayment($notifId)[1], '"id"') === false);
+// A number JSON cannot write (PHP reads 1e999 as INF): the stripped call cannot be written back, so it is refused.
+$inf = '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"arguments":{"q":1e999,"dna_account_key":"K"},"_meta":{"dna.d3.com/key":"M"}}}';
+$infCarriage = P::mcpCarriageOf('POST', $getJson, $inf, []);
+check('a call that will not encode again is refused, never passed on with its key', $infCarriage['unreadable_credential'] === true
+    && $infCarriage['unreadable_reason'] === 'not-one-call' && $infCarriage['origin_body'] === null && $infCarriage['lifted'] === [], $infCarriage);
+$infX402 = '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"_meta":{"x402/payment":{"v":1e999}}}}';
+check('an x402 payment that will not encode is refused too, not lifted empty', P::mcpCarriageOf('POST', $getJson, $infX402, [])['unreadable_credential'] === true);
+$infFree = '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"arguments":{"q":1e999}}}';
+check('one carrying nothing of ours is left alone', P::mcpCarriageOf('POST', $getJson, $infFree, [])['unreadable_credential'] === false);
+$priced = (object) ['status' => 402, 'bodyKind' => 'json-rpc', 'body' => '{"isError":true}'];
+$notified = P::buildPaymentAnswer($priced, 'payment-required', ['hasId' => false, 'id' => null]);
+check('a priced notification gets the plain 402: there is no id to answer', $notified['status'] === 402 && strpos((string) $notified['body'], 'jsonrpc') === false, $notified);
+$nullId = P::buildPaymentAnswer($priced, 'payment-required', ['hasId' => true, 'id' => null]);
+check('a call whose id is null is answered in band with it', $nullId['status'] === 200 && strpos($nullId['body'], '"id":null') !== false, $nullId['body']);
 check('a JSON-RPC id that is an object is no call', P::readJsonRpcRequest('POST', 'application/json', '{"jsonrpc":"2.0","id":{},"method":"x"}') === null);
 
 // ── Runtime: what PHP itself hands the site ──────────────────────────────────
@@ -417,8 +470,14 @@ check('the target is path and query', Runtime::requestTarget(['REQUEST_URI' => '
 check('an absolute-form target is read by its path', Runtime::requestTarget(['REQUEST_URI' => 'http://h/a?b=1']) === '/a?b=1');
 check('a target with no path is /', Runtime::requestTarget([]) === '/');
 check('a raw byte in the target goes escaped, as URL parses it', Runtime::requestTarget(['REQUEST_URI' => "/caf\xc3\xa9 x"]) === '/caf%C3%A9%20x');
-check('the route path is decoded and its dot segments resolved', Runtime::routePath('/.well-known/acme-challenge/../../page%2e') === '/page.');
-check('an encoded dot segment resolves too', Runtime::routePath('/.well-known/acme-challenge/%2e%2e/%2e%2e/x') === '/x');
+check('the query is the target\'s, the one the payload names', Runtime::queryOf('/p?a=1&d3pay_handoff=x') === 'a=1&d3pay_handoff=x' && Runtime::queryOf('/p') === '' && Runtime::queryOf('/p?') === '');
+check('a REST method override is the method a call is read under', Runtime::restMethod('PUT', ['_method' => 'post'], []) === 'POST'
+    && Runtime::restMethod('GET', [], ['HTTP_X_HTTP_METHOD_OVERRIDE' => 'POST']) === 'POST' && Runtime::restMethod('POST', [], []) === 'POST');
+$hash = str_repeat('a', 32);
+same('WordPress login cookies are kept back by default, by the names the request carries', Runtime::withWordPressSessionCookies(['sid'],
+    "wordpress_logged_in_$hash=u; wordpress_sec_$hash=s; wordpress_$hash=a; wp-postpass_$hash=p; wordpress_test_cookie=t; wp-settings-1=x; sid=1"
+), ['sid', "wordpress_logged_in_$hash", "wordpress_sec_$hash", "wordpress_$hash", "wp-postpass_$hash"]);
+same('a cookie only shaped like one is not', Runtime::withWordPressSessionCookies([], "wordpress_logged_in_{$hash}x=u; xwordpress_$hash=v"), []);
 
 $id = Runtime::requestId();
 check('a request id is a v4 UUID', preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/D', $id) === 1, $id);
@@ -445,6 +504,19 @@ check('strip: nor in $_COOKIE, whatever PHP made of the name', array_keys($_COOK
 check('strip: our params gone from the URI, the rest in order', $_SERVER['REQUEST_URI'] === '/p?t=1&keep=1' && $_SERVER['QUERY_STRING'] === 't=1&keep=1', $_SERVER);
 check('strip: and from $_GET and $_REQUEST', array_keys($_GET) === ['t', 'keep'] && array_keys($_REQUEST) === ['t', 'keep'], [$_GET, $_REQUEST]);
 
+$_SERVER = [
+    'REQUEST_URI' => '/p?a+b&d3pay_handoff=h', 'QUERY_STRING' => 'a+b&d3pay_handoff=h', 'REDIRECT_QUERY_STRING' => 'a+b&d3pay_handoff=h',
+    'UNENCODED_URL' => '/p?d3pay_handoff=h', 'argv' => ['a', 'b&d3pay_handoff=h'], 'argc' => 2,
+];
+$_ENV = ['HTTP_COOKIE' => '__Host-d3pay=s; a=1', 'HTTP_X_PAYMENT' => 'p', 'HTTP_X_D3_TIER' => 'proven', 'QUERY_STRING' => 'd3pay_handoff=h', 'PATH' => '/bin'];
+$_GET = [];
+$_COOKIE = [];
+Runtime::stripForOrigin();
+check('strip: every copy of the URL PHP keeps', $_SERVER['REDIRECT_QUERY_STRING'] === 'a+b' && $_SERVER['UNENCODED_URL'] === '/p', $_SERVER);
+check('strip: argv is the stripped query', $_SERVER['argv'] === ['a', 'b'] && $_SERVER['argc'] === 2, $_SERVER['argv']);
+check('strip: and $_ENV, when PHP put the request there too', $_ENV === ['HTTP_COOKIE' => 'a=1', 'QUERY_STRING' => '', 'PATH' => '/bin'], $_ENV);
+$_ENV = [];
+
 $_SERVER = ['REQUEST_URI' => '/p?d3pay_handoff=h', 'QUERY_STRING' => 'd3pay_handoff=h', 'HTTP_COOKIE' => '__Host-d3pay=s'];
 $_GET = ['d3pay_handoff' => 'h'];
 $_COOKIE = ['__Host-d3pay' => 's'];
@@ -465,6 +537,27 @@ $_COOKIE = ['sid' => '1'];
 $before = [$_SERVER, $_GET, $_COOKIE];
 Runtime::stripForOrigin();
 check('strip: a request with nothing of ours is left exactly as PHP read it', [$_SERVER, $_GET, $_COOKIE] === $before);
+
+// Flags shared across requests, here through the temp directory: the CLI has no APCu.
+$key = 'unit ' . uniqid();
+check('memory: a claim holds the key for its seconds', D3\Dna\Memory::claim($key, 60) && !D3\Dna\Memory::claim($key, 60));
+D3\Dna\Memory::hold("$key held", 60);
+check('memory: a held flag is there, and gone once dropped', D3\Dna\Memory::holds("$key held", 60) && (D3\Dna\Memory::drop("$key held") || true) && !D3\Dna\Memory::holds("$key held", 60));
+check('memory: a flag older than asked is not held', !D3\Dna\Memory::holds($key, -1));
+
+// php:// with the stripped call in php://input, and every other php:// stream PHP's own.
+D3\Dna\InputStream::install('{"stripped":true}');
+check('input stream: php://input reads the stripped call', file_get_contents('php://input') === '{"stripped":true}');
+$temp = fopen('php://temp', 'w+');
+fwrite($temp, 'kept');
+rewind($temp);
+check('input stream: php://temp is PHP\'s own', stream_get_contents($temp) === 'kept');
+$read = [$temp];
+$none = null;
+check('input stream: stream_select reaches PHP\'s stream', @stream_select($read, $none, $none, 0) !== false);
+check('input stream: php://input is never included', (@include 'php://input') === false);
+check('input stream: a filter over the original body is refused', @file_get_contents('php://filter/read=string.rot13/resource=php://input') === false);
+stream_wrapper_restore('php');
 
 // The response headers PHP holds, merged with DNA's.
 same('payment headers: Set-Cookie and the CORS list appended, the rest replace, caching narrowed', Runtime::decoratedHeaders(

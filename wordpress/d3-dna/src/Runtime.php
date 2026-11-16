@@ -11,10 +11,15 @@ final class Runtime
     // Our build of this plugin. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter).
     const DNA_ADAPTER = 'wordpress:1.0.0';
 
-    const REPORT_TIMEOUT_MS = 3000;
     const DECISION_MAX_BYTES = 4194304;
     const BODY_CHUNK = 65536;
     const KEY_ARGUMENT_MEMORY_S = 300;
+
+    // WordPress's login and post-password cookies, named by a per-site hash, so no exclusion list can name them.
+    const WORDPRESS_SESSION_COOKIE = '/^(?:wordpress_(?:sec_|logged_in_)?|wordpressuser_|wordpresspass_|wp-postpass_)[0-9a-f]{32}$/D';
+
+    // Headers that describe WordPress's bytes, which a rewritten MCP result no longer is.
+    const BYTE_HEADERS = ['Content-Length', 'Content-Digest', 'Repr-Digest', 'Content-MD5', 'ETag'];
 
     /** This request's state once DNA decided it; null before, and on a request DNA never asked about. */
     private static $state = null;
@@ -39,7 +44,7 @@ final class Runtime
         $paying = true;
         try {
             $byName = Protocol::lookup(self::headerEntriesFromServer($_SERVER));
-            $paying = self::mayPayAfterError($byName, $_SERVER['QUERY_STRING'] ?? '', self::readBody(
+            $paying = self::mayPayAfterError($byName, self::queryOf(self::requestTarget($_SERVER)), self::readBody(
                 $_SERVER['REQUEST_METHOD'] ?? 'GET',
                 $byName['content-type'] ?? null
             ));
@@ -73,21 +78,20 @@ final class Runtime
         }
 
         $target = self::requestTarget($_SERVER);
-        if (Protocol::isAcmeChallenge(self::routePath($target))) {
-            self::stripForOrigin();
-            header('x-d3-edge: pass');
-            return;
-        }
-
         $entries = self::headerEntriesFromServer($_SERVER);
         $byName = Protocol::lookup($entries);
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         $body = self::readBody($method, $byName['content-type'] ?? null);
         $host = self::requestHost($_SERVER);
         $requestId = self::requestId();
+        $exclude = [
+            'headers' => $settings['exclude']['headers'],
+            'cookies' => self::withWordPressSessionCookies($settings['exclude']['cookies'], $byName['cookie'] ?? null),
+        ];
 
         list($payload, $mcp) = Protocol::extract([
             'method' => $method,
+            'call_method' => self::restMethod($method, $_GET, $_SERVER),
             'url' => $target,
             'host' => $host,
             'ip' => isset($_SERVER['REMOTE_ADDR']) && $_SERVER['REMOTE_ADDR'] !== '' ? (string) $_SERVER['REMOTE_ADDR'] : null,
@@ -97,7 +101,7 @@ final class Runtime
             'body' => $body['data'] ?? null,
             'streamed' => $body['streamed'] ?? null,
             'body_unavailable' => !empty($body['unavailable']),
-        ], ['revision' => Protocol::ADAPTER_SET, 'exclude' => $settings['exclude'], 'debug' => $settings['debug_log_raw_payload']]);
+        ], ['revision' => Protocol::ADAPTER_SET, 'exclude' => $exclude, 'debug' => $settings['debug_log_raw_payload']]);
         $payload['requestId'] = $requestId;
 
         self::$state = [
@@ -109,6 +113,7 @@ final class Runtime
             'answer' => null,
             'no_report' => false,
             'payment_headers' => [],
+            'appended' => false,
             'mcp_edits' => null,
             'rewrite' => null,
             'decided_at' => null,
@@ -123,15 +128,15 @@ final class Runtime
             self::send(Protocol::unreadableCallAnswer($mcp['unreadable_reason']));
         }
 
-        $paying = Protocol::presentsPayment($byName, $_SERVER['QUERY_STRING'] ?? '', $payload['headers']);
+        $paying = Protocol::presentsPayment($byName, self::queryOf($target), $payload['headers']);
         $res = self::decide($settings, $payload, $paying ? $settings['payment_timeout_ms'] : $settings['timeout_ms']);
         self::$state['decided_at'] = microtime(true);
 
         $decision = self::validDecision($res);
         if ($decision === null) {
             self::logDecisionFailure($res);
-            // Nothing to report to an endpoint that could not be reached at all.
-            if ($res['status'] === null && !$res['timed_out']) self::$state['no_report'] = true;
+            // An endpoint that did not answer at all is not asked again for the report.
+            if ($res['status'] === null) self::$state['no_report'] = true;
             // A paying request never falls open: the page is priced and the charge may already have landed.
             if ($paying) self::send(Protocol::paymentUnavailableAnswer());
             if ($settings['fail_mode'] === 'closed') self::send(Protocol::blockAnswer(null, 'fail-closed'));
@@ -156,7 +161,9 @@ final class Runtime
         if ($mcp !== null && $mcp['rpc'] !== null) {
             $keyArgument = property_exists($decision, 'mcpKeyArgument') ? $decision->mcpKeyArgument === true : self::keyArgumentOn($host);
             self::$state['mcp_edits'] = Protocol::mcpResultEdits($mcp['rpc']['method'], $payment->meta ?? null, $keyArgument);
-            if (self::$state['mcp_edits'] !== null) self::startResultRewrite();
+            if (self::$state['mcp_edits'] !== null) {
+                self::$state['rewrite'] = ['held' => '', 'passing' => false, 'decided' => false];
+            }
         }
 
         // From revision 2 DNA may pass before working out who is asking: no verdict, no headers.
@@ -188,19 +195,21 @@ final class Runtime
         if ($res['status'] === 401 || $res['status'] === 403) {
             $reason .= ', check DNA_API_KEY: ' . substr((string) $res['body'], 0, 200);
         }
-        self::logEvery(
-            'decision ' . ($res['status'] ?? $res['error'] ?? 'invalid'),
-            10,
-            'decision call failed (' . $reason . '), and again until this stops'
-        );
+        // Keyed by the kind of failure: curl's message names the milliseconds, which differ every time.
+        $kind = $res['status'] !== null ? 'HTTP ' . $res['status'] : 'curl ' . $res['errno'];
+        self::logEvery('decision ' . $kind, 10, 'decision call failed (' . $reason . '), and again until this stops');
     }
 
-    /** WordPress runs next, tagged, and DNA's half of the response is put on as it goes out. */
+    /**
+     * WordPress runs next, and DNA's half of the response goes on as WordPress's
+     * output leaves: through an output handler rather than header_register_callback,
+     * whose one slot another plugin's would take, or DNA's take from the site's own.
+     */
     private static function passOn($mode)
     {
         self::$state['mode'] = $mode;
         header('x-d3-edge: ' . $mode);
-        header_register_callback([self::class, 'onHeaders']);
+        ob_start([self::class, 'onOutput'], 1);
     }
 
     /** Also on fail-open: an endpoint we could not reach is no reason to hand the origin a credential. */
@@ -256,20 +265,34 @@ final class Runtime
         }, $uri);
     }
 
-    /** The path a server routes on: decoded, its dot segments resolved, so `/a/../b` is `/b`. */
-    public static function routePath($target)
+    /** The query of a request target: the one the payload names is the one a payment is looked for in. */
+    public static function queryOf($target)
     {
-        $segments = [];
-        foreach (explode('/', rawurldecode(Protocol::pathOf($target))) as $segment) {
-            if ($segment === '..') {
-                if (count($segments) > 1) array_pop($segments);
-            } elseif ($segment !== '.') {
-                $segments[] = $segment;
+        $at = strpos($target, '?');
+        return $at === false ? '' : (string) substr($target, $at + 1);
+    }
+
+    /**
+     * The method WordPress's REST API serves the request as: `?_method=` or
+     * `X-HTTP-Method-Override` turn a PUT or GET into the POST that runs an MCP
+     * call, so the call is read under the method that will run it.
+     */
+    public static function restMethod($method, array $get, array $server)
+    {
+        $override = $get['_method'] ?? $server['HTTP_X_HTTP_METHOD_OVERRIDE'] ?? null;
+        return is_string($override) && $override !== '' ? strtoupper($override) : $method;
+    }
+
+    /** The site's cookie exclusions, plus every WordPress login cookie this request carries. */
+    public static function withWordPressSessionCookies(array $excluded, $cookieHeader)
+    {
+        foreach (Protocol::cookiesOf($cookieHeader) as $cookie) {
+            if (preg_match(self::WORDPRESS_SESSION_COOKIE, $cookie[0]) === 1 && !in_array($cookie[0], $excluded, true)) {
+                $excluded[] = $cookie[0];
             }
         }
 
-        $path = implode('/', $segments);
-        return $path === '' || $path[0] !== '/' ? '/' . $path : $path;
+        return $excluded;
     }
 
     public static function requestId()
@@ -287,22 +310,20 @@ final class Runtime
      */
     public static function readBody($method, $contentType)
     {
-        if (stripos((string) $contentType, 'multipart/form-data') === 0 && ini_get('enable_post_data_reading')) {
-            return ((int) ($_SERVER['CONTENT_LENGTH'] ?? 0)) > 0 ? ['unavailable' => true] : ['data' => ''];
-        }
-
         $in = @fopen('php://input', 'rb');
-        if ($in === false) return ['data' => ''];
-
         $first = '';
-        while (strlen($first) <= Protocol::MCP_BODY_MAX_BYTES && !feof($in)) {
+        while ($in !== false && strlen($first) <= Protocol::MCP_BODY_MAX_BYTES && !feof($in)) {
             $chunk = fread($in, self::BODY_CHUNK);
             if ($chunk === false || $chunk === '') break;
             $first .= $chunk;
         }
+
         if (strlen($first) <= Protocol::MCP_BODY_MAX_BYTES) {
-            fclose($in);
-            return ['data' => $first];
+            if ($in !== false) fclose($in);
+            // PHP empties php://input only when it parsed a multipart body: one without a boundary it leaves whole.
+            $consumed = $first === '' && ((int) ($_SERVER['CONTENT_LENGTH'] ?? 0)) > 0
+                && stripos((string) $contentType, 'multipart/form-data') === 0;
+            return $consumed ? ['unavailable' => true] : ['data' => $first];
         }
 
         // Past the read cap: hashed as it streams, and searched for our keys only where a call could be.
@@ -348,38 +369,58 @@ final class Runtime
      */
     public static function stripForOrigin()
     {
-        foreach (array_merge(Protocol::ORIGIN_STRIPPED_HEADERS, Protocol::VERDICT_HEADERS) as $name) {
-            unset($_SERVER[self::serverKey($name)]);
+        $query = $_SERVER['QUERY_STRING'] ?? null;
+        self::stripRequestCopy($_SERVER);
+        // PHP fills $_ENV with the request too when variables_order lists E.
+        if (!empty($_ENV)) self::stripRequestCopy($_ENV);
+
+        // register_argc_argv hands a web request its query as argv, split on `+`.
+        if (isset($_SERVER['argv']) && is_array($_SERVER['argv']) && is_string($query) && $query !== $_SERVER['QUERY_STRING']) {
+            $_SERVER['argv'] = $_SERVER['QUERY_STRING'] === '' ? [] : explode('+', $_SERVER['QUERY_STRING']);
+            $_SERVER['argc'] = count($_SERVER['argv']);
         }
 
-        $cookie = $_SERVER['HTTP_COOKIE'] ?? null;
-        if (is_string($cookie) && Protocol::holdsOwnCookie($cookie)) {
-            $kept = Protocol::stripOwnCookies($cookie);
-            if ($kept === null) {
-                unset($_SERVER['HTTP_COOKIE']);
-            } else {
-                $_SERVER['HTTP_COOKIE'] = $kept;
-            }
-        }
         // By the name PHP made of it, which turns `__Host-d3person ` into `__Host-d3person_`: still ours.
         foreach (array_keys($_COOKIE ?? []) as $name) {
             if (Protocol::isNamespaceCookie((string) $name)) unset($_COOKIE[$name], $_REQUEST[$name]);
         }
 
-        foreach (['REQUEST_URI', 'QUERY_STRING'] as $key) {
-            if (!isset($_SERVER[$key]) || !is_string($_SERVER[$key])) continue;
-
-            $stripped = $key === 'QUERY_STRING'
-                ? (string) substr(Protocol::stripPayParams('?' . $_SERVER[$key]), 1)
-                : Protocol::stripPayParams($_SERVER[$key]);
-            if ($stripped !== $_SERVER[$key]) $_SERVER[$key] = $stripped;
-        }
         // PHP's own names too: it reads `d3pay.handoff` as `d3pay_handoff`.
         foreach ($_GET ?? [] as $name => $value) {
             if (!Protocol::isNamespaceParam((string) $name)) continue;
 
             unset($_GET[$name]);
             if (isset($_REQUEST[$name]) && $_REQUEST[$name] === $value) unset($_REQUEST[$name]);
+        }
+    }
+
+    /** One copy of the request PHP keeps ($_SERVER, $_ENV): our headers, cookies and params out of it. */
+    private static function stripRequestCopy(array &$vars)
+    {
+        foreach (array_merge(Protocol::ORIGIN_STRIPPED_HEADERS, Protocol::VERDICT_HEADERS) as $name) {
+            unset($vars[self::serverKey($name)]);
+        }
+
+        $cookie = $vars['HTTP_COOKIE'] ?? null;
+        if (is_string($cookie) && Protocol::holdsOwnCookie($cookie)) {
+            $kept = Protocol::stripOwnCookies($cookie);
+            if ($kept === null) {
+                unset($vars['HTTP_COOKIE']);
+            } else {
+                $vars['HTTP_COOKIE'] = $kept;
+            }
+        }
+
+        // The URL as each server keeps it: Apache's rewrite keeps the query it redirected, IIS the original URL.
+        $urls = ['REQUEST_URI', 'UNENCODED_URL', 'HTTP_X_ORIGINAL_URL', 'HTTP_X_REWRITE_URL'];
+        $queries = ['QUERY_STRING', 'REDIRECT_QUERY_STRING'];
+        foreach (array_merge($urls, $queries) as $key) {
+            if (!isset($vars[$key]) || !is_string($vars[$key])) continue;
+
+            $stripped = in_array($key, $queries, true)
+                ? (string) substr(Protocol::stripPayParams('?' . $vars[$key]), 1)
+                : Protocol::stripPayParams($vars[$key]);
+            if ($stripped !== $vars[$key]) $vars[$key] = $stripped;
         }
     }
 
@@ -400,12 +441,12 @@ final class Runtime
     /**
      * POSTs the payload under a hard budget: curl's timeout covers the whole call,
      * connecting and resolving included. Returns status (null when none came back),
-     * body, error and whether the budget ran out.
+     * body, error and curl's error number.
      */
     private static function decide(array $settings, array $payload, $budgetMs)
     {
-        $failed = function ($error, $timedOut = false) {
-            return ['status' => null, 'body' => null, 'error' => $error, 'timed_out' => $timedOut];
+        $failed = function ($error, $errno = 0) {
+            return ['status' => null, 'body' => null, 'error' => $error, 'errno' => $errno];
         };
         if (!function_exists('curl_init')) return $failed('PHP has no curl extension, which DNA needs to bound its call');
 
@@ -433,11 +474,9 @@ final class Runtime
         $error = curl_error($ch);
         curl_close($ch);
 
-        if ($ok === false || $status === 0) {
-            return $failed($error !== '' ? $error : 'no response', $errno === CURLE_OPERATION_TIMEDOUT);
-        }
+        if ($ok === false || $status === 0) return $failed($error !== '' ? $error : 'no response', $errno);
 
-        return ['status' => $status, 'body' => $body, 'error' => null, 'timed_out' => false];
+        return ['status' => $status, 'body' => $body, 'error' => null, 'errno' => 0];
     }
 
     private static function curlOptions($budgetMs)
@@ -488,9 +527,10 @@ final class Runtime
             header_remove();
             // PHP would otherwise add a text/html type to a redirect.
             if (!$answer['content_type']) ini_set('default_mimetype', '');
-            http_response_code($answer['status']);
             foreach ($answer['headers'] as $pair) header($pair[0] . ': ' . $pair[1]);
             if ($answer['body'] === null) header('Content-Length: 0');
+            // After the headers: PHP turns the status into a 401 on WWW-Authenticate and a 302 on Location.
+            http_response_code($answer['status']);
         }
         if ($answer['body'] !== null) echo $answer['body'];
         exit;
@@ -498,24 +538,79 @@ final class Runtime
 
     // ── The response WordPress sends ─────────────────────────────────────────
 
-    /** Runs as PHP sends the response headers: DNA's are put on beside WordPress's. */
-    public static function onHeaders()
+    /**
+     * Everything WordPress prints passes here before PHP sends its headers. DNA's
+     * headers go on each time until then, so one WordPress sets late is still
+     * narrowed; an MCP result DNA adds to is held whole to rewrite.
+     */
+    public static function onOutput($chunk, $phase)
     {
-        $state = self::$state;
-        if ($state === null || $state['answer'] !== null) return;
+        if (self::$state === null) return $chunk;
+        if (!headers_sent()) self::decorate();
 
-        header('x-d3-edge: ' . $state['mode']);
-        $decorated = self::decoratedHeaders(headers_list(), $state['payment_headers'], $state['payment_headers'] !== []);
-        foreach ($decorated['replace'] as $name => $value) header($name . ': ' . $value, true);
-        foreach ($decorated['append'] as $pair) header($pair[0] . ': ' . $pair[1], false);
+        $rewrite = &self::$state['rewrite'];
+        if ($rewrite === null || $rewrite['passing']) return $chunk;
 
-        if ($state['rewrite'] !== null && $state['rewrite']['eligible']) {
-            // They describe WordPress's bytes, which the rewrite changes.
-            foreach (['Content-Length', 'Content-Digest', 'Repr-Digest', 'Content-MD5', 'ETag'] as $name) header_remove($name);
-            if ($state['mcp_edits']['meta'] !== null) {
-                header('Cache-Control: ' . Protocol::privateCacheControl(self::responseHeader(headers_list(), 'cache-control')), true);
-            }
+        if ($phase & PHP_OUTPUT_HANDLER_CLEAN) {
+            $rewrite['held'] = '';
+            $chunk = '';
         }
+        $final = ($phase & PHP_OUTPUT_HANDLER_FINAL) !== 0;
+
+        if (!$rewrite['decided']) {
+            // An empty call (the buffer starting, an ob_clean) says nothing about the answer yet.
+            if ($chunk === '' && !$final) return '';
+
+            $rewrite['decided'] = true;
+            if (headers_sent() || !self::resultRewritable(headers_list())) {
+                $rewrite['passing'] = true;
+                return $chunk;
+            }
+            self::decorate();
+        }
+
+        $rewrite['held'] .= $chunk;
+        $outgrown = strlen($rewrite['held']) > Protocol::MCP_RESULT_MAX_BYTES;
+
+        if ($final && !$outgrown) {
+            $edits = self::$state['mcp_edits'];
+            $whole = $rewrite['held'];
+            $rewrite['held'] = '';
+            return Protocol::rewriteResult($whole, $edits['meta'], $edits['lists_tools']) ?? $whole;
+        }
+
+        // Someone flushed on purpose (a stream), or the answer outgrew the cap: what is held goes as it is.
+        if (($phase & (PHP_OUTPUT_HANDLER_FLUSH | PHP_OUTPUT_HANDLER_FINAL)) || $outgrown) {
+            $rewrite['passing'] = true;
+            $held = $rewrite['held'];
+            $rewrite['held'] = '';
+            return $held;
+        }
+
+        return '';
+    }
+
+    /** DNA's headers onto WordPress's, as they stand now. The status is kept: a Location or WWW-Authenticate would move it. */
+    private static function decorate()
+    {
+        $state = &self::$state;
+        $status = http_response_code();
+        header('x-d3-edge: ' . $state['mode']);
+
+        $rewrite = $state['rewrite'];
+        $rewriting = $rewrite !== null && $rewrite['decided'] && !$rewrite['passing'];
+        $narrow = $state['payment_headers'] !== [] || ($rewriting && $state['mcp_edits']['meta'] !== null);
+        $decorated = self::decoratedHeaders(headers_list(), $state['payment_headers'], $narrow);
+        foreach ($decorated['replace'] as $name => $value) header($name . ': ' . $value, true);
+        if (!$state['appended']) {
+            foreach ($decorated['append'] as $pair) header($pair[0] . ': ' . $pair[1], false);
+            $state['appended'] = true;
+        }
+        if ($rewriting) {
+            foreach (self::BYTE_HEADERS as $name) header_remove($name);
+        }
+
+        if (is_int($status)) http_response_code($status);
     }
 
     /**
@@ -557,56 +652,6 @@ final class Runtime
         return $values === [] ? null : implode(', ', $values);
     }
 
-    /**
-     * Holds WordPress's answer to an MCP call to put the receipt in its _meta, or
-     * the key argument on tools/list. Decided on the first output: anything but a
-     * JSON answer streams on as it comes, and so does one past the cap.
-     */
-    private static function startResultRewrite()
-    {
-        self::$state['rewrite'] = ['held' => '', 'passing' => false, 'eligible' => false, 'decided' => false];
-        ob_start([self::class, 'rewriteOutput'], 1);
-    }
-
-    public static function rewriteOutput($chunk, $phase)
-    {
-        $rewrite = &self::$state['rewrite'];
-        if ($rewrite['passing']) return $chunk;
-
-        if (!$rewrite['decided']) {
-            $rewrite['decided'] = true;
-            if (!self::resultRewritable(headers_list())) {
-                $rewrite['passing'] = true;
-                return $chunk;
-            }
-            $rewrite['eligible'] = true;
-        }
-
-        if ($phase & PHP_OUTPUT_HANDLER_CLEAN) {
-            $rewrite['held'] = '';
-            $chunk = '';
-        }
-        $rewrite['held'] .= $chunk;
-        $outgrown = strlen($rewrite['held']) > Protocol::MCP_RESULT_MAX_BYTES;
-
-        if (($phase & PHP_OUTPUT_HANDLER_FINAL) && !$outgrown) {
-            $edits = self::$state['mcp_edits'];
-            $whole = $rewrite['held'];
-            $rewrite['held'] = '';
-            return Protocol::rewriteResult($whole, $edits['meta'], $edits['lists_tools']) ?? $whole;
-        }
-
-        // Someone flushed on purpose (a stream), or the answer outgrew the cap: what is held goes as it is.
-        if (($phase & (PHP_OUTPUT_HANDLER_FLUSH | PHP_OUTPUT_HANDLER_FINAL)) || $outgrown) {
-            $rewrite['passing'] = true;
-            $held = $rewrite['held'];
-            $rewrite['held'] = '';
-            return $held;
-        }
-
-        return '';
-    }
-
     private static function resultRewritable(array $headerList)
     {
         $status = http_response_code();
@@ -627,26 +672,18 @@ final class Runtime
 
     // ── Key argument memory (mcp-response.ts) ────────────────────────────────
 
-    /** Per server, as the packages keep it per isolate, where PHP has a shared cache to keep it in. */
+    /** Per server, as the packages keep it per isolate: a decision that passes early does not say. */
     private static function rememberKeyArgument($host, $on)
     {
-        if (!self::hasApcu()) return;
-
-        if ($on) {
-            apcu_store('d3-dna:key-argument:' . $host, true, self::KEY_ARGUMENT_MEMORY_S);
-        } else {
-            apcu_delete('d3-dna:key-argument:' . $host);
-        }
+        $key = 'key-argument ' . $host;
+        // Refreshed at half its life, not per request: the flag rides every decision.
+        if ($on && !Memory::holds($key, self::KEY_ARGUMENT_MEMORY_S / 2)) Memory::hold($key, self::KEY_ARGUMENT_MEMORY_S);
+        if (!$on && Memory::holds($key, self::KEY_ARGUMENT_MEMORY_S)) Memory::drop($key);
     }
 
     private static function keyArgumentOn($host)
     {
-        return self::hasApcu() && apcu_fetch('d3-dna:key-argument:' . $host) === true;
-    }
-
-    private static function hasApcu()
-    {
-        return function_exists('apcu_enabled') && apcu_enabled();
+        return Memory::holds('key-argument ' . $host, self::KEY_ARGUMENT_MEMORY_S);
     }
 
     // ── The report ───────────────────────────────────────────────────────────
@@ -654,14 +691,16 @@ final class Runtime
     /**
      * After the visitor has the whole response: what they got, to /v1/report. Only
      * where PHP can end the response first (PHP-FPM, LiteSpeed); elsewhere the
-     * visitor's connection would wait on it, so nothing is reported.
+     * visitor's connection would wait on it, so nothing is reported. It still holds
+     * a PHP worker while it runs, so it gets the decision's budget and no more.
      */
     public static function report()
     {
         $state = self::$state;
         if ($state === null || $state['mode'] === null || $state['no_report']) return;
 
-        $url = Protocol::reportUrl(self::settings()['endpoint']);
+        $settings = self::settings();
+        $url = Protocol::reportUrl($settings['endpoint']);
         if ($url === null || !function_exists('curl_init')) return;
 
         if (function_exists('fastcgi_finish_request')) {
@@ -671,13 +710,14 @@ final class Runtime
         } else {
             return;
         }
+        // PHP writes the session, and frees its lock for the visitor's next request, only after this returns.
+        if (function_exists('session_status') && session_status() === PHP_SESSION_ACTIVE) session_write_close();
 
         $report = self::reportOf($state, headers_list(), http_response_code(), microtime(true));
         $ch = curl_init($url);
         $headers = ['Content-Type: application/json', 'Expect:'];
-        $apiKey = self::settings()['api_key'];
-        if ($apiKey !== null) $headers[] = 'Authorization: Bearer ' . Protocol::trim($apiKey);
-        curl_setopt_array($ch, self::curlOptions(self::REPORT_TIMEOUT_MS) + [
+        if ($settings['api_key'] !== null) $headers[] = 'Authorization: Bearer ' . Protocol::trim($settings['api_key']);
+        curl_setopt_array($ch, self::curlOptions((int) ceil($settings['timeout_ms'])) + [
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => Protocol::jsonEncode($report),
             CURLOPT_HTTPHEADER => $headers,
@@ -685,10 +725,15 @@ final class Runtime
         ]);
         $ok = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $errno = curl_errno($ch);
         $error = curl_error($ch);
         curl_close($ch);
         if ($ok === false || $status >= 300 || $status === 0) {
-            self::logEvery('report failed', 60, 'response report failed (' . ($error !== '' ? $error : 'HTTP ' . $status) . '), and again until this stops');
+            self::logEvery(
+                'report ' . ($status !== 0 ? $status : 'curl ' . $errno),
+                60,
+                'response report failed (' . ($error !== '' ? $error : 'HTTP ' . $status) . '), and again until this stops'
+            );
         }
     }
 
@@ -721,7 +766,7 @@ final class Runtime
         $type = self::responseHeader($headerList, 'content-type');
         if ($type !== null) $report['contentType'] = $type;
         $length = self::responseHeader($headerList, 'content-length');
-        if ($length !== null && ctype_digit($length)) $report['contentLength'] = (int) $length;
+        if ($length !== null && preg_match('/^\d{1,15}$/D', $length) === 1) $report['contentLength'] = (int) $length;
         if ($state['decided_at'] !== null) $report['originLatencyMs'] = (int) round(($now - $state['decided_at']) * 1000);
         return (object) $report;
     }
@@ -760,23 +805,9 @@ final class Runtime
         return isset($_SERVER[$name]) && is_string($_SERVER[$name]) ? $_SERVER[$name] : null;
     }
 
-    /**
-     * One line per key per interval, not one per request: a DNA outage would
-     * otherwise write a line for every page served. Held in APCu where there is
-     * one, else in a file's age under the temp directory.
-     */
+    /** One line per key per interval, not one per request: a DNA outage would otherwise write a line for every page served. */
     public static function logEvery($key, $seconds, $message)
     {
-        $id = 'd3-dna-' . md5(__DIR__ . "\0" . $key);
-        if (self::hasApcu()) {
-            if (!apcu_add($id, true, $seconds)) return;
-        } else {
-            $marker = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $id;
-            $at = @filemtime($marker);
-            if ($at !== false && $at > time() - $seconds) return;
-            @touch($marker);
-        }
-
-        error_log('d3-dna: ' . $message);
+        if (Memory::claim('log ' . $key, $seconds)) error_log('d3-dna: ' . $message);
     }
 }

@@ -44,7 +44,6 @@ final class Protocol
     const MCP_KEY_ARGUMENT = 'dna_account_key';
     const MCP_X402_META = 'x402/payment';
     const MCP_DNA_KEY_META = 'dna.d3.com/key';
-    const ACME_PREFIX = '/.well-known/acme-challenge/';
 
     const NAMESPACE_MAX_COOKIES = 8;
     const NAMESPACE_MAX_TOTAL_LENGTH = 4096;
@@ -661,11 +660,6 @@ final class Protocol
             || self::hasPaymentHeader($payloadHeaders);
     }
 
-    public static function isAcmeChallenge($path)
-    {
-        return self::startsWith($path, self::ACME_PREFIX);
-    }
-
     // ── MCP (mcp.ts) ─────────────────────────────────────────────────────────
 
     public static function isJsonType($contentType)
@@ -842,11 +836,16 @@ final class Protocol
         return $facts;
     }
 
-    /** liftMcpPayment: the call's payment as the headers the worker reads, and the body without it (null when unchanged). */
+    /**
+     * liftMcpPayment: the call's payment as the headers the worker reads, and the
+     * body without it (null when unchanged). The third value is true for a call
+     * that changed but will not encode again, such as one holding `1e999`, which
+     * PHP reads as INF: it cannot be stripped, so it is refused like an unread one.
+     */
     public static function liftMcpPayment(array $rpc)
     {
         $params = $rpc['params'];
-        if ($params === null) return [[], null];
+        if ($params === null) return [[], null, false];
 
         $lifted = [];
         $meta = self::isRecord(self::prop($params, '_meta')) ? clone $params->_meta : null;
@@ -855,7 +854,11 @@ final class Protocol
 
         if ($meta !== null && property_exists($meta, self::MCP_X402_META)) {
             $payment = $meta->{self::MCP_X402_META};
-            if (self::isRecord($payment)) $lifted['payment-signature'] = base64_encode(self::jsonEncode($payment));
+            if (self::isRecord($payment)) {
+                $encoded = self::jsonEncode($payment);
+                if ($encoded === null) return [[], null, true];
+                $lifted['payment-signature'] = base64_encode($encoded);
+            }
             unset($meta->{self::MCP_X402_META});
             $changed = true;
         }
@@ -876,7 +879,7 @@ final class Protocol
             $changed = true;
         }
 
-        if (!$changed) return [$lifted, null];
+        if (!$changed) return [$lifted, null, false];
 
         $originParams = new \stdClass();
         foreach (get_object_vars($params) as $k => $v) {
@@ -887,7 +890,8 @@ final class Protocol
 
         $call = (object) ['jsonrpc' => '2.0', 'method' => $rpc['method'], 'params' => $originParams];
         if ($rpc['hasId']) $call->id = $rpc['id'];
-        return [$lifted, self::jsonEncode($call)];
+        $body = self::jsonEncode($call);
+        return $body === null ? [[], null, true] : [$lifted, $body, false];
     }
 
     /**
@@ -901,7 +905,8 @@ final class Protocol
         $facts = self::mcpFactsOf($getHeader, $rpc, $excluded);
         $lifted = [];
         $originBody = null;
-        if ($rpc !== null) list($lifted, $originBody) = self::liftMcpPayment($rpc);
+        $unencodable = false;
+        if ($rpc !== null) list($lifted, $originBody, $unencodable) = self::liftMcpPayment($rpc);
 
         $mirrored = self::stringOrNull($getHeader(self::MCP_DNA_KEY_HEADER));
         if ($mirrored !== null && !isset($lifted['payment-authorization'])) {
@@ -913,7 +918,7 @@ final class Protocol
             $notOneCall = !$tooLarge && $streamed['names_credential'] && $streamed['jsonrpc'];
         } else {
             $tooLarge = self::oversizedCallNamesCredential($method, $contentType, $body);
-            $notOneCall = !$tooLarge && self::unreadCallNamesCredential($rpc, $body);
+            $notOneCall = !$tooLarge && ($unencodable || self::unreadCallNamesCredential($rpc, $body));
         }
 
         return [
@@ -954,7 +959,8 @@ final class Protocol
 
     /**
      * The decision payload, and the MCP carriage when revision 3 read one.
-     * $req: method, url, host, ip, secure, timestamp, entries, and either `body`
+     * $req: method, url, host, ip, secure, timestamp, entries, `call_method` when
+     * the site will serve the request as another method, and either `body`
      * (the bytes) or `streamed` (digest and credential search of a body too large
      * to hold), or `body_unavailable` when PHP consumed it (multipart).
      */
@@ -996,7 +1002,7 @@ final class Protocol
             $getHeader = function ($name) use ($byName) {
                 return $byName[$name] ?? null;
             };
-            $mcp = self::mcpCarriageOf($req['method'], $getHeader, $body ?? '', $exclude['headers'], $streamed);
+            $mcp = self::mcpCarriageOf($req['call_method'] ?? $req['method'], $getHeader, $body ?? '', $exclude['headers'], $streamed);
         }
 
         $lifted = self::liftedPaymentToForward($byName, $mcp !== null ? $mcp['lifted'] : []);
@@ -1139,10 +1145,10 @@ final class Protocol
         return self::answer(200, self::jsonEncode((object) ['jsonrpc' => '2.0', 'id' => $id, 'result' => $result]), $headers, $mode);
     }
 
-    /** buildPaymentResponse. `$rpc` is the call read off the request, or null when none was. */
+    /** buildPaymentResponse. `$rpc` is the call read off the request, or null when none was; a notification has no id to answer. */
     public static function buildPaymentAnswer($payment, $mode, $rpc = null)
     {
-        if (self::prop($payment, 'bodyKind') === 'json-rpc' && $rpc !== null) {
+        if (self::prop($payment, 'bodyKind') === 'json-rpc' && $rpc !== null && $rpc['hasId']) {
             return self::jsonRpcAnswer($payment, $mode, $rpc['id']);
         }
 

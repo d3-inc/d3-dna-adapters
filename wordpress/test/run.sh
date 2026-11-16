@@ -19,9 +19,20 @@ export NODE_IMAGE=node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972a
 
 compose() { docker compose -f compose.yml "$@"; }
 work=$(mktemp -d)
+# Setup's own output goes here, and is shown when a step fails.
+setup_log="$work/setup.log"
+fail() { echo "setup failed: $1" >&2; tail -40 "$setup_log" >&2; compose logs --tail 20 >&2; exit 1; }
 down() { compose --profile tools down -v --remove-orphans >/dev/null 2>&1; }
 trap 'down; rm -rf "$work"' EXIT
-up() { for _ in $(seq 1 240); do curl -s -o /dev/null "$1" && return 0; sleep 0.5; done; echo "never came up: $1" >&2; exit 1; }
+# Up once it answers anything but nginx's 502, which it gives while PHP-FPM restarts.
+up() {
+  for _ in $(seq 1 240); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' "$1")
+    [ "$code" != 000 ] && [ "$code" != 502 ] && return 0
+    sleep 0.5
+  done
+  fail "never came up: $1"
+}
 
 for image in "$PHP74_IMAGE" "$PHP83_IMAGE"; do
   echo "--- unit, ${image%%@*}"
@@ -29,25 +40,24 @@ for image in "$PHP74_IMAGE" "$PHP83_IMAGE"; do
 done
 
 down
-compose up -d --quiet-pull db mock fpm web >/dev/null 2>&1 || exit 1
+compose up -d --quiet-pull db mock fpm web >>"$setup_log" 2>&1 || fail 'starting the FPM site'
 up 127.0.0.1:9020/__log
 up 127.0.0.1:8130/
-wp() { compose run --rm -T cli wp "$@" 2>/dev/null; }
+wp() { compose run --rm -T cli wp "$@" >>"$setup_log" 2>&1; }
 wp core install --url=http://127.0.0.1:8130 --title=DNA --admin_user=admin --admin_password=admin \
-  --admin_email=admin@example.com --skip-email >/dev/null || exit 1
-wp rewrite structure '/%postname%/' >/dev/null || exit 1
-wp plugin activate d3-dna dna-test-origin >/dev/null || exit 1
+  --admin_email=admin@example.com --skip-email || fail 'wp core install'
+wp rewrite structure '/%postname%/' || fail 'wp rewrite structure'
+wp plugin activate d3-dna dna-test-origin || fail 'wp plugin activate'
 # Apache's half of pretty permalinks; nginx's is in nginx.conf.
 compose exec -T fpm sh -c 'printf "%s\n" "RewriteEngine On" "RewriteRule ^index\.php$ - [L]" \
   "RewriteCond %{REQUEST_FILENAME} !-f" "RewriteCond %{REQUEST_FILENAME} !-d" "RewriteRule . /index.php [L]" \
-  > /var/www/html/.htaccess' || exit 1
-compose up -d --quiet-pull apache83 apache74 >/dev/null 2>&1 || exit 1
+  > /var/www/html/.htaccess' || fail 'writing .htaccess'
+compose up -d --quiet-pull apache83 apache74 >>"$setup_log" 2>&1 || fail 'starting the Apache sites'
 up 127.0.0.1:8131/; up 127.0.0.1:8132/
 
 # Recreates the FPM site under other settings; the rest stay as they are.
 restart_fpm() {
-  env "$@" docker compose -f compose.yml up -d --force-recreate --no-deps fpm >/dev/null 2>&1 || exit 1
-  sleep 1
+  env "$@" docker compose -f compose.yml up -d --force-recreate --no-deps fpm >>"$setup_log" 2>&1 || fail "restarting FPM with $*"
   up 127.0.0.1:8130/
 }
 phase() { echo "--- $1"; node run.mjs "$1"; }
@@ -57,6 +67,9 @@ phase live; live=$?
 compose stop mock >/dev/null 2>&1
 phase dead; dead=$?
 compose start mock >/dev/null 2>&1; up 127.0.0.1:9020/__log
+
+restart_fpm DNA_FAIL_MODE=closed
+phase closed; closed=$?
 
 restart_fpm DNA_ENABLED=false
 phase disabled; off=$?
@@ -72,6 +85,6 @@ cp -R ../d3-dna "$work/d3-dna" && rm "$work/d3-dna/src/Runtime.php"
 restart_fpm PLUGIN_DIR="$work/d3-dna"
 phase unloaded; unloaded=$?
 
-failed=$(( live || dead || off || mu || plugin || unloaded ))
+failed=$(( live || dead || closed || off || mu || plugin || unloaded ))
 [ "$failed" -eq 0 ] || { echo "--- fpm log"; compose logs --tail 40 fpm; }
 exit "$failed"

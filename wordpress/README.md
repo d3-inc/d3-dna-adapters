@@ -12,7 +12,7 @@ per call. On PHP-FPM and LiteSpeed it also reports what WordPress answered.
 
 On a pass that carries DNA's verdict, WordPress gets it as
 `$_SERVER['HTTP_X_D3_TIER']` and `$_SERVER['HTTP_X_D3_IDENTITY']`. A visitor's
-own copies never reach WordPress.
+own copies never reach `$_SERVER`.
 
 ## What it covers
 
@@ -29,6 +29,14 @@ For the last two, put DNA in front of your site instead:
 [Cloudflare](../packages/cloudflare-adapter), or
 [nginx](../openresty) if you run your own server.
 
+WordPress's own requests are decided like a visitor's: `wp-cron.php`, Site
+Health's loopback, a payment provider's webhook. A rule that blocks agents DNA
+can't name blocks those too, so scope it to the paths it is for.
+
+Behind a CDN or load balancer, DNA sees what PHP sees: set your server's
+real-IP module, and `HTTPS` above the include line in `wp-config.php`, so
+`REMOTE_ADDR` and `HTTPS` are the visitor's.
+
 ## Requirements
 
 - WordPress 6.0 or later, PHP 7.4 or later, with the `curl` extension. Without
@@ -43,7 +51,9 @@ For the last two, put DNA in front of your site instead:
    git archive --format=zip --prefix=d3-dna/ HEAD:wordpress/d3-dna > d3-dna.zip
    ```
 2. Activate **DNA by D3**. It runs from then on, as a must-use plugin it
-   installs, before your other plugins load.
+   installs, before your other plugins load. On a multisite network, activate
+   it for the network: activated on one site, it runs there alone, after the
+   must-use plugins.
 3. In `wp-config.php`, above the line that requires `wp-settings.php`, set
    your key from [dashboard.d3.com/keys](https://dashboard.d3.com/keys) and
    run DNA before any page cache:
@@ -51,9 +61,9 @@ For the last two, put DNA in front of your site instead:
    define('DNA_API_KEY', 'your key');
    if (is_file(__DIR__ . '/wp-content/plugins/d3-dna/boot.php')) include __DIR__ . '/wp-content/plugins/d3-dna/boot.php';
    ```
-   If your `wp-content` lives elsewhere, change both paths. The `is_file`
-   guard keeps your site up while WordPress replaces the plugin's files during
-   an update.
+   If your `wp-content` lives elsewhere, **Tools → DNA** shows the line with
+   your path. The `is_file` guard keeps your site up while WordPress replaces
+   the plugin's files during an update.
 
 Check it under **Tools → DNA**: **Check the home page** fetches it and reads
 `x-d3-edge`. Or run `curl -sI https://www.example.com/`.
@@ -94,7 +104,9 @@ kept between requests.
 Every request header and cookie, except the names you exclude and these:
 `Authorization`, `Proxy-Authorization`, the Cloudflare Access and Vercel OIDC
 headers, and `Mcp-Param-Dna-Key`, which goes as a payment header instead. Our
-own cookies travel on headers of their own. A value past 2 KB, or past 16 KB in
+own cookies travel on headers of their own. WordPress's login and
+post-password cookies are kept back too, named in the request as kept back so
+a rule on one is skipped. A value past 2 KB, or past 16 KB in
 all, is dropped and named; a few headers have their own limit, such as 256
 bytes for `Accept`. A body is never sent: its SHA-256 digest is, and for an
 MCP call, the method and the tool it names. A file upload's body is read by
@@ -123,9 +135,10 @@ when a browser is navigating, and serves the page once the visitor pays.
   `502 {"error":"payment_unavailable"}`. The charge may already have landed.
 - **WordPress never sees a credential**: no payment header, none of our
   cookies, no `d3pay_*` parameter, and no payment inside an MCP call. They are
-  removed from `$_SERVER`, `$_COOKIE`, `$_GET` and `$_REQUEST` before WordPress
-  loads. `getallheaders()` reads the server's own copy, which PHP cannot
-  change, so read request headers from `$_SERVER`.
+  removed from `$_SERVER`, `$_ENV`, `$_COOKIE`, `$_GET` and `$_REQUEST`, from
+  `argv` and from Apache's `REDIRECT_QUERY_STRING`, before WordPress loads.
+  `getallheaders()`, and `getenv()` under PHP-FPM, read the server's own copy
+  of the request, which PHP cannot change: read the request from `$_SERVER`.
 - **The receipt rides WordPress's own response.** Our `Set-Cookie` and CORS
   list are added beside WordPress's, and the page's `Cache-Control` is narrowed
   to `private` with its freshness kept, so no shared cache stores a receipt.
@@ -136,19 +149,25 @@ when a browser is navigating, and serves the page once the visitor pays.
   `php://input`. An unpaid call is answered in band, as a JSON-RPC result with
   the call's `id`; a paid one gets the receipt in its result's `_meta`. A call
   too large to read that names one of our credentials is refused with a `413`;
-  a batch, or a call sent under another content type, that carries one is
-  refused with a `400`. A result your server streams, or sends compressed, is
-  passed on without the receipt.
+  a batch, a call sent under another content type, or one holding a number
+  JSON can't write back (`1e999`), that carries one is refused with a `400`. A
+  call the REST API runs as a `POST` through `?_method=` or
+  `X-HTTP-Method-Override` is read as one. A result your server streams, or
+  sends compressed, is passed on without the receipt.
 
 ## Outcome reports
 
 After each response the plugin tells DNA what WordPress answered (status,
 time, type and size). It needs PHP to end the response first, which PHP-FPM
 and LiteSpeed can and Apache's `mod_php` cannot: there nothing is reported, and
-enforcement is unchanged. A report that cannot be sent is logged and dropped.
+enforcement is unchanged. A report holds a PHP worker while it is sent, so it
+gets `DNA_TIMEOUT_MS` and no more, and none is sent after a decision call that
+got no answer. A report that cannot be sent is logged and dropped.
 
 Failures are logged to PHP's error log once per kind every few seconds, not
-once per request.
+once per request. The plugin keeps that, and the MCP key argument a decision
+turned on, in APCu where PHP has it, and otherwise as small files in PHP's
+temp directory.
 
 ## Testing
 

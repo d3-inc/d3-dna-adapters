@@ -12,9 +12,10 @@ if (PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg') return;
 
 /*
  * Without our code (a plugin update half done, a file edited) nothing can read a
- * cookie, a query or a body properly: our headers go by name, and a request
- * carrying anything else of ours is refused rather than handed to WordPress.
- * A closure, not a function: a second copy of this file must not redeclare it.
+ * query or a body properly. Our headers and cookies go by name, matched loosely;
+ * a request carrying a payment, or anything that may be one, is refused rather
+ * than handed to WordPress. A closure, not a function: a second copy of this
+ * file must not redeclare it.
  */
 $d3_dna_refuse_unloaded = function () {
     $ours = false;
@@ -24,14 +25,28 @@ $d3_dna_refuse_unloaded = function () {
     }
     unset($_SERVER['HTTP_X_D3_TIER'], $_SERVER['HTTP_X_D3_IDENTITY'], $_SERVER['HTTP_D3PAY_PERSON']);
 
-    // Matched loosely, so `__Host-d3pay =x` and `d3pay%5Fhandoff` count too.
     $cookie = (string) ($_SERVER['HTTP_COOKIE'] ?? '');
-    $body = (string) @file_get_contents('php://input', false, null, 0, 1048576);
+    $ours = $ours || strpos($cookie, '__Host-d3pay') !== false;
+    $kept = [];
+    foreach (explode(';', $cookie) as $pair) {
+        if (stripos($pair, '__Host-d3') === false && stripos($pair, '__Secure-d3') === false) $kept[] = trim($pair);
+    }
+    $kept = implode('; ', array_filter($kept, 'strlen'));
+    if ($kept === '') {
+        unset($_SERVER['HTTP_COOKIE']);
+    } else {
+        $_SERVER['HTTP_COOKIE'] = $kept;
+    }
+    foreach (array_keys($_COOKIE) as $name) {
+        if (stripos((string) $name, '__Host-d3') === 0 || stripos((string) $name, '__Secure-d3') === 0) unset($_COOKIE[$name]);
+    }
+
+    // Matched loosely, so `d3pay%5Fhandoff` and a key behind a JSON escape count too.
+    $body = (string) @file_get_contents('php://input', false, null, 0, 1048577);
     $ours = $ours
-        || strpos($cookie, '__Host-d3') !== false
-        || strpos($cookie, '__Secure-d3') !== false
-        || strpos(rawurldecode((string) ($_SERVER['QUERY_STRING'] ?? '')), 'd3pay_') !== false
-        || preg_match('~dna_account_key|dna\.d3\.com\\\\?/key|x402\\\\?/payment~', $body) === 1;
+        || stripos(rawurldecode((string) ($_SERVER['QUERY_STRING'] ?? '')), 'd3pay_') !== false
+        || preg_match('~dna_account_key|dna\.d3\.com\\\\?/key|x402\\\\?/payment~i', $body) === 1
+        || (strpos($body, 'jsonrpc') !== false && (strpos($body, '\\u') !== false || strlen($body) > 1048576));
 
     if (!$ours) {
         header('x-d3-edge: fail-open');
@@ -50,6 +65,7 @@ $d3_dna_loaded = false;
 try {
     // Silenced: a warning printed here would send WordPress's headers early.
     $d3_dna_loaded = (@include_once __DIR__ . '/src/Protocol.php')
+        && (@include_once __DIR__ . '/src/Memory.php')
         && (@include_once __DIR__ . '/src/InputStream.php')
         && (@include_once __DIR__ . '/src/Runtime.php');
 } catch (\Throwable $e) {

@@ -22,23 +22,31 @@ final class Admin
         return WPMU_PLUGIN_DIR . '/' . self::LOADER;
     }
 
-    /** The loader runs DNA before the site's other plugins load. Guarded, so a plugin deleted by hand never takes the site down. */
+    /**
+     * The loader runs DNA before the site's other plugins load. Guarded, so a
+     * plugin deleted by hand never takes the site down; by WP_PLUGIN_DIR, so a
+     * copy of the site elsewhere runs its own plugin.
+     */
     public static function loaderSource()
     {
-        $boot = var_export(dirname(__DIR__) . '/boot.php', true);
+        $boot = var_export('/' . basename(dirname(__DIR__)) . '/boot.php', true);
         return "<?php\n// Installed by the DNA by D3 plugin, which removes it on deactivation.\n"
-            . "if (is_file($boot)) include_once $boot;\n";
+            . "if (is_file(WP_PLUGIN_DIR . $boot)) include_once WP_PLUGIN_DIR . $boot;\n";
     }
 
-    public static function installLoader()
+    /** A must-use plugin runs on every site of a network, so only a network activation installs one. */
+    public static function installLoader($networkWide = false)
     {
+        if (is_multisite() && !$networkWide) return;
         if (!is_dir(WPMU_PLUGIN_DIR) && !wp_mkdir_p(WPMU_PLUGIN_DIR)) return;
 
         @file_put_contents(self::loaderPath(), self::loaderSource());
     }
 
-    public static function removeLoader()
+    public static function removeLoader($networkWide = false)
     {
+        if (is_multisite() && !$networkWide) return;
+
         $path = self::loaderPath();
         // Only ours: a file of that name someone else wrote stays.
         if (is_file($path) && @file_get_contents($path) === self::loaderSource()) @unlink($path);
@@ -101,8 +109,9 @@ final class Admin
                 ? 'sent after each response'
                 : 'not sent: this server cannot end a response before PHP finishes',
         ];
+        $boot = var_export(dirname(__DIR__) . '/boot.php', true);
         $config = "// Above the line that requires wp-settings.php:\ndefine('DNA_API_KEY', 'your key from dashboard.d3.com/keys');\n"
-            . "if (is_file(__DIR__ . '/wp-content/plugins/d3-dna/boot.php')) include __DIR__ . '/wp-content/plugins/d3-dna/boot.php';";
+            . "if (is_file($boot)) include $boot;";
 
         echo '<div class="wrap"><h1>DNA by D3</h1>';
         echo '<table class="widefat striped" style="max-width:48rem"><tbody>';

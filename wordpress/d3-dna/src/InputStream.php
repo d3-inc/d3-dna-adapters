@@ -9,6 +9,9 @@ namespace D3\Dna;
 
 final class InputStream
 {
+    // php_streams.h STREAM_OPEN_FOR_INCLUDE, which PHP sets on an include but does not name for userland.
+    const OPEN_FOR_INCLUDE = 0x80;
+
     /** @var string */
     private static $body = '';
 
@@ -41,6 +44,8 @@ final class InputStream
     public function stream_open($path, $mode, $options, &$openedPath)
     {
         $target = strtolower($path);
+        // PHP's own wrapper refuses to include php://input unless allow_url_include; ours keeps every include out but a filter's.
+        if (($options & self::OPEN_FOR_INCLUDE) && strpos($target, 'php://filter/') !== 0) return false;
         if ($target === 'php://input') return true;
 
         // A filter over php://input would read the original body, credential and all.
@@ -112,7 +117,24 @@ final class InputStream
 
     public function stream_set_option($option, $arg1, $arg2)
     {
-        return false;
+        if ($this->inner === null) return false;
+
+        switch ($option) {
+            case STREAM_OPTION_BLOCKING:
+                return stream_set_blocking($this->inner, (bool) $arg1);
+            case STREAM_OPTION_READ_TIMEOUT:
+                return stream_set_timeout($this->inner, $arg1, $arg2);
+            case STREAM_OPTION_WRITE_BUFFER:
+                return stream_set_write_buffer($this->inner, $arg2) === 0;
+            default:
+                return false;
+        }
+    }
+
+    /** stream_select() and proc_open() reach PHP's own stream through this. */
+    public function stream_cast($castAs)
+    {
+        return $this->inner ?? false;
     }
 
     public function stream_stat()

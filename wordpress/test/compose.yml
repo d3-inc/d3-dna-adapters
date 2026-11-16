@@ -19,6 +19,7 @@ x-wordpress-env: &wordpress-env
   DNA_EXCLUDE_HEADERS: x-internal-token
   DNA_EXCLUDE_COOKIES: sid
   DNA_ENABLED: ${DNA_ENABLED:-}
+  DNA_FAIL_MODE: ${DNA_FAIL_MODE:-}
   DNA_TEST_BOOT: ${DNA_TEST_BOOT:-}
 
 x-wordpress-volumes: &wordpress-volumes

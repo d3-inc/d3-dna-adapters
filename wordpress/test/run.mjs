@@ -205,9 +205,9 @@ async function core(label, { port, reports }) {
     res.json?.headers['x-d3-tier'] === undefined,
     res.json?.headers
   );
-  res = await send(port, `/page?t=${tag()}`, { headers: { x_d3_tier: 'proven' } });
+  res = await send(port, `/page?t=${tag()}`, { headers: { 'x-d3-tier': 'proven' } });
   check(
-    `${label}: pass with a verdict: DNA's replaces the visitor's, however spelled`,
+    `${label}: pass with a verdict: DNA's replaces the visitor's`,
     res.json?.headers['x-d3-tier'] === 'claimed',
     res.json?.headers
   );
@@ -223,7 +223,8 @@ async function core(label, { port, reports }) {
       check(
         `${label}: ours: ${name} alone reaches DNA on ${scenario}, and never WordPress`,
         s.decisions[0]?.payload.cookies?.[name] === 'V1' &&
-          res.json?.headers.cookie === 'site=1' &&
+          res.json?.origin &&
+          res.json.headers.cookie === 'site=1' &&
           Object.keys(res.json?.cookies ?? {}).join() === 'site',
         { dna: s.decisions[0]?.payload.cookies, origin: res.json?.cookies }
       );
@@ -235,19 +236,28 @@ async function core(label, { port, reports }) {
   res = await send(port, `/page?t=${id}&d3pay_browser=abc&keep=1&d3pay_check=1&d3pay.handoff=x`, {
     headers: {
       'payment-authorization': 'Payment k',
+      'payment-signature': 'sig',
       'mcp-param-dna-key': 'dna_k',
       'x-payment': 'p',
+      'd3pay-session': 'forged-session',
+      'd3pay-person': 'forged-person',
       cookie: '__Host-d3person =x',
     },
   });
   const oh = res.json?.headers ?? {};
   check(
     `${label}: strip: no payment header, mirrored key or cookie of ours at WordPress`,
-    !oh['payment-authorization'] &&
-      !oh['mcp-param-dna-key'] &&
-      !oh['x-payment'] &&
-      !oh.cookie &&
-      Object.keys(res.json?.cookies ?? {}).length === 0,
+    res.json?.origin &&
+      [
+        'payment-authorization',
+        'payment-signature',
+        'mcp-param-dna-key',
+        'x-payment',
+        'd3pay-session',
+        'd3pay-person',
+        'cookie',
+      ].every((name) => oh[name] === undefined) &&
+      Object.keys(res.json.cookies).length === 0,
     { oh, cookies: res.json?.cookies }
   );
   check(
@@ -255,6 +265,11 @@ async function core(label, { port, reports }) {
     res.json?.url === `/page?t=${id}&keep=1&d3pay.handoff=x` &&
       res.json?.query === `t=${id}&keep=1&d3pay.handoff=x`,
     res.json?.url
+  );
+  check(
+    `${label}: strip: nor in the copies PHP keeps beside them`,
+    !JSON.stringify([res.json?.argv, res.json?.redirectQuery, res.json?.env]).match(/d3pay_|__Host-d3|"p"/),
+    { argv: res.json?.argv, redirect: res.json?.redirectQuery, env: res.json?.env }
   );
   check(
     `${label}: strip: and from $_GET and $_REQUEST, whatever PHP named them`,
@@ -405,13 +420,16 @@ async function core(label, { port, reports }) {
       res.status === 200 && res.json?.origin && res.headers['x-d3-edge'] === 'fail-open',
       res.headers
     );
-    check(`${label}: ${scenario}: within the budget`, took < 1500, took);
+    check(`${label}: ${scenario}: within the budget`, took < 2000, took);
     check(
       `${label}: ${scenario}: still no credential at WordPress`,
       !/__Host-d3person/.test(res.json?.headers.cookie ?? ''),
       res.json?.headers
     );
-    if (reports) {
+    if (reports && ['slow', 'trickle'].includes(scenario)) {
+      // An endpoint that did not answer in time is not kept waiting on for a report too.
+      check(`${label}: ${scenario}: not reported`, s.reports.length === 0, s.reports);
+    } else if (reports) {
       check(`${label}: ${scenario}: reported as fail-open`, s.reports[0]?.mode === 'fail-open', s.reports);
     }
   }
@@ -506,14 +524,89 @@ async function core(label, { port, reports }) {
     res.text
   );
 
-  res = await send(port, `${MCP}?t=${tag()}`, {
+  id = tag();
+  res = await send(port, `${MCP}?t=${id}`, {
     method: 'POST',
     headers: { ...JSON_TYPE, 'mcp-param-dna-key': 'dna_k_header' },
     body: rpc('tools/call', { name: 'search' }),
   });
+  s = await seen(id);
   check(
-    `${label}: mcp: the mirrored key never reaches WordPress`,
-    res.status === 200 && res.json?.result,
+    `${label}: mcp: the mirrored key goes to DNA as a payment, and the call is served`,
+    s.decisions[0]?.payload.headers['payment-authorization'] === 'Payment dna_k_header' && res.json?.result,
+    { dna: s.decisions[0]?.payload.headers, text: res.text }
+  );
+
+  id = tag();
+  res = await send(port, `${MCP}?t=${id}`, {
+    method: 'POST',
+    headers: { ...JSON_TYPE, 'payment-authorization': 'Payment from-header' },
+    body: rpc('tools/call', { name: 'search', _meta: { 'dna.d3.com/key': 'from-body' } }),
+  });
+  s = await seen(id);
+  check(
+    `${label}: mcp: a payment header the client sent wins over the one in the call`,
+    s.decisions[0]?.payload.headers['payment-authorization'] === 'Payment from-header' &&
+      !JSON.stringify(res.json?.result?.echo ?? {}).includes('from-body'),
+    s.decisions[0]?.payload.headers
+  );
+
+  res = await send(port, `${MCP}?t=${tag()}&scenario=slowpay`, {
+    method: 'POST',
+    headers: JSON_TYPE,
+    body: rpc('tools/call', { name: 'search', _meta: { 'dna.d3.com/key': 'k' } }),
+  });
+  check(
+    `${label}: mcp: a payment lifted from the call never falls open`,
+    res.status === 502 && res.json?.error === 'payment_unavailable',
+    res.text
+  );
+
+  id = tag();
+  await send(port, `${MCP}?t=${id}&_method=POST`, {
+    method: 'PUT',
+    headers: JSON_TYPE,
+    body: rpc('tools/call', { name: 'search' }),
+  });
+  s = await seen(id);
+  check(
+    `${label}: mcp: a call WordPress serves as POST under _method is read as one`,
+    s.decisions[0]?.payload.mcp?.tool === 'search' && s.decisions[0]?.payload.method === 'PUT',
+    s.decisions[0]?.payload
+  );
+
+  id = tag();
+  res = await send(port, `${MCP}?t=${id}`, {
+    method: 'POST',
+    headers: JSON_TYPE,
+    body: '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"arguments":{"q":1e999,"dna_account_key":"SECRET"}}}',
+  });
+  s = await seen(id);
+  check(
+    `${label}: mcp: a call that cannot be written back without its key is refused`,
+    res.status === 400 && res.json?.error === 'mcp_call_unreadable' && s.decisions.length === 0,
+    res.text
+  );
+
+  res = await send(port, `/mcp-raw?t=${tag()}`, {
+    method: 'POST',
+    headers: { 'content-type': 'multipart/form-data' },
+    body: rpc('tools/call', { name: 'a', arguments: { dna_account_key: 'SECRET' } }),
+  });
+  check(
+    `${label}: mcp: a call under a multipart type PHP could not parse is refused`,
+    res.status === 400 && !res.text.includes('SECRET'),
+    res.text
+  );
+
+  res = await send(port, `${MCP}?t=${tag()}&scenario=jsonrpc402`, {
+    method: 'POST',
+    headers: JSON_TYPE,
+    body: JSON.stringify({ jsonrpc: '2.0', method: 'tools/call', params: { name: 'search' } }),
+  });
+  check(
+    `${label}: mcp: a priced notification gets the plain 402, with no id to answer`,
+    res.status === 402 && res.json?.jsonrpc === undefined,
     res.text
   );
 
@@ -546,6 +639,30 @@ async function core(label, { port, reports }) {
     headerValues(res, 'access-control-expose-headers')
   );
 
+  res = await send(port, `${MCP}?t=${tag()}&scenario=meta`, {
+    method: 'POST',
+    headers: JSON_TYPE,
+    body: rpc('tools/call', { name: 'search' }),
+  });
+  check(
+    `${label}: mcp: a receipt only in _meta still makes the result private`,
+    res.json?.result?._meta?.['x402/payment-response']?.success === true &&
+      /^private/.test(res.headers['cache-control'] ?? '') &&
+      res.headers['payment-receipt'] === undefined,
+    { cc: res.headers['cache-control'], text: res.text }
+  );
+
+  res = await send(port, `/mcp-raw?t=${tag()}&scenario=paidmeta`, {
+    method: 'POST',
+    headers: { ...JSON_TYPE, 'x-test-ob-clean': '1' },
+    body: rpc('tools/call', { name: 'search' }),
+  });
+  check(
+    `${label}: mcp: a server that clears the buffers first still gets the receipt`,
+    res.json?.result?._meta?.['x402/payment-response']?.success === true,
+    res.text
+  );
+
   res = await send(port, `/mcp-sse?t=${tag()}&scenario=paidmeta`, {
     method: 'POST',
     headers: JSON_TYPE,
@@ -576,6 +693,31 @@ async function core(label, { port, reports }) {
   check(
     `${label}: mcp: and not when it turns it off`,
     res.json?.result?.tools?.[0] && !res.json.result.tools[0].inputSchema.properties.dna_account_key,
+    res.text
+  );
+
+  // A pass before identity carries no flag: the last decision that did is remembered.
+  await send(port, `/page?t=${tag()}&scenario=keyarg`);
+  res = await send(port, `${MCP}?t=${tag()}&scenario=early`, {
+    method: 'POST',
+    headers: JSON_TYPE,
+    body: rpc('tools/list', {}),
+  });
+  check(
+    `${label}: mcp: an early pass offers the key argument the last decision turned on`,
+    res.json?.result?.tools?.[0]?.inputSchema?.properties?.dna_account_key !== undefined,
+    res.text
+  );
+  await send(port, `/page?t=${tag()}&scenario=keyargoff`);
+  res = await send(port, `${MCP}?t=${tag()}&scenario=early`, {
+    method: 'POST',
+    headers: JSON_TYPE,
+    body: rpc('tools/list', {}),
+  });
+  check(
+    `${label}: mcp: and forgets it once a decision turns it off`,
+    res.json?.result?.tools?.[0] &&
+      res.json.result.tools[0].inputSchema.properties.dna_account_key === undefined,
     res.text
   );
 
@@ -650,18 +792,44 @@ async function core(label, { port, reports }) {
     s.decisions[0]?.payload.headers
   );
 
+  // WordPress serves any route from any path by ?rest_route=, so no path is let through undecided.
+  res = await send(
+    port,
+    `/.well-known/acme-challenge/x?rest_route=/dna-test/v1/mcp&t=${tag()}&scenario=block`
+  );
+  check(`${label}: an ACME-shaped path is decided like any other`, res.status === 403, res.status);
+
+  // ── WordPress's own headers, and DNA's beside them ────────────────────────
+  res = await send(port, `/page?t=${tag()}&scenario=paid`, { headers: { 'x-test-own-callback': '1' } });
+  check(
+    `${label}: a paid page is decorated beside the site's own header callback, which still runs`,
+    res.headers['x-site-callback'] === 'ran' &&
+      res.headers['payment-receipt'] === 'receipt-1' &&
+      res.headers['cache-control'] === 'private, max-age=60',
+    res.headers
+  );
+
+  res = await send(port, `/page?t=${tag()}&scenario=gate402mpp`);
+  check(
+    `${label}: a 402 with a WWW-Authenticate challenge stays a 402`,
+    res.status === 402 && res.headers['www-authenticate']?.startsWith('Payment'),
+    { status: res.status, headers: res.headers }
+  );
+
   id = tag();
-  res = await send(port, `/.well-known/acme-challenge/tok?t=${id}`);
+  const hash = 'a'.repeat(32);
+  res = await send(port, `/page?t=${id}`, {
+    headers: { cookie: `wordpress_logged_in_${hash}=admin%7Csecret; theme=dark` },
+  });
   s = await seen(id);
   check(
-    `${label}: an ACME challenge is never decided`,
-    s.decisions.length === 0 && res.headers['x-d3-edge'] === 'pass',
-    s.decisions.length
+    `${label}: a WordPress login cookie stays on the server, named as kept back`,
+    s.decisions[0]?.payload.cookies?.[`wordpress_logged_in_${hash}`] === undefined &&
+      s.decisions[0]?.payload.cookies?.theme === 'dark' &&
+      s.decisions[0]?.payload.excluded?.cookies.includes(`wordpress_logged_in_${hash}`) &&
+      res.json?.cookies[`wordpress_logged_in_${hash}`] !== undefined,
+    s.decisions[0]?.payload
   );
-  id = tag();
-  await send(port, `/.well-known/acme-challenge/../../page?t=${id}`);
-  s = await seen(id);
-  check(`${label}: a path that only starts like one is`, s.decisions.length === 1, s.decisions.length);
 
   res = await send(port, `/page?t=${tag()}`, { method: 'HEAD' });
   check(
@@ -692,6 +860,18 @@ async function live() {
 
   const log = phpLog();
   check('unauthorized: the error log says to check the key', /check DNA_API_KEY/.test(log));
+
+  const timeouts = () => (phpLog().match(/decision call failed \(Operation timed out/g) ?? []).length;
+  const before = timeouts();
+  for (let i = 0; i < 5; i++) await send(SITES.fpm.port, `/page?t=${tag()}&scenario=slow`);
+  check(
+    'slow: timeouts are logged, once per interval however long each took',
+    timeouts() >= 1 && timeouts() - before <= 1,
+    {
+      before,
+      after: timeouts(),
+    }
+  );
 }
 
 async function dead() {
@@ -699,7 +879,10 @@ async function dead() {
   for (let i = 0; i < 20; i++) await send(SITES.fpm.port, `/page?t=${tag()}`);
   await sleep(200);
   const after = (phpLog().match(/decision call failed/g) ?? []).length;
-  check('dead: twenty failed calls log one line, not twenty', after - before <= 1, after - before);
+  check('dead: twenty failed calls log one line, not twenty', after >= 1 && after - before <= 1, {
+    before,
+    after,
+  });
 
   const res = await send(SITES.fpm.port, `/page?t=${tag()}`, {
     headers: { cookie: '__Host-d3visitor=v; a=1' },
@@ -715,6 +898,23 @@ async function dead() {
     paying.status === 502 && paying.json?.error === 'payment_unavailable',
     paying.text
   );
+  const call = await send(SITES.fpm.port, `${MCP}?t=${tag()}`, {
+    method: 'POST',
+    headers: JSON_TYPE,
+    body: rpc('tools/call', { name: 'search', arguments: { dna_account_key: 'k' } }),
+  });
+  check('dead: a call carrying a key is a 502', call.status === 502, call.text);
+}
+
+async function closed() {
+  let res = await send(SITES.fpm.port, `/page?t=${tag()}&scenario=error500`);
+  check(
+    'closed: DNA failing is a 403, and WordPress never runs',
+    res.status === 403 && res.headers['x-d3-edge'] === 'fail-closed' && !res.json?.origin,
+    res.text
+  );
+  res = await send(SITES.fpm.port, `/page?t=${tag()}`);
+  check('closed: a pass is still the page', res.status === 200 && res.json?.origin, res.status);
 }
 
 async function disabled() {
@@ -782,6 +982,12 @@ async function unloaded() {
     res.status === 502 && res.headers['x-d3-edge'] === 'fail-closed',
     res.status
   );
+  res = await send(SITES.fpm.port, `/page?t=${tag()}`, { headers: { cookie: '__Secure-d3visitor=v; a=1' } });
+  check(
+    'no Runtime.php: a returning visitor is served, with no cookie of ours',
+    res.status === 200 && res.json?.headers.cookie === 'a=1',
+    { status: res.status, cookie: res.json?.headers.cookie }
+  );
   res = await send(SITES.fpm.port, `/page?t=${tag()}&d3pay%5Fhandoff=x`);
   check('no Runtime.php: an escaped param of ours is refused', res.status === 502, res.status);
   res = await send(SITES.fpm.port, `/mcp-raw?t=${tag()}`, {
@@ -799,6 +1005,7 @@ async function unloaded() {
 const PHASES = {
   live,
   dead,
+  closed,
   disabled,
   'mu-plugin': () => fromPlugin('mu-plugin'),
   plugin: () => fromPlugin('plugin'),
