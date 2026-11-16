@@ -1067,6 +1067,40 @@ async function prefix() {
       !res.json?.result,
     { status: res.status, text: res.text }
   );
+
+  for (const [method, override] of [
+    ['GET', 'PUT'],
+    ['DELETE', 'PATCH'],
+  ]) {
+    res = await send(SITES.fpm.port, `/wp-api/dna-test/v1/mcp?t=${tag()}`, {
+      method,
+      headers: { ...JSON_TYPE, 'x-http-method-override': override },
+      body: call,
+    });
+    check(
+      `prefix: a ${method} run as ${override} is refused too`,
+      res.status === 400 && !res.json?.result,
+      res.status
+    );
+  }
+
+  res = await send(SITES.fpm.port, `/wp-api/dna-test/v1/mcp?t=${tag()}`, {
+    method: 'POST',
+    headers: { ...JSON_TYPE, 'x-http-method-override': 'PUT' },
+    body: call,
+  });
+  check(
+    'prefix: a POST the editor overrides to PUT still runs',
+    res.json?.result?.content !== undefined,
+    res.text
+  );
+
+  res = await send(SITES.fpm.port, `/page?t=${tag()}`, { headers: { 'x-test-internal-post': '1' } });
+  check(
+    "prefix: a plugin's own POST through the REST API during a page view still runs",
+    res.json?.internalPost === 200,
+    res.json?.internalPost
+  );
 }
 
 async function unloaded() {

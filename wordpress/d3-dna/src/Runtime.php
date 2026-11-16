@@ -214,38 +214,53 @@ final class Runtime
         self::$state['mode'] = $mode;
         header('x-d3-edge: ' . $mode);
         ob_start([self::class, 'onOutput'], 1);
-        self::addFilter('rest_pre_dispatch', [self::class, 'refuseUnaskedPost'], 3);
+        // Last, so no other plugin's filter runs after it and drops its refusal.
+        self::addFilter('rest_pre_dispatch', [self::class, 'refuseOverriddenMethod'], PHP_INT_MAX, 3);
     }
 
     /** A hook from before WordPress loads its plugin API, set the way WordPress takes ones set that early. */
-    private static function addFilter($hook, callable $callback, $acceptedArgs)
+    private static function addFilter($hook, callable $callback, $priority, $acceptedArgs)
     {
         if (function_exists('add_filter')) {
-            add_filter($hook, $callback, 10, $acceptedArgs);
+            add_filter($hook, $callback, $priority, $acceptedArgs);
             return;
         }
 
-        $GLOBALS['wp_filter'][$hook][10][] = ['function' => $callback, 'accepted_args' => $acceptedArgs];
+        $GLOBALS['wp_filter'][$hook][$priority][] = ['function' => $callback, 'accepted_args' => $acceptedArgs];
     }
 
     /**
-     * The REST API's own word on the method, at dispatch: restMethod() cannot know a
-     * prefix a plugin renames wp-json to, and a GET DNA was asked about as the free
-     * MCP handshake must not run as the POST that calls a tool.
+     * The REST API's own word on the method, at dispatch. restMethod() cannot know
+     * a prefix a plugin renames wp-json to, and DNA reads a GET or DELETE as the
+     * free MCP handshake: one the override runs as another method is refused.
+     * Only the request WordPress built from the wire, which alone the override
+     * reaches; a plugin's own rest_do_request() calls are left alone.
      */
-    public static function refuseUnaskedPost($result, $server, $request)
+    public static function refuseOverriddenMethod($result, $server, $request)
     {
-        if ($result !== null || self::$state === null || !is_object($request) || !method_exists($request, 'get_method')) {
+        if (!empty($result) || self::$state === null || !is_object($request) || !method_exists($request, 'get_method')) {
             return $result;
         }
-        if (strtoupper((string) $request->get_method()) !== 'POST' || self::$state['method'] === 'POST') return $result;
 
-        self::logEvery('unasked post', 3600, 'a REST request sent as ' . self::$state['method'] . ' ran as POST, so it was refused');
+        $runs = strtoupper((string) $request->get_method());
+        $asked = self::$state['method'];
+        if (!self::overrideSent() || $asked === 'POST' || $runs === $asked) return $result;
+
+        self::logEvery('overridden method', 3600, "a REST request sent as $asked ran as $runs, so it was refused");
         return new \WP_Error(
             'dna_method_unasked',
-            'This request runs as a POST but was sent as ' . self::$state['method'] . '. Send it as a POST.',
+            "This request runs as $runs but was sent as $asked. Send it as $runs.",
             ['status' => 400]
         );
+    }
+
+    /** Whether WordPress is serving a REST request whose method the visitor overrode, as the REST server reads one. */
+    private static function overrideSent()
+    {
+        if (!defined('REST_REQUEST') || !REST_REQUEST) return false;
+
+        $override = $_GET['_method'] ?? $_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'] ?? null;
+        return is_string($override) && $override !== '';
     }
 
     /**

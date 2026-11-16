@@ -78,6 +78,14 @@ add_action('init', function () {
         exit;
     }
 
+    // A plugin calling the REST API in-process while it renders a page.
+    $internal = null;
+    if (isset($_SERVER['HTTP_X_TEST_INTERNAL_POST'])) {
+        $request = new WP_REST_Request('POST', '/dna-test/v1/mcp');
+        $request->set_body('{"jsonrpc":"2.0","id":1,"method":"tools/list"}');
+        $internal = rest_do_request($request)->get_status();
+    }
+
     $cc = $_SERVER['HTTP_X_TEST_ORIGIN_CC'] ?? 'public, max-age=60';
     header('Content-Type: application/json');
     if ($cc !== '(absent)') header('Cache-Control: ' . $cc);
@@ -90,6 +98,7 @@ add_action('init', function () {
         'origin' => true,
         'entry' => defined('D3_DNA_ENTRY') ? D3_DNA_ENTRY : null,
         'pageCacheSkipped' => defined('DONOTCACHEPAGE'),
+        'internalPost' => $internal,
         'url' => $_SERVER['REQUEST_URI'],
         'query' => $_SERVER['QUERY_STRING'] ?? '',
         'method' => $_SERVER['REQUEST_METHOD'],
@@ -111,7 +120,8 @@ add_action('init', function () {
 // The MCP server most WordPress sites would run: a route on the REST API, which reads the body through get_raw_data().
 add_action('rest_api_init', function () {
     register_rest_route('dna-test/v1', '/mcp', [
-        'methods' => 'POST',
+        // POST, PUT and PATCH: an override to any of them runs the tool.
+        'methods' => WP_REST_Server::EDITABLE,
         'permission_callback' => '__return_true',
         'callback' => function (WP_REST_Request $request) {
             $call = json_decode($request->get_body(), true);
