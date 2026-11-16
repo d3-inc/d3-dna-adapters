@@ -83,17 +83,14 @@ final class Admin
         return $meanings[$edge] ?? 'DNA answered that page itself, as a rule says.';
     }
 
-    /** From wp-config.php, WordPress's own address is not known yet: without DNA_HOSTS or WP_HOME, any Host is believed. */
-    private static function hostsRow($entry)
+    private static function hostsRow()
     {
         if (!class_exists(Runtime::class)) return '';
 
-        $pinned = Runtime::setting('DNA_HOSTS') !== null || defined('WP_HOME') || defined('WP_SITEURL');
-        if ($entry === 'wp-config' && !$pinned) {
-            return 'whichever a request names: define DNA_HOSTS in wp-config.php, or a request can name a host with no rules';
-        }
-
-        return implode(', ', Runtime::siteHosts());
+        $hosts = Runtime::siteHosts();
+        return $hosts === []
+            ? 'not set: a request can name a host with no rules. Define DNA_HOSTS as the setup below shows.'
+            : implode(', ', $hosts);
     }
 
     public static function renderPage()
@@ -112,7 +109,7 @@ final class Admin
                 'plugin' => 'the plugin itself, after the must-use plugins. A page cache serves its hits before DNA runs: add the wp-config.php line below.',
             ][$entry] ?? 'nowhere on this request.',
             'Endpoint' => $settings !== null && $settings['endpoint'] !== null ? $settings['endpoint'] : 'off: no DNA_API_KEY, or DNA_ENABLED is false',
-            'Hosts' => self::hostsRow($entry),
+            'Hosts' => self::hostsRow(),
             'API key' => $key !== null && $key !== '' ? 'set, ending ' . substr($key, -4) : 'not set',
             'If DNA cannot answer' => $settings !== null && $settings['fail_mode'] === 'closed' ? 'block (DNA_FAIL_MODE=closed)' : 'serve the page',
             'Time limit' => $settings !== null ? $settings['timeout_ms'] . ' ms, ' . $settings['payment_timeout_ms'] . ' ms for a request that pays' : '',
@@ -125,7 +122,9 @@ final class Admin
                 : 'not sent: this server cannot end a response before PHP finishes',
         ];
         $boot = var_export(dirname(__DIR__) . '/boot.php', true);
+        $hosts = class_exists(Runtime::class) ? (implode(',', Runtime::siteHosts()) ?: (string) Runtime::hostOf(home_url())) : '';
         $config = "// Above the line that requires wp-settings.php:\ndefine('DNA_API_KEY', 'your key from dashboard.d3.com/keys');\n"
+            . 'define(\'DNA_HOSTS\', ' . var_export($hosts, true) . ");\n"
             . "if (is_file($boot)) include $boot;";
 
         echo '<div class="wrap"><h1>DNA by D3</h1>';

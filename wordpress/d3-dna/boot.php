@@ -24,6 +24,7 @@ $d3_dna_refuse_unloaded = function () {
         unset($_SERVER['HTTP_' . $name]);
     }
     unset($_SERVER['HTTP_X_D3_TIER'], $_SERVER['HTTP_X_D3_IDENTITY'], $_SERVER['HTTP_D3PAY_PERSON']);
+    unset($_ENV['HTTP_X_D3_TIER'], $_ENV['HTTP_X_D3_IDENTITY'], $_ENV['HTTP_D3PAY_PERSON']);
 
     $cookie = (string) ($_SERVER['HTTP_COOKIE'] ?? '');
     $ours = $ours || strpos($cookie, '__Host-d3pay') !== false;

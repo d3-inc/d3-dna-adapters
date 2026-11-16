@@ -63,10 +63,11 @@ real-IP module, and `HTTPS` above the include line in `wp-config.php`, so
    it for the network: activated on one site, it runs there alone, after the
    must-use plugins.
 3. In `wp-config.php`, above the line that requires `wp-settings.php`, set
-   your key from [dashboard.d3.com/keys](https://dashboard.d3.com/keys) and
-   run DNA before any page cache:
+   your key from [dashboard.d3.com/keys](https://dashboard.d3.com/keys), the
+   domains your site serves, and run DNA before any page cache:
    ```php
    define('DNA_API_KEY', 'your key');
+   define('DNA_HOSTS', 'www.example.com,example.com');
    if (is_file(__DIR__ . '/wp-content/plugins/d3-dna/boot.php')) include __DIR__ . '/wp-content/plugins/d3-dna/boot.php';
    ```
    If your `wp-content` lives elsewhere, **Tools → DNA** shows the line with
@@ -101,16 +102,15 @@ PHP's environment. A constant wins. Nothing is stored in the database.
 | `DNA_EXCLUDE_HEADERS`       | unset                                 | Comma-separated header names that never leave your server. Up to 128: past that, a log warning.       |
 | `DNA_EXCLUDE_COOKIES`       | unset                                 | Comma-separated cookie names that never leave your server. Up to 128, likewise.                       |
 | `DNA_DEBUG_LOG_RAW_PAYLOAD` | unset                                 | `true` keeps every request header (but the excluded and the credentials) on DNA's record. Debug only. |
-| `DNA_HOSTS`                 | your WordPress address                | Comma-separated hosts your rules are for. A request naming another is decided as the first.           |
+| `DNA_HOSTS`                 | unset                                 | Comma-separated hosts your rules are for. A request naming another is decided as the first.           |
 | `DNA_ENDPOINT`              | `https://edge-api.d3.com/v1/decision` | Leave unset unless we give you another.                                                               |
 
 `DNA_HOSTS` matters because the `Host` header is the visitor's to write: on a
 server that answers any name, a request naming a host with no rules would skip
-yours. Unset, it is the host of `WP_HOME` and `WP_SITEURL`, or of WordPress's
-own address where the plugin runs after WordPress connects to its database;
-from the `wp-config.php` line with neither constant set, set `DNA_HOSTS`
-yourself. **Tools → DNA** shows the hosts in force. List every domain a
-multisite network serves.
+yours. Unset, the host a request names is the one decided, so set it, listing
+every domain the site serves (a multisite network's, a multilingual plugin's).
+`WP_HOME` doesn't stand in for it: many hosts build that from the same header.
+**Tools → DNA** fills it in with your site's address.
 
 `DNA_TIMEOUT_MS` is 1 s where the SDKs use 2: PHP opens a new connection to
 DNA for each request, and every page waits on it. On PHP 8.5 the connection is
@@ -169,7 +169,7 @@ when a browser is navigating, and serves the page once the visitor pays.
   a batch, a call sent under another content type, or one holding a number
   JSON can't write back (`1e999`), that carries one is refused with a `400`. A
   call the REST API runs as a `POST` through `?_method=` or
-  `X-HTTP-Method-Override` is read as one. A result your server streams, or
+  `X-HTTP-Method-Override` is read as one, and DNA is told it is a `POST`. A result your server streams, or
   sends compressed, is passed on without the receipt.
 
 ## Outcome reports

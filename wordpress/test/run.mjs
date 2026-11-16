@@ -861,6 +861,17 @@ async function core(label, { port, reports }) {
     s.decisions[0]?.payload.method === 'POST' && s.decisions[0]?.payload.mcp?.tool === 'search',
     s.decisions[0]?.payload
   );
+  id = tag();
+  await send(port, `/blog//%77p-json/dna-test/v1/mcp?t=${id}`, {
+    headers: { ...JSON_TYPE, 'x-http-method-override': 'POST' },
+    body: rpc('tools/call', { name: 'search' }),
+  });
+  s = await seen(id);
+  check(
+    `${label}: and so is one under a subdirectory, written however WordPress still reads it`,
+    s.decisions[0]?.payload.method === 'POST' && s.decisions[0]?.payload.mcp?.tool === 'search',
+    s.decisions[0]?.payload
+  );
 
   res = await send(port, `/page?t=${tag()}&scenario=paid`, { headers: { 'x-test-own-callback': '1' } });
   check(

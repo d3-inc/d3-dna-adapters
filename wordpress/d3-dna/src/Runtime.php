@@ -295,33 +295,37 @@ final class Runtime
      */
     public static function restMethod($method, $target, array $get, array $server)
     {
-        $rest = isset($get['rest_route']) || preg_match('~^(?:/index\.php)?/wp-json(?:/|$)~i', Protocol::pathOf($target)) === 1;
         $override = $get['_method'] ?? $server['HTTP_X_HTTP_METHOD_OVERRIDE'] ?? null;
-        return $rest && is_string($override) && $override !== '' ? strtoupper($override) : $method;
+        if (!is_string($override) || $override === '' || !self::isRestRequest($target, $get)) return $method;
+
+        return strtoupper($override);
     }
 
     /**
-     * The hosts this site's rules are for: DNA_HOSTS, else WordPress's own home
-     * and site URLs where they are known yet. Empty when none is.
+     * Whether WordPress routes the request to its REST API. Read as WordPress
+     * reads the path, decoded and with its slashes collapsed, and wherever the
+     * prefix sits, since a site in a subdirectory serves it under that.
+     */
+    public static function isRestRequest($target, array $get)
+    {
+        if (isset($get['rest_route'])) return true;
+
+        $prefix = function_exists('rest_get_url_prefix') ? trim((string) rest_get_url_prefix(), '/') : 'wp-json';
+        $path = preg_replace('~/+~', '/', rawurldecode(Protocol::pathOf($target)));
+        foreach (array_unique([$prefix, 'wp-json']) as $segment) {
+            if ($segment !== '' && preg_match('~(?:^|/)' . preg_quote($segment, '~') . '(?:/|$)~i', $path) === 1) return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * The hosts this site's rules are for, from DNA_HOSTS alone: WP_HOME and the
+     * home option are often built from the very Host header they would check.
      */
     public static function siteHosts()
     {
-        $hosts = Protocol::parseExclusionList(self::setting('DNA_HOSTS'), true);
-        if ($hosts !== []) return $hosts;
-
-        $urls = [];
-        foreach (['WP_HOME', 'WP_SITEURL'] as $constant) {
-            if (defined($constant)) $urls[] = constant($constant);
-        }
-        // The must-use loader and the plugin run after WordPress connects to its database; wp-config.php runs before.
-        if ($urls === [] && function_exists('get_option')) $urls = [get_option('home'), get_option('siteurl')];
-
-        foreach ($urls as $url) {
-            $host = self::hostOf($url);
-            if ($host !== null && !in_array($host, $hosts, true)) $hosts[] = $host;
-        }
-
-        return $hosts;
+        return Protocol::parseExclusionList(self::setting('DNA_HOSTS'), true);
     }
 
     /** A URL's authority as a Host header names it: lowercase, with its port when it has one. */

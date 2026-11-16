@@ -486,7 +486,17 @@ check('a REST method override is the method DNA is told', Runtime::restMethod('G
     && Runtime::restMethod('GET', '/index.php/wp-json/mcp', [], ['HTTP_X_HTTP_METHOD_OVERRIDE' => 'POST']) === 'POST'
     && Runtime::restMethod('GET', '/?rest_route=/mcp', ['rest_route' => '/mcp', '_method' => 'POST'], []) === 'POST'
     && Runtime::restMethod('POST', '/wp-json/mcp', [], []) === 'POST');
-check('outside the REST API an override is nothing WordPress reads', Runtime::restMethod('GET', '/page', ['_method' => 'POST'], []) === 'GET');
+check('outside the REST API an override is nothing WordPress reads', Runtime::restMethod('GET', '/page', ['_method' => 'POST'], []) === 'GET'
+    && Runtime::restMethod('GET', '/blog/wp-json-guide', ['_method' => 'POST'], []) === 'GET');
+foreach (['/blog/wp-json/mcp', '/site2/wp-json/mcp', '//wp-json/mcp', '/%77p-json/mcp', '/WP-JSON/mcp'] as $path) {
+    check("a REST request is one wherever WordPress serves it: $path", Runtime::restMethod('GET', $path, ['_method' => 'POST'], []) === 'POST');
+}
+
+putenv('DNA_HOSTS=www.site.example, Site.example');
+same('the site\'s hosts are DNA_HOSTS, lowercased', Runtime::siteHosts(), ['www.site.example', 'site.example']);
+putenv('DNA_HOSTS');
+define('WP_HOME', 'http://whatever-the-visitor-sent.example');
+same('WP_HOME pins nothing: sites often build it from the Host header', Runtime::siteHosts(), []);
 
 check('a URL\'s host as a Host header names it', Runtime::hostOf('https://WWW.Site.example/blog') === 'www.site.example'
     && Runtime::hostOf('http://127.0.0.1:8130') === '127.0.0.1:8130' && Runtime::hostOf('not a url') === null && Runtime::hostOf(false) === null);
