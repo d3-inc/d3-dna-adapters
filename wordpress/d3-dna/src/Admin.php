@@ -58,85 +58,100 @@ final class Admin
         add_management_page('DNA by D3', 'DNA', 'manage_options', self::PAGE, [self::class, 'renderPage']);
     }
 
-    /** The home page fetched as a visitor would, for the `x-d3-edge` it comes back with. */
+    /** The home page fetched as a visitor would, for the `x-d3-edge` it comes back with, and when. */
     public static function runCheck()
     {
         if (!current_user_can('manage_options')) wp_die('', 403);
         check_admin_referer(self::CHECK_ACTION);
 
         $response = wp_remote_get(home_url('/'), ['timeout' => 15, 'redirection' => 0, 'sslverify' => false]);
-        $edge = is_wp_error($response) ? 'error: ' . $response->get_error_message() : (string) wp_remote_retrieve_header($response, 'x-d3-edge');
-        set_transient('d3_dna_check_' . get_current_user_id(), $edge === '' ? '(none)' : $edge, 300);
+        $edge = is_wp_error($response) ? 'error' : (string) wp_remote_retrieve_header($response, 'x-d3-edge');
+        set_transient('d3_dna_check_' . get_current_user_id(), ['edge' => $edge === '' ? '(none)' : $edge, 'at' => time()], 300);
         wp_safe_redirect(admin_url('tools.php?page=' . self::PAGE));
         exit;
     }
 
     private static function meaningOf($edge)
     {
+        $home = home_url('/');
         $meanings = [
             'pass' => 'DNA is live.',
             'disabled' => 'DNA is off: DNA_ENABLED is false, or this server cannot see DNA_API_KEY.',
-            'fail-open' => 'DNA could not be reached, or PHP lacks curl. The PHP error log says which.',
-            '(none)' => 'DNA did not run on that page. Check that the plugin is active, or add the wp-config.php line below.',
+            'fail-open' => 'DNA could not be reached, or PHP has no curl, so the page was served. The PHP error log says which.',
+            'fail-closed' => 'DNA could not be reached and DNA_FAIL_MODE is closed, so visitors get a 403. The PHP error log says why.',
+            '(none)' => "Something answered your home page before PHP ran DNA: your host's cache, a caching plugin's file, or a redirect from your web server. Check that $home is your site's final address, then turn that cache off for a test.",
+            'error' => "WordPress could not reach its own home page from this server. From another machine, run curl -sI $home and look for x-d3-edge.",
         ];
 
-        return $meanings[$edge] ?? 'DNA answered that page itself, as a rule says.';
+        return $meanings[$edge] ?? 'DNA is live: a rule answered your home page itself.';
     }
 
-    private static function hostsRow()
+    /** One line that says whether DNA protects the site, and what to do when it doesn't. */
+    private static function verdict(array $settings, $entry)
     {
-        if (!class_exists(Runtime::class)) return '';
+        if ($settings['endpoint'] === null) {
+            return Runtime::setting('DNA_ENABLED') !== null && strtolower(trim(Runtime::setting('DNA_ENABLED'))) === 'false'
+                ? 'DNA is off: DNA_ENABLED is false.'
+                : 'DNA is off: add DNA_API_KEY to wp-config.php (Setup below).';
+        }
+        if (!function_exists('curl_init')) return "DNA can't run: install PHP's curl extension. Until then every page is served as if DNA could not be reached.";
+        if ($entry !== 'wp-config') return 'DNA is on, but cached pages skip it: add the wp-config.php lines below.';
+        if (Runtime::siteHosts() === []) return 'DNA is on, but a visitor can send another host name and skip your rules: add DNA_HOSTS (Setup below).';
 
-        $hosts = Runtime::siteHosts();
-        return $hosts === []
-            ? 'not set: a request can name a host with no rules. Define DNA_HOSTS as the setup below shows.'
-            : implode(', ', $hosts);
+        return 'DNA is on, before any page cache.';
     }
 
     public static function renderPage()
     {
         if (!current_user_can('manage_options')) return;
 
-        $settings = class_exists(Runtime::class) ? Runtime::settings() : null;
+        if (!class_exists(Runtime::class)) {
+            echo '<div class="wrap"><h1>DNA by D3</h1><p>Part of the plugin is missing: reinstall it.</p></div>';
+            return;
+        }
+
+        $settings = Runtime::settings();
         $entry = defined('D3_DNA_ENTRY') ? D3_DNA_ENTRY : null;
         $check = get_transient('d3_dna_check_' . get_current_user_id());
-        $key = $settings === null ? null : $settings['api_key'];
+        $key = $settings['api_key'];
+        $hosts = Runtime::siteHosts();
+        $named = array_merge($settings['exclude']['headers'], $settings['exclude']['cookies']);
 
         $rows = [
             'Runs from' => [
-                'wp-config' => 'wp-config.php, before any page cache.',
-                'mu-plugin' => 'the must-use loader. A page cache serves its hits before DNA runs: add the wp-config.php line below.',
-                'plugin' => 'the plugin itself, after the must-use plugins. A page cache serves its hits before DNA runs: add the wp-config.php line below.',
-            ][$entry] ?? 'nowhere on this request.',
-            'Endpoint' => $settings !== null && $settings['endpoint'] !== null ? $settings['endpoint'] : 'off: no DNA_API_KEY, or DNA_ENABLED is false',
-            'Hosts' => self::hostsRow(),
+                'wp-config' => 'wp-config.php, before any page cache',
+                'mu-plugin' => 'the must-use loader, after a page cache',
+                'plugin' => 'the plugin itself, after a page cache and the must-use plugins',
+            ][$entry] ?? 'nowhere: reinstall the plugin',
+            'Endpoint' => $settings['endpoint'] ?? 'none',
+            'Hosts' => $hosts === [] ? 'not set' : implode(', ', $hosts),
             'API key' => $key !== null && $key !== '' ? 'set, ending ' . substr($key, -4) : 'not set',
-            'If DNA cannot answer' => $settings !== null && $settings['fail_mode'] === 'closed' ? 'block (DNA_FAIL_MODE=closed)' : 'serve the page',
-            'Time limit' => $settings !== null ? $settings['timeout_ms'] . ' ms, ' . $settings['payment_timeout_ms'] . ' ms for a request that pays' : '',
-            'Kept back' => $settings !== null
-                ? count($settings['exclude']['headers']) . ' headers, ' . count($settings['exclude']['cookies']) . ' cookies'
-                : '',
-            'curl' => function_exists('curl_init') ? 'available' : 'missing: every request is handled as if DNA could not be reached',
-            'Reports' => function_exists('fastcgi_finish_request') || function_exists('litespeed_finish_request')
+            'If DNA cannot answer' => $settings['fail_mode'] === 'closed' ? 'answer 403 (DNA_FAIL_MODE is closed)' : 'serve the page',
+            'Time limit' => $settings['timeout_ms'] . ' ms, ' . $settings['payment_timeout_ms'] . ' ms for a request that pays',
+            'Kept back' => ($named === [] ? '' : implode(', ', $named) . '; ')
+                . "always Authorization, Proxy-Authorization, and WordPress's login, post-password and WooCommerce session cookies",
+            'Outcome reports' => function_exists('fastcgi_finish_request') || function_exists('litespeed_finish_request')
                 ? 'sent after each response'
-                : 'not sent: this server cannot end a response before PHP finishes',
+                : 'not sent: needs PHP-FPM or LiteSpeed. Your rules still apply.',
         ];
         $boot = var_export(dirname(__DIR__) . '/boot.php', true);
-        $hosts = class_exists(Runtime::class) ? (implode(',', Runtime::siteHosts()) ?: (string) Runtime::hostOf(home_url())) : '';
-        $config = "// Above the line that requires wp-settings.php:\ndefine('DNA_API_KEY', 'your key from dashboard.d3.com/keys');\n"
-            . 'define(\'DNA_HOSTS\', ' . var_export($hosts, true) . ");\n"
+        $hostsSetting = implode(',', $hosts) ?: (string) Runtime::hostOf(home_url());
+        $config = "define('DNA_API_KEY', 'your key from dashboard.d3.com/keys');\n"
+            . 'define(\'DNA_HOSTS\', ' . var_export($hostsSetting, true) . ");\n"
             . "if (is_file($boot)) include $boot;";
 
         echo '<div class="wrap"><h1>DNA by D3</h1>';
-        echo '<table class="widefat striped" style="max-width:48rem"><tbody>';
+        echo '<p><strong>' . esc_html(self::verdict($settings, $entry)) . '</strong></p>';
+        echo '<table class="widefat striped"><tbody>';
         foreach ($rows as $label => $value) {
             echo '<tr><th scope="row">' . esc_html($label) . '</th><td>' . esc_html($value) . '</td></tr>';
         }
         echo '</tbody></table>';
 
         echo '<h2>Check</h2><p>Fetches your home page as a visitor would and reads the <code>x-d3-edge</code> header on it.</p>';
-        if (is_string($check)) {
-            echo '<p><strong>' . esc_html($check) . '</strong>: ' . esc_html(self::meaningOf($check)) . '</p>';
+        if (is_array($check)) {
+            echo '<p>Last check, ' . esc_html(date_i18n(get_option('time_format'), $check['at'])) . ': <strong>'
+                . esc_html($check['edge']) . '</strong>. ' . esc_html(self::meaningOf($check['edge'])) . '</p>';
         }
         echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
         echo '<input type="hidden" name="action" value="' . esc_attr(self::CHECK_ACTION) . '">';
@@ -144,10 +159,10 @@ final class Admin
         submit_button('Check the home page', 'secondary', 'submit', false);
         echo '</form>';
 
-        echo '<h2>Setup</h2><p>Settings live in <code>wp-config.php</code> or the server environment, never in the database. ';
-        echo 'These lines in <code>wp-config.php</code> set your key and run DNA before any page cache:</p>';
-        echo '<pre style="max-width:48rem;white-space:pre-wrap">' . esc_html($config) . '</pre>';
-        echo '<p>Deactivating the plugin does not remove that line: to turn DNA off, define <code>DNA_ENABLED</code> as <code>false</code>.</p>';
+        echo '<h2>Setup</h2><p>Add these lines to <code>wp-config.php</code>, above the line that requires <code>wp-settings.php</code>. ';
+        echo 'They set your key and your domains, and run DNA before any page cache. Settings live there or in the server environment, never in the database.</p>';
+        echo '<pre>' . esc_html($config) . '</pre>';
+        echo "<p>To turn DNA off, add <code>define('DNA_ENABLED', false);</code>. Deactivating the plugin leaves these lines running.</p>";
         echo '</div>';
     }
 }

@@ -945,6 +945,28 @@ async function live() {
       after: timeouts(),
     }
   );
+
+  // The loop above timed out five times in ten seconds: unpaid requests now skip DNA for a while.
+  let id = tag();
+  const started = Date.now();
+  res = await send(SITES.fpm.port, `/page?t=${id}&scenario=slow`);
+  let s = await seen(id);
+  check(
+    'brownout: past five timeouts, a request that does not pay skips DNA and is served at once',
+    res.headers['x-d3-edge'] === 'fail-open' &&
+      res.json?.origin &&
+      Date.now() - started < 400 &&
+      s.decisions.length === 0,
+    { edge: res.headers['x-d3-edge'], took: Date.now() - started, asked: s.decisions.length }
+  );
+  id = tag();
+  res = await send(SITES.fpm.port, `/page?t=${id}`, { headers: { cookie: `__Host-d3pay=${session}` } });
+  s = await seen(id);
+  check(
+    'brownout: a paying request still asks DNA',
+    s.decisions.length === 1 && res.headers['x-d3-edge'] === 'pass',
+    { edge: res.headers['x-d3-edge'], asked: s.decisions.length }
+  );
 }
 
 async function dead() {
@@ -1063,7 +1085,7 @@ async function prefix() {
     'prefix: a GET the REST API would run as POST is refused, not run as the free handshake',
     s.decisions[0]?.payload.method === 'GET' &&
       res.status === 400 &&
-      res.json?.code === 'dna_method_unasked' &&
+      res.json?.code === 'dna_method_override_refused' &&
       !res.json?.result,
     { status: res.status, text: res.text }
   );

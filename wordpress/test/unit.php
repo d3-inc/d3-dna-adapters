@@ -576,6 +576,11 @@ check('memory: a claim holds the key for its seconds', D3\Dna\Memory::claim($key
 D3\Dna\Memory::hold("$key held", 60);
 check('memory: a held flag is there, and gone once dropped', D3\Dna\Memory::holds("$key held", 60) && (D3\Dna\Memory::drop("$key held") || true) && !D3\Dna\Memory::holds("$key held", 60));
 check('memory: a flag older than asked is not held', !D3\Dna\Memory::holds($key, -1));
+$counted = array_map(function () use ($key) {
+    return D3\Dna\Memory::count("$key count", 60);
+}, range(1, 3));
+check('memory: a count goes up within its window', $counted === [1, 2, 3], $counted);
+check('memory: and starts again once the window has passed', D3\Dna\Memory::count("$key count", -1) === 1);
 
 // php:// with the stripped call in php://input, and every other php:// stream PHP's own.
 D3\Dna\InputStream::install('{"stripped":true}');

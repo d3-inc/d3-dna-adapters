@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       DNA by D3
- * Plugin URI:        https://ai.d3.com/docs
- * Description:       Asks DNA about every request before WordPress serves it: agents are verified, blocked or charged by your rules.
+ * Plugin URI:        https://ai.d3.com/docs/sdks/wordpress
+ * Description:       Runs your DNA rules on each page WordPress serves: let AI agents in, block them, or charge them.
  * Version:           1.0.0
  * Requires at least: 6.0
  * Requires PHP:      7.4

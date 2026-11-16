@@ -46,6 +46,28 @@ final class Memory
         return is_int($at) && $at > time() - $seconds;
     }
 
+    /** Counts one more within a window that starts at the first; the count so far. */
+    public static function count($key, $seconds)
+    {
+        if (self::hasApcu()) {
+            apcu_add(self::id($key), 0, (int) $seconds);
+            $n = apcu_inc(self::id($key));
+            return is_int($n) ? $n : 1;
+        }
+
+        $file = self::file($key);
+        if ($file === null) return 1;
+
+        // "<window start> <count>": a write moves the file's time, so the start is kept in it.
+        $parts = explode(' ', (string) @file_get_contents($file));
+        $start = (int) $parts[0];
+        $n = $start > time() - $seconds ? (int) ($parts[1] ?? 0) + 1 : 1;
+        if ($n === 1) $start = time();
+        @file_put_contents($file, "$start $n");
+
+        return $n;
+    }
+
     public static function drop($key)
     {
         if (self::hasApcu()) {

@@ -77,12 +77,14 @@ real-IP module, and `HTTPS` above the include line in `wp-config.php`, so
 Check it under **Tools → DNA**: **Check the home page** fetches it and reads
 `x-d3-edge`. Or run `curl -sI https://www.example.com/`.
 
-| You see     | It means                                                                                |
-| ----------- | --------------------------------------------------------------------------------------- |
-| `pass`      | DNA is live.                                                                            |
-| `disabled`  | DNA is off: `DNA_ENABLED` is `false`, or `DNA_API_KEY` is not set where PHP can see it. |
-| `fail-open` | DNA can't be reached, or PHP has no curl. The PHP error log says which.                 |
-| Nothing     | DNA didn't run: the plugin is inactive and the `wp-config.php` line is missing.         |
+| You see              | It means                                                                                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pass`               | DNA is live.                                                                                                                                                                    |
+| `disabled`           | DNA is off: `DNA_ENABLED` is `false`, or `DNA_API_KEY` is not set where PHP can see it.                                                                                         |
+| `fail-open`          | DNA can't be reached, or PHP has no curl. The PHP error log says which.                                                                                                         |
+| `block`, `payment-*` | DNA is live; a rule answered that page itself.                                                                                                                                  |
+| `fail-closed`        | DNA can't be reached and `DNA_FAIL_MODE` is `closed`: visitors get a `403`. The PHP error log says why.                                                                         |
+| Nothing              | PHP never ran DNA for that URL: a host cache, a cache plugin's file or a web-server redirect answered first, or the plugin is inactive and the `wp-config.php` line is missing. |
 
 Deactivating the plugin removes its must-use loader but not your
 `wp-config.php` line. To turn DNA off, `define('DNA_ENABLED', false);`.
@@ -101,7 +103,7 @@ PHP's environment. A constant wins. Nothing is stored in the database.
 | `DNA_PAYMENT_TIMEOUT_MS`    | `10000`                               | The limit for a request that pays: settlement happens inside it.                                      |
 | `DNA_EXCLUDE_HEADERS`       | unset                                 | Comma-separated header names that never leave your server. Up to 128: past that, a log warning.       |
 | `DNA_EXCLUDE_COOKIES`       | unset                                 | Comma-separated cookie names that never leave your server. Up to 128, likewise.                       |
-| `DNA_DEBUG_LOG_RAW_PAYLOAD` | unset                                 | `true` keeps every request header (but the excluded and the credentials) on DNA's record. Debug only. |
+| `DNA_DEBUG_LOG_RAW_PAYLOAD` | unset                                 | `true` stores every request header on DNA's record, except excluded ones and credentials. Debug only. |
 | `DNA_HOSTS`                 | unset                                 | Comma-separated hosts your rules are for. A request naming another is decided as the first.           |
 | `DNA_ENDPOINT`              | `https://edge-api.d3.com/v1/decision` | Leave unset unless we give you another.                                                               |
 
@@ -121,9 +123,9 @@ kept between requests.
 Every request header and cookie, except the names you exclude and these:
 `Authorization`, `Proxy-Authorization`, the Cloudflare Access and Vercel OIDC
 headers, and `Mcp-Param-Dna-Key`, which goes as a payment header instead. Our
-own cookies travel on headers of their own. WordPress's login and
-post-password cookies are kept back too, named in the request as kept back so
-a rule on one is skipped. A value past 2 KB, or past 16 KB in
+own cookies travel on headers of their own. WordPress's login, post-password
+and WooCommerce session cookies are kept back too. DNA is told their names, so
+a rule that checks one is skipped. A value past 2 KB, or past 16 KB in
 all, is dropped and named; a few headers have their own limit, such as 256
 bytes for `Accept`. A body is never sent: its SHA-256 digest is, and for an
 MCP call, the method and the tool it names. A file upload's body is read by
@@ -161,18 +163,15 @@ when a browser is navigating, and serves the page once the visitor pays.
   to `private` with its freshness kept, so no shared cache stores a receipt.
 - **Payment instructions replace the page** as a `200` (`payment-stub`), and
   WordPress never runs.
-- **MCP**: a payment in a tool call's `_meta` is lifted out, and the call
-  reaches your MCP server without it, whether it reads the REST API's body or
-  `php://input`. An unpaid call is answered in band, as a JSON-RPC result with
-  the call's `id`; a paid one gets the receipt in its result's `_meta`. A call
-  too large to read that names one of our credentials is refused with a `413`;
-  a batch, a call sent under another content type, or one holding a number
-  JSON can't write back (`1e999`), that carries one is refused with a `400`. A
-  call the REST API runs as a `POST` through `?_method=` or
-  `X-HTTP-Method-Override` is read as one, and DNA is told it is a `POST`. Under a REST prefix a plugin
-  renamed, which DNA can't know before it runs, a `GET` or `DELETE` the
-  override turns into another method is refused with a `400` instead. A result your server streams, or
-  sends compressed, is passed on without the receipt.
+- **MCP**: a payment in a tool call's `_meta` is removed before your MCP server
+  reads it, from the REST body or `php://input`. An unpaid call gets an in-band
+  JSON-RPC result with the call's `id`; a paid one gets the receipt in its
+  result's `_meta`. A call carrying our credential is refused when DNA can't
+  read it: `413` if too large; `400` for a batch, a non-JSON content type, or a
+  number JSON can't round-trip (`1e999`). A `?_method=` or
+  `X-HTTP-Method-Override` POST is read as a POST. Under a renamed REST prefix,
+  a `GET` or `DELETE` the override turns into another method gets a `400`. A
+  streamed or compressed result goes out without the receipt.
 
 ## Outcome reports
 
@@ -184,9 +183,11 @@ gets `DNA_TIMEOUT_MS` and no more, and none is sent after a decision call that
 got no answer. A report that cannot be sent is logged and dropped.
 
 Failures are logged to PHP's error log once per kind every few seconds, not
-once per request. The plugin keeps that, and the MCP key argument a decision
-turned on, in APCu where PHP has it, and otherwise as small files in PHP's
-temp directory.
+once per request. When DNA times out five times in ten seconds, requests that
+don't pay skip it for ten seconds and are served as `DNA_FAIL_MODE` says, so a
+slow DNA doesn't hold every PHP worker; a paying request still asks. The plugin
+keeps its log throttle, this count, and the MCP key argument a decision turned
+on in APCu where PHP has it, otherwise as small files in PHP's temp directory.
 
 ## Testing
 

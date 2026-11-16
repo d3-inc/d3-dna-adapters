@@ -65,6 +65,8 @@ phase() { echo "--- $1"; node run.mjs "$1"; }
 
 phase live; live=$?
 
+# A fresh FPM: live leaves the breaker open and its log throttle set.
+restart_fpm
 compose stop mock >/dev/null 2>&1
 phase dead; dead=$?
 compose start mock >/dev/null 2>&1; up 127.0.0.1:9020/__log

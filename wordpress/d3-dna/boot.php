@@ -87,7 +87,7 @@ if ($d3_dna_loaded) {
     }
     $d3_dna_marker = $d3_dna_dir === null ? null : $d3_dna_dir . '/d3-dna-unloaded-' . md5(__DIR__);
     if ($d3_dna_marker === null || (@filemtime($d3_dna_marker) < time() - 60 && @touch($d3_dna_marker))) {
-        error_log('d3-dna: a file under ' . __DIR__ . '/src is missing, so DNA is off and anything of ours is refused');
+        error_log('d3-dna: a file under ' . __DIR__ . '/src is missing, so DNA is off and paying requests get a 502. Reinstall the plugin.');
     }
     unset($d3_dna_marker, $d3_dna_dir, $d3_dna_candidate);
     $d3_dna_refuse_unloaded();

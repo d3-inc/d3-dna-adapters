@@ -15,7 +15,7 @@ times out, so an outage on our side never takes your site down.
 | [`cloudflare-worker/`](./cloudflare-worker)   | Standalone Worker template fronting a site hosted outside Cloudflare                                 | Yes         |
 | [`caddy/`](./caddy)                           | One importable file for stock Caddy 2.8+: no plugin, no build                                        | Yes         |
 | [`openresty/`](./openresty)                   | Two includes for OpenResty: every rule, any header or cookie, MCP calls charged per call             | Yes         |
-| [`wordpress/`](./wordpress)                   | A WordPress plugin: every rule, before any page cache, MCP calls charged per call                    | Yes         |
+| [`wordpress/`](./wordpress)                   | A WordPress plugin: every rule, MCP calls charged per call, ahead of caching plugins that run in PHP | Yes         |
 | [`nginx-auth-request/`](./nginx-auth-request) | Config-only recipe for stock nginx via `auth_request` — no Lua required                              | No          |
 
 All of them speak one contract, specified in

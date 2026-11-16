@@ -15,6 +15,12 @@ final class Runtime
     const BODY_CHUNK = 65536;
     const KEY_ARGUMENT_MEMORY_S = 300;
 
+    // A DNA that answers slowly holds a PHP worker per request for the whole budget: past this many
+    // timeouts in the window, unpaid requests stop asking for a while and fail as DNA_FAIL_MODE says.
+    const BREAKER_TIMEOUTS = 5;
+    const BREAKER_WINDOW_S = 10;
+    const BREAKER_OPEN_S = 10;
+
     // WordPress's login, post-password and WooCommerce session cookies, named by a per-site hash, so no exclusion list can name them.
     const WORDPRESS_SESSION_COOKIE = '/^(?:wordpress_(?:sec_|logged_in_)?|wordpressuser_|wordpresspass_|wp-postpass_|wp_woocommerce_session_)[0-9a-f]{32}$/D';
     // The same cookies when a site names them itself, in wp-config.php.
@@ -35,7 +41,7 @@ final class Runtime
         try {
             self::access();
         } catch (\Throwable $e) {
-            self::logEvery('access error', 10, 'the request handling failed, so this request fails open unless it pays: ' . $e->getMessage());
+            self::logEvery('access error', 10, 'request handling failed; the page was served, and a paying request got a 502: ' . $e->getMessage());
             self::containAccessError();
         }
     }
@@ -52,7 +58,7 @@ final class Runtime
             ));
             self::stripForOrigin();
         } catch (\Throwable $e) {
-            self::logEvery('contain error', 10, 'cannot strip this request, so it is refused: ' . $e->getMessage());
+            self::logEvery('contain error', 10, 'could not remove payment credentials from this request, so it got a 502: ' . $e->getMessage());
         }
 
         if ($paying) self::send(Protocol::paymentUnavailableAnswer());
@@ -132,8 +138,12 @@ final class Runtime
         }
 
         $paying = Protocol::presentsPayment($byName, self::queryOf($target), $payload['headers']);
-        $res = self::decide($settings, $payload, $paying ? $settings['payment_timeout_ms'] : $settings['timeout_ms']);
+        // A paying request still asks: it never falls open, so waiting is the only way it is served.
+        $res = !$paying && Memory::holds('breaker open', self::BREAKER_OPEN_S)
+            ? ['status' => null, 'body' => null, 'error' => 'not asked: DNA timed out repeatedly just now', 'errno' => -1]
+            : self::decide($settings, $payload, $paying ? $settings['payment_timeout_ms'] : $settings['timeout_ms']);
         self::$state['decided_at'] = microtime(true);
+        if (!$paying && $res['errno'] === CURLE_OPERATION_TIMEDOUT) self::countTimeout();
 
         $decision = self::validDecision($res);
         if ($decision === null) {
@@ -180,6 +190,16 @@ final class Runtime
         self::passOn('pass');
     }
 
+    /** Opens the breaker once DNA has timed out BREAKER_TIMEOUTS times within the window. */
+    private static function countTimeout()
+    {
+        if (Memory::count('decision timeouts', self::BREAKER_WINDOW_S) < self::BREAKER_TIMEOUTS) return;
+
+        Memory::hold('breaker open', self::BREAKER_OPEN_S);
+        self::logEvery('breaker', 60, 'DNA timed out ' . self::BREAKER_TIMEOUTS . ' times in ' . self::BREAKER_WINDOW_S
+            . ' s, so requests that do not pay skip it for ' . self::BREAKER_OPEN_S . ' s');
+    }
+
     /** The decision, or null for anything that is not a 2xx carrying `pass` or `block`. */
     private static function validDecision(array $res)
     {
@@ -201,7 +221,7 @@ final class Runtime
         }
         // Keyed by the kind of failure: curl's message names the milliseconds, which differ every time.
         $kind = $res['status'] !== null ? 'HTTP ' . $res['status'] : 'curl ' . $res['errno'];
-        self::logEvery('decision ' . $kind, 10, 'decision call failed (' . $reason . '), and again until this stops');
+        self::logEvery('decision ' . $kind, 10, "decision call failed ($reason); requests follow DNA_FAIL_MODE until DNA answers. Repeats every 10 s while it lasts.");
     }
 
     /**
@@ -248,8 +268,8 @@ final class Runtime
 
         self::logEvery('overridden method', 3600, "a REST request sent as $asked ran as $runs, so it was refused");
         return new \WP_Error(
-            'dna_method_unasked',
-            "This request runs as $runs but was sent as $asked. Send it as $runs.",
+            'dna_method_override_refused',
+            "This request was sent as $asked with a method override to $runs. Send it as a plain $runs.",
             ['status' => 400]
         );
     }
@@ -651,7 +671,7 @@ final class Runtime
         while (ob_get_level() > 0 && @ob_end_clean()) {
         }
         if (headers_sent($file, $line)) {
-            self::logEvery('sent early', 3600, "output from $file:$line went out before DNA, so its answers go out as that output's 200");
+            self::logEvery('sent early', 3600, "output from $file:$line was sent before DNA ran, so DNA's blocks and payment answers go out with status 200. Remove that output, or move the wp-config.php include above it.");
         } else {
             header_remove();
             // PHP would otherwise add a text/html type to a redirect.
@@ -886,7 +906,7 @@ final class Runtime
             self::logEvery(
                 'report ' . ($status !== 0 ? $status : 'curl ' . $errno),
                 60,
-                'response report failed (' . ($error !== '' ? $error : 'HTTP ' . $status) . '), and again until this stops'
+                'response report failed (' . ($error !== '' ? $error : 'HTTP ' . $status) . '); enforcement is unaffected. Repeats every 60 s while it lasts.'
             );
         }
     }
