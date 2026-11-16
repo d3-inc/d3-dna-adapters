@@ -1,0 +1,104 @@
+# WordPress behind DNA, three ways: PHP-FPM under nginx (the one that reports),
+# and Apache's mod_php on PHP 8.3 and 7.4. run.sh drives it; images are pinned there.
+name: dna-wordpress-test
+
+x-wordpress-env: &wordpress-env
+  WORDPRESS_DB_HOST: db
+  WORDPRESS_DB_USER: wp
+  WORDPRESS_DB_PASSWORD: wp
+  WORDPRESS_DB_NAME: wp
+  # The install line from README.md, switchable so one phase runs from the must-use loader.
+  WORDPRESS_CONFIG_EXTRA: |
+    define('WP_CACHE', true);
+    if (getenv('DNA_TEST_BOOT') !== 'no' && is_file('/var/www/html/wp-content/plugins/d3-dna/boot.php')) include '/var/www/html/wp-content/plugins/d3-dna/boot.php';
+  DNA_API_KEY: test-key
+  DNA_ENDPOINT: http://mock:9010/v1/decision
+  # Short budgets keep the timeout checks quick; production defaults are 1 s and 10 s.
+  DNA_TIMEOUT_MS: '500'
+  DNA_PAYMENT_TIMEOUT_MS: '3000'
+  DNA_EXCLUDE_HEADERS: x-internal-token
+  DNA_EXCLUDE_COOKIES: sid
+  DNA_ENABLED: ${DNA_ENABLED:-}
+  DNA_TEST_BOOT: ${DNA_TEST_BOOT:-}
+
+x-wordpress-volumes: &wordpress-volumes
+  - wp:/var/www/html
+  - ${PLUGIN_DIR:-../d3-dna}:/var/www/html/wp-content/plugins/d3-dna:ro
+  - ./origin/dna-test-origin.php:/var/www/html/wp-content/plugins/dna-test-origin.php:ro
+  - ./origin/advanced-cache.php:/var/www/html/wp-content/advanced-cache.php:ro
+
+services:
+  db:
+    image: ${DB_IMAGE}
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: wp
+      MARIADB_USER: wp
+      MARIADB_PASSWORD: wp
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 1s
+      retries: 120
+
+  mock:
+    image: ${NODE_IMAGE}
+    command: ['node', '/repo/openresty/test/mock-decision.mjs']
+    environment:
+      MOCK_HOST: 0.0.0.0
+      MOCK_PORT: '9010'
+    volumes:
+      - ../..:/repo:ro
+    ports:
+      - '127.0.0.1:9020:9010'
+
+  fpm:
+    image: ${FPM_IMAGE}
+    environment: *wordpress-env
+    volumes: *wordpress-volumes
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: ${NGINX_IMAGE}
+    volumes:
+      - wp:/var/www/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - '127.0.0.1:8130:80'
+    depends_on:
+      - fpm
+
+  apache83:
+    image: ${APACHE83_IMAGE}
+    environment: *wordpress-env
+    volumes: *wordpress-volumes
+    ports:
+      - '127.0.0.1:8131:80'
+    depends_on:
+      db:
+        condition: service_healthy
+
+  apache74:
+    image: ${APACHE74_IMAGE}
+    environment: *wordpress-env
+    volumes: *wordpress-volumes
+    ports:
+      - '127.0.0.1:8132:80'
+    depends_on:
+      db:
+        condition: service_healthy
+
+  cli:
+    image: ${CLI_IMAGE}
+    profiles: [tools]
+    # The FPM and Apache images run as Debian's www-data; the CLI image is Alpine's, a different uid.
+    user: '33:33'
+    environment: *wordpress-env
+    volumes: *wordpress-volumes
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  wp: {}

@@ -16,6 +16,7 @@ export const ADAPTER_TYPE_ENDPOINTS = {
   'vercel-mcp': ['decision'],
   snippet: ['decision'],
   openresty: ['decision'],
+  wordpress: ['decision'],
   caddy: ['forward-auth'],
   nginx: ['forward-auth'],
 } as const satisfies Record<string, readonly AdapterEndpoint[]>;

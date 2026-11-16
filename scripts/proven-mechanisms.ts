@@ -38,6 +38,7 @@ const OWN_TESTS: Readonly<Record<AdapterType, readonly string[]>> = {
   // the code the snippet runs, exactly as they do for an SDK.
   snippet: ['cloudflare-snippet/', 'packages/protocol/'],
   openresty: ['openresty/test/'],
+  wordpress: ['wordpress/test/'],
   caddy: ['caddy/test/'],
   nginx: ['nginx-auth-request/'],
 };

@@ -285,5 +285,51 @@
         ]
       }
     }
+  ],
+  "wordpress": [
+    {
+      "since": "1.0.0",
+      "sends": 3,
+      "proves": {
+        "credentials": [
+          "wordpress/test/run.mjs: ${label}: pass: our cookies on their own headers",
+          "wordpress/test/run.mjs: ${label}: pass: WordPress gets the verdict, not the credentials",
+          "wordpress/test/run.mjs: ${label}: strip: no payment header, mirrored key or cookie of ours at WordPress",
+          "wordpress/test/run.mjs: ${label}: strip: our params gone from the URI, the rest in order",
+          "wordpress/test/run.mjs: ${label}: ${scenario}: still no credential at WordPress"
+        ],
+        "namespace": [
+          "wordpress/test/unit.php: the id we set outlasts cookies wearing our prefix and a jar past the shared cap",
+          "wordpress/test/unit.php: strip: nor in $_COOKIE, whatever PHP made of the name",
+          "wordpress/test/run.mjs: ${label}: ours: ${name} alone reaches DNA on ${scenario}, and never WordPress",
+          "wordpress/test/run.mjs: no Runtime.php: a cookie of ours is refused, never handed to WordPress"
+        ],
+        "forward-all": [
+          "wordpress/test/run.mjs: ${label}: pass: every header but authorization and the excluded",
+          "wordpress/test/run.mjs: ${label}: pass: the site cookies but sid and ours",
+          "wordpress/test/run.mjs: ${label}: pass: the exclusions echoed"
+        ],
+        "answer": [
+          "wordpress/test/run.mjs: ${label}: block: a 403 with its rule",
+          "wordpress/test/run.mjs: ${label}: 402: the gate as DNA sent it",
+          "wordpress/test/run.mjs: ${label}: a paying request never falls open",
+          "wordpress/test/run.mjs: dead: a paying one is a 502",
+          "wordpress/test/run.mjs: ${label}: mcp: an unpaid call is answered in band with its id"
+        ],
+        "decorate": [
+          "wordpress/test/run.mjs: ${label}: paid: our Set-Cookie beside the site's",
+          "wordpress/test/run.mjs: ${label}: paid: the page with our receipt",
+          "wordpress/test/run.mjs: ${label}: mcp: the receipt added to the result's _meta"
+        ],
+        "bare-pass": [
+          "wordpress/test/run.mjs: ${label}: early pass: no verdict, so no verdict headers, and never the visitor's"
+        ],
+        "rewrite-body": [
+          "wordpress/test/run.mjs: ${label}: mcp: the key in _meta lifted onto the payload",
+          "wordpress/test/run.mjs: ${label}: mcp: WordPress gets the call without it",
+          "wordpress/test/run.mjs: ${label}: mcp: a plugin reading php://input gets the call without it too"
+        ]
+      }
+    }
   ]
 }

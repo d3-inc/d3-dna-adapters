@@ -114,4 +114,4 @@ createServer((req, res) => {
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(typeof body === 'string' ? body : JSON.stringify(body));
   });
-}).listen(PORT, '127.0.0.1');
+}).listen(PORT, process.env.MOCK_HOST ?? '127.0.0.1');
