@@ -26,18 +26,21 @@ $d3_dna_refuse_unloaded = function () {
     unset($_SERVER['HTTP_X_D3_TIER'], $_SERVER['HTTP_X_D3_IDENTITY'], $_SERVER['HTTP_D3PAY_PERSON']);
     unset($_ENV['HTTP_X_D3_TIER'], $_ENV['HTTP_X_D3_IDENTITY'], $_ENV['HTTP_D3PAY_PERSON']);
 
-    $cookie = (string) ($_SERVER['HTTP_COOKIE'] ?? '');
-    $ours = $ours || strpos($cookie, '__Host-d3pay') !== false;
-    $kept = [];
-    foreach (explode(';', $cookie) as $pair) {
-        if (stripos($pair, '__Host-d3') === false && stripos($pair, '__Secure-d3') === false) $kept[] = trim($pair);
+    $ours = $ours || strpos((string) ($_SERVER['HTTP_COOKIE'] ?? ''), '__Host-d3pay') !== false;
+    // $_ENV holds the request too where variables_order lists E.
+    foreach ([&$_SERVER, &$_ENV] as &$copy) {
+        $kept = [];
+        foreach (explode(';', (string) ($copy['HTTP_COOKIE'] ?? '')) as $pair) {
+            if (stripos($pair, '__Host-d3') === false && stripos($pair, '__Secure-d3') === false) $kept[] = trim($pair);
+        }
+        $kept = implode('; ', array_filter($kept, 'strlen'));
+        if ($kept === '') {
+            unset($copy['HTTP_COOKIE']);
+        } else {
+            $copy['HTTP_COOKIE'] = $kept;
+        }
     }
-    $kept = implode('; ', array_filter($kept, 'strlen'));
-    if ($kept === '') {
-        unset($_SERVER['HTTP_COOKIE']);
-    } else {
-        $_SERVER['HTTP_COOKIE'] = $kept;
-    }
+    unset($copy);
     foreach (array_keys($_COOKIE) as $name) {
         if (stripos((string) $name, '__Host-d3') === 0 || stripos((string) $name, '__Secure-d3') === 0) unset($_COOKIE[$name]);
     }

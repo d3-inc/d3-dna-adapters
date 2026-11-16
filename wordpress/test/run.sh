@@ -86,6 +86,11 @@ cp -R ../d3-dna "$work/d3-dna" && rm "$work/d3-dna/src/Runtime.php"
 restart_fpm PLUGIN_DIR="$work/d3-dna"
 phase unloaded; unloaded=$?
 
-failed=$(( live || dead || closed || off || mu || plugin || unloaded ))
+# A REST prefix a plugin renamed, which nothing before WordPress's plugins can know. Last: it rewrites the site's routes.
+restart_fpm DNA_TEST_REST_PREFIX=wp-api
+compose run --rm -T -e DNA_TEST_REST_PREFIX=wp-api cli wp rewrite flush >>"$setup_log" 2>&1 || fail 'wp rewrite flush'
+phase prefix; prefix=$?
+
+failed=$(( live || dead || closed || off || mu || plugin || unloaded || prefix ))
 [ "$failed" -eq 0 ] || { echo "--- fpm log"; compose logs --tail 40 fpm; }
 exit "$failed"

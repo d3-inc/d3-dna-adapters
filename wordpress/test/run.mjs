@@ -1040,6 +1040,35 @@ async function fromPlugin(entry) {
   );
 }
 
+async function prefix() {
+  const call = rpc('tools/call', { name: 'search' });
+  let res = await send(SITES.fpm.port, `/wp-api/dna-test/v1/mcp?t=${tag()}`, {
+    method: 'POST',
+    headers: JSON_TYPE,
+    body: call,
+  });
+  check(
+    'prefix: a call under the renamed prefix is served',
+    res.json?.result?.content !== undefined,
+    res.text
+  );
+
+  const id = tag();
+  res = await send(SITES.fpm.port, `/wp-api/dna-test/v1/mcp?t=${id}&_method=POST`, {
+    headers: JSON_TYPE,
+    body: call,
+  });
+  const s = await seen(id);
+  check(
+    'prefix: a GET the REST API would run as POST is refused, not run as the free handshake',
+    s.decisions[0]?.payload.method === 'GET' &&
+      res.status === 400 &&
+      res.json?.code === 'dna_method_unasked' &&
+      !res.json?.result,
+    { status: res.status, text: res.text }
+  );
+}
+
 async function unloaded() {
   let res = await send(SITES.fpm.port, `/page?t=${tag()}`, {
     headers: { cookie: 'a=1', 'x-d3-tier': 'proven' },
@@ -1083,6 +1112,7 @@ const PHASES = {
   'mu-plugin': () => fromPlugin('mu-plugin'),
   plugin: () => fromPlugin('plugin'),
   unloaded,
+  prefix,
 };
 await PHASES[phase]();
 console.log(`${phase}: ${passed} passed, ${failed} failed`);

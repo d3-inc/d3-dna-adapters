@@ -169,7 +169,9 @@ when a browser is navigating, and serves the page once the visitor pays.
   a batch, a call sent under another content type, or one holding a number
   JSON can't write back (`1e999`), that carries one is refused with a `400`. A
   call the REST API runs as a `POST` through `?_method=` or
-  `X-HTTP-Method-Override` is read as one, and DNA is told it is a `POST`. A result your server streams, or
+  `X-HTTP-Method-Override` is read as one, and DNA is told it is a `POST`. Under a REST prefix a plugin
+  renamed, which DNA can't know before it runs, such a call is refused with a
+  `400` instead. A result your server streams, or
   sends compressed, is passed on without the receipt.
 
 ## Outcome reports

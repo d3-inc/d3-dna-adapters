@@ -214,6 +214,38 @@ final class Runtime
         self::$state['mode'] = $mode;
         header('x-d3-edge: ' . $mode);
         ob_start([self::class, 'onOutput'], 1);
+        self::addFilter('rest_pre_dispatch', [self::class, 'refuseUnaskedPost'], 3);
+    }
+
+    /** A hook from before WordPress loads its plugin API, set the way WordPress takes ones set that early. */
+    private static function addFilter($hook, callable $callback, $acceptedArgs)
+    {
+        if (function_exists('add_filter')) {
+            add_filter($hook, $callback, 10, $acceptedArgs);
+            return;
+        }
+
+        $GLOBALS['wp_filter'][$hook][10][] = ['function' => $callback, 'accepted_args' => $acceptedArgs];
+    }
+
+    /**
+     * The REST API's own word on the method, at dispatch: restMethod() cannot know a
+     * prefix a plugin renames wp-json to, and a GET DNA was asked about as the free
+     * MCP handshake must not run as the POST that calls a tool.
+     */
+    public static function refuseUnaskedPost($result, $server, $request)
+    {
+        if ($result !== null || self::$state === null || !is_object($request) || !method_exists($request, 'get_method')) {
+            return $result;
+        }
+        if (strtoupper((string) $request->get_method()) !== 'POST' || self::$state['method'] === 'POST') return $result;
+
+        self::logEvery('unasked post', 3600, 'a REST request sent as ' . self::$state['method'] . ' ran as POST, so it was refused');
+        return new \WP_Error(
+            'dna_method_unasked',
+            'This request runs as a POST but was sent as ' . self::$state['method'] . '. Send it as a POST.',
+            ['status' => 400]
+        );
     }
 
     /**

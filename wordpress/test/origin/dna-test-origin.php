@@ -4,6 +4,13 @@
  * Description: The site behind DNA in wordpress/test: echoes what WordPress was handed, and authors its own Set-Cookie, CORS list and caching.
  */
 
+// A security plugin's renamed REST prefix, for the phase run.sh starts with it.
+if (getenv('DNA_TEST_REST_PREFIX')) {
+    add_filter('rest_url_prefix', function () {
+        return getenv('DNA_TEST_REST_PREFIX');
+    });
+}
+
 // Some plugin's newline after its closing tag, which output_buffering holds back.
 if (isset($_SERVER['HTTP_X_TEST_STRAY_NEWLINE'])) echo "\n";
 
@@ -32,6 +39,8 @@ function dna_test_json($body)
 }
 
 add_action('init', function () {
+    if (defined('WP_CLI') && WP_CLI) return;
+
     $path = strtok($_SERVER['REQUEST_URI'], '?');
     if (strncmp($path, '/wp-', 4) === 0) return;
 

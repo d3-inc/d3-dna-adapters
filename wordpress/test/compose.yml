@@ -22,6 +22,7 @@ x-wordpress-env: &wordpress-env
   DNA_ENABLED: ${DNA_ENABLED:-}
   DNA_FAIL_MODE: ${DNA_FAIL_MODE:-}
   DNA_TEST_BOOT: ${DNA_TEST_BOOT:-}
+  DNA_TEST_REST_PREFIX: ${DNA_TEST_REST_PREFIX:-}
 
 x-wordpress-volumes: &wordpress-volumes
   - wp:/var/www/html
