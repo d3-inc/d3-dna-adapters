@@ -4,6 +4,9 @@
  * Description: The site behind DNA in wordpress/test: echoes what WordPress was handed, and authors its own Set-Cookie, CORS list and caching.
  */
 
+// Some plugin's newline after its closing tag, which output_buffering holds back.
+if (isset($_SERVER['HTTP_X_TEST_STRAY_NEWLINE'])) echo "\n";
+
 function dna_test_request_headers()
 {
     $headers = [];
@@ -39,10 +42,20 @@ add_action('init', function () {
         });
     }
 
+    // A download as WooCommerce sends one: every buffer closed, then its own headers.
+    if ($path === '/download') {
+        while (ob_get_level() > 0) ob_end_clean();
+        header('Content-Type: application/octet-stream');
+        header('Cache-Control: public, max-age=3600');
+        echo 'file bytes';
+        exit;
+    }
+
     // Reads php://input itself, as a plugin outside the REST API would.
     if ($path === '/mcp-raw') {
-        // A plugin clearing the buffers it finds before it answers.
+        // A plugin emptying the buffer it is in, or closing every one, before it answers.
         if (isset($_SERVER['HTTP_X_TEST_OB_CLEAN'])) ob_clean();
+        if (isset($_SERVER['HTTP_X_TEST_END_CLEAN'])) while (ob_get_level() > 0) ob_end_clean();
         $call = json_decode(file_get_contents('php://input'), true);
         header('Content-Type: application/json');
         echo dna_test_json(['jsonrpc' => '2.0', 'id' => $call['id'] ?? null, 'result' => dna_test_mcp_result($call)]);
@@ -67,6 +80,7 @@ add_action('init', function () {
     echo dna_test_json([
         'origin' => true,
         'entry' => defined('D3_DNA_ENTRY') ? D3_DNA_ENTRY : null,
+        'pageCacheSkipped' => defined('DONOTCACHEPAGE'),
         'url' => $_SERVER['REQUEST_URI'],
         'query' => $_SERVER['QUERY_STRING'] ?? '',
         'method' => $_SERVER['REQUEST_METHOD'],

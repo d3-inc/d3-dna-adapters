@@ -25,6 +25,13 @@ function check($name, $ok, $detail = null)
     echo "  FAIL $name" . ($detail === null ? '' : "\n       " . substr(is_string($detail) ? $detail : json_encode($detail), 0, 600)) . "\n";
 }
 
+// A notice the port printed would send WordPress's headers early, so any one is a failure. @ still silences.
+set_error_handler(function ($level, $message, $file, $line) {
+    if (!(error_reporting() & $level)) return false;
+    check('no PHP notice: ' . $message . ' at ' . basename($file) . ":$line", false);
+    return true;
+});
+
 function is_list_array(array $a)
 {
     return $a === [] || array_keys($a) === range(0, count($a) - 1);
@@ -443,6 +450,10 @@ $infX402 = '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"_meta":{"x4
 check('an x402 payment that will not encode is refused too, not lifted empty', P::mcpCarriageOf('POST', $getJson, $infX402, [])['unreadable_credential'] === true);
 $infFree = '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"arguments":{"q":1e999}}}';
 check('one carrying nothing of ours is left alone', P::mcpCarriageOf('POST', $getJson, $infFree, [])['unreadable_credential'] === false);
+$nulKey = '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"\u0000x":1,"_meta":{"x402\u002fpayment":{"a":1}}}}';
+check('a credential behind an escape, in a call PHP reads only as arrays, is refused', P::mcpCarriageOf('POST', $getJson, $nulKey, [])['unreadable_credential'] === true);
+$nulFree = '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"\u0000x":1}}';
+check('one carrying nothing of ours is left alone too', P::mcpCarriageOf('POST', $getJson, $nulFree, [])['unreadable_credential'] === false);
 $priced = (object) ['status' => 402, 'bodyKind' => 'json-rpc', 'body' => '{"isError":true}'];
 $notified = P::buildPaymentAnswer($priced, 'payment-required', ['hasId' => false, 'id' => null]);
 check('a priced notification gets the plain 402: there is no id to answer', $notified['status'] === 402 && strpos((string) $notified['body'], 'jsonrpc') === false, $notified);
@@ -471,12 +482,23 @@ check('an absolute-form target is read by its path', Runtime::requestTarget(['RE
 check('a target with no path is /', Runtime::requestTarget([]) === '/');
 check('a raw byte in the target goes escaped, as URL parses it', Runtime::requestTarget(['REQUEST_URI' => "/caf\xc3\xa9 x"]) === '/caf%C3%A9%20x');
 check('the query is the target\'s, the one the payload names', Runtime::queryOf('/p?a=1&d3pay_handoff=x') === 'a=1&d3pay_handoff=x' && Runtime::queryOf('/p') === '' && Runtime::queryOf('/p?') === '');
-check('a REST method override is the method a call is read under', Runtime::restMethod('PUT', ['_method' => 'post'], []) === 'POST'
-    && Runtime::restMethod('GET', [], ['HTTP_X_HTTP_METHOD_OVERRIDE' => 'POST']) === 'POST' && Runtime::restMethod('POST', [], []) === 'POST');
+check('a REST method override is the method DNA is told', Runtime::restMethod('GET', '/wp-json/mcp', ['_method' => 'post'], []) === 'POST'
+    && Runtime::restMethod('GET', '/index.php/wp-json/mcp', [], ['HTTP_X_HTTP_METHOD_OVERRIDE' => 'POST']) === 'POST'
+    && Runtime::restMethod('GET', '/?rest_route=/mcp', ['rest_route' => '/mcp', '_method' => 'POST'], []) === 'POST'
+    && Runtime::restMethod('POST', '/wp-json/mcp', [], []) === 'POST');
+check('outside the REST API an override is nothing WordPress reads', Runtime::restMethod('GET', '/page', ['_method' => 'POST'], []) === 'GET');
+
+check('a URL\'s host as a Host header names it', Runtime::hostOf('https://WWW.Site.example/blog') === 'www.site.example'
+    && Runtime::hostOf('http://127.0.0.1:8130') === '127.0.0.1:8130' && Runtime::hostOf('not a url') === null && Runtime::hostOf(false) === null);
+check('a host the site lists is decided as itself, in any case', Runtime::decidedHost('WWW.site.example', ['site.example', 'www.site.example']) === 'WWW.site.example');
+check('a host the site does not list is decided as its first: a visitor cannot pick one with no rules',
+    Runtime::decidedHost('evil.example', ['site.example', 'www.site.example']) === 'site.example');
+check('with no host known, the Host header is all there is', Runtime::decidedHost('evil.example', []) === 'evil.example');
 $hash = str_repeat('a', 32);
 same('WordPress login cookies are kept back by default, by the names the request carries', Runtime::withWordPressSessionCookies(['sid'],
     "wordpress_logged_in_$hash=u; wordpress_sec_$hash=s; wordpress_$hash=a; wp-postpass_$hash=p; wordpress_test_cookie=t; wp-settings-1=x; sid=1"
 ), ['sid', "wordpress_logged_in_$hash", "wordpress_sec_$hash", "wordpress_$hash", "wp-postpass_$hash"]);
+same('a WooCommerce session is kept back too', Runtime::withWordPressSessionCookies([], "wp_woocommerce_session_$hash=s"), ["wp_woocommerce_session_$hash"]);
 same('a cookie only shaped like one is not', Runtime::withWordPressSessionCookies([], "wordpress_logged_in_{$hash}x=u; xwordpress_$hash=v"), []);
 
 $id = Runtime::requestId();

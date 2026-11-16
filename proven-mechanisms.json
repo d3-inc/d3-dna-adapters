@@ -319,7 +319,9 @@
         "decorate": [
           "wordpress/test/run.mjs: ${label}: paid: our Set-Cookie beside the site's",
           "wordpress/test/run.mjs: ${label}: paid: the page with our receipt",
-          "wordpress/test/run.mjs: ${label}: mcp: the receipt added to the result's _meta"
+          "wordpress/test/run.mjs: ${label}: mcp: the receipt added to the result's _meta",
+          "wordpress/test/run.mjs: ${label}: paid: narrowed to private, freshness kept",
+          "wordpress/test/run.mjs: ${label}: a download that closes every buffer and sets its own caching is still private"
         ],
         "bare-pass": [
           "wordpress/test/run.mjs: ${label}: early pass: no verdict, so no verdict headers, and never the visitor's"

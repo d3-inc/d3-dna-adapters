@@ -15,8 +15,10 @@ final class Runtime
     const BODY_CHUNK = 65536;
     const KEY_ARGUMENT_MEMORY_S = 300;
 
-    // WordPress's login and post-password cookies, named by a per-site hash, so no exclusion list can name them.
-    const WORDPRESS_SESSION_COOKIE = '/^(?:wordpress_(?:sec_|logged_in_)?|wordpressuser_|wordpresspass_|wp-postpass_)[0-9a-f]{32}$/D';
+    // WordPress's login, post-password and WooCommerce session cookies, named by a per-site hash, so no exclusion list can name them.
+    const WORDPRESS_SESSION_COOKIE = '/^(?:wordpress_(?:sec_|logged_in_)?|wordpressuser_|wordpresspass_|wp-postpass_|wp_woocommerce_session_)[0-9a-f]{32}$/D';
+    // The same cookies when a site names them itself, in wp-config.php.
+    const WORDPRESS_COOKIE_CONSTANTS = ['AUTH_COOKIE', 'SECURE_AUTH_COOKIE', 'LOGGED_IN_COOKIE', 'USER_COOKIE', 'PASS_COOKIE'];
 
     // Headers that describe WordPress's bytes, which a rewritten MCP result no longer is.
     const BYTE_HEADERS = ['Content-Length', 'Content-Digest', 'Repr-Digest', 'Content-MD5', 'ETag'];
@@ -80,9 +82,9 @@ final class Runtime
         $target = self::requestTarget($_SERVER);
         $entries = self::headerEntriesFromServer($_SERVER);
         $byName = Protocol::lookup($entries);
-        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        $method = self::restMethod(strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')), $target, $_GET, $_SERVER);
         $body = self::readBody($method, $byName['content-type'] ?? null);
-        $host = self::requestHost($_SERVER);
+        $host = self::decidedHost(self::requestHost($_SERVER), self::siteHosts());
         $requestId = self::requestId();
         $exclude = [
             'headers' => $settings['exclude']['headers'],
@@ -91,7 +93,6 @@ final class Runtime
 
         list($payload, $mcp) = Protocol::extract([
             'method' => $method,
-            'call_method' => self::restMethod($method, $_GET, $_SERVER),
             'url' => $target,
             'host' => $host,
             'ip' => isset($_SERVER['REMOTE_ADDR']) && $_SERVER['REMOTE_ADDR'] !== '' ? (string) $_SERVER['REMOTE_ADDR'] : null,
@@ -117,8 +118,10 @@ final class Runtime
             'mcp_edits' => null,
             'rewrite' => null,
             'decided_at' => null,
+            'shutting_down' => false,
         ];
         register_shutdown_function(function () {
+            self::$state['shutting_down'] = true;
             // Registered from inside a shutdown function, so it runs after every other one,
             // WordPress's own output flush included: finishing the request first would cut it off.
             register_shutdown_function([self::class, 'report']);
@@ -165,6 +168,7 @@ final class Runtime
                 self::$state['rewrite'] = ['held' => '', 'passing' => false, 'decided' => false];
             }
         }
+        if ($paying || self::$state['payment_headers'] !== [] || Protocol::isRecord($payment->meta ?? null)) self::keepOutOfPageCaches();
 
         // From revision 2 DNA may pass before working out who is asking: no verdict, no headers.
         $verdict = $decision->verdict ?? null;
@@ -210,6 +214,18 @@ final class Runtime
         self::$state['mode'] = $mode;
         header('x-d3-edge: ' . $mode);
         ob_start([self::class, 'onOutput'], 1);
+    }
+
+    /**
+     * A page cache plugin stores pages from its own buffer, which sees neither our
+     * headers nor the payer, so one paid visit would serve the page free to all.
+     * WP Super Cache, W3 Total Cache, WP Rocket and LiteSpeed Cache all read this.
+     */
+    private static function keepOutOfPageCaches()
+    {
+        if (!defined('DONOTCACHEPAGE')) define('DONOTCACHEPAGE', true);
+        // LiteSpeed's server-level cache, which runs without the plugin.
+        header('X-LiteSpeed-Cache-Control: no-cache');
     }
 
     /** Also on fail-open: an endpoint we could not reach is no reason to hand the origin a credential. */
@@ -273,23 +289,77 @@ final class Runtime
     }
 
     /**
-     * The method WordPress's REST API serves the request as: `?_method=` or
-     * `X-HTTP-Method-Override` turn a PUT or GET into the POST that runs an MCP
-     * call, so the call is read under the method that will run it.
+     * The method WordPress serves the request as. On the REST API, `?_method=`
+     * or `X-HTTP-Method-Override` turn a GET into the POST that runs an MCP tool,
+     * and DNA reads a GET as the free handshake: it is told the method that runs.
      */
-    public static function restMethod($method, array $get, array $server)
+    public static function restMethod($method, $target, array $get, array $server)
     {
+        $rest = isset($get['rest_route']) || preg_match('~^(?:/index\.php)?/wp-json(?:/|$)~i', Protocol::pathOf($target)) === 1;
         $override = $get['_method'] ?? $server['HTTP_X_HTTP_METHOD_OVERRIDE'] ?? null;
-        return is_string($override) && $override !== '' ? strtoupper($override) : $method;
+        return $rest && is_string($override) && $override !== '' ? strtoupper($override) : $method;
+    }
+
+    /**
+     * The hosts this site's rules are for: DNA_HOSTS, else WordPress's own home
+     * and site URLs where they are known yet. Empty when none is.
+     */
+    public static function siteHosts()
+    {
+        $hosts = Protocol::parseExclusionList(self::setting('DNA_HOSTS'), true);
+        if ($hosts !== []) return $hosts;
+
+        $urls = [];
+        foreach (['WP_HOME', 'WP_SITEURL'] as $constant) {
+            if (defined($constant)) $urls[] = constant($constant);
+        }
+        // The must-use loader and the plugin run after WordPress connects to its database; wp-config.php runs before.
+        if ($urls === [] && function_exists('get_option')) $urls = [get_option('home'), get_option('siteurl')];
+
+        foreach ($urls as $url) {
+            $host = self::hostOf($url);
+            if ($host !== null && !in_array($host, $hosts, true)) $hosts[] = $host;
+        }
+
+        return $hosts;
+    }
+
+    /** A URL's authority as a Host header names it: lowercase, with its port when it has one. */
+    public static function hostOf($url)
+    {
+        $parts = is_string($url) ? parse_url($url) : false;
+        if (!is_array($parts) || !isset($parts['host'])) return null;
+
+        return strtolower($parts['host']) . (isset($parts['port']) ? ':' . $parts['port'] : '');
+    }
+
+    /**
+     * The host DNA reads this site's rules by. The Host header is the visitor's
+     * to write, and a server that answers any name (a default vhost, or nginx
+     * routing by an absolute request target) would otherwise let a request pick
+     * a host with no rules at all: one the site doesn't list is decided as its first.
+     */
+    public static function decidedHost($requested, array $siteHosts)
+    {
+        if ($siteHosts === []) return $requested;
+
+        return in_array(rtrim(strtolower($requested), '.'), $siteHosts, true) ? $requested : $siteHosts[0];
     }
 
     /** The site's cookie exclusions, plus every WordPress login cookie this request carries. */
     public static function withWordPressSessionCookies(array $excluded, $cookieHeader)
     {
+        $named = [];
+        foreach (self::WORDPRESS_COOKIE_CONSTANTS as $constant) {
+            if (defined($constant)) $named[] = (string) constant($constant);
+        }
+
+        $hash = defined('COOKIEHASH') ? (string) COOKIEHASH : '';
         foreach (Protocol::cookiesOf($cookieHeader) as $cookie) {
-            if (preg_match(self::WORDPRESS_SESSION_COOKIE, $cookie[0]) === 1 && !in_array($cookie[0], $excluded, true)) {
-                $excluded[] = $cookie[0];
-            }
+            $name = $cookie[0];
+            $session = preg_match(self::WORDPRESS_SESSION_COOKIE, $name) === 1 || in_array($name, $named, true)
+                || ($hash !== '' && substr($name, -strlen($hash)) === $hash);
+            if ($session && !in_array($name, $excluded, true)) $excluded[] = $name;
         }
 
         return $excluded;
@@ -472,11 +542,17 @@ final class Runtime
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $errno = curl_errno($ch);
         $error = curl_error($ch);
-        curl_close($ch);
+        self::closeCurl($ch);
 
         if ($ok === false || $status === 0) return $failed($error !== '' ? $error : 'no response', $errno);
 
         return ['status' => $status, 'body' => $body, 'error' => null, 'errno' => 0];
+    }
+
+    /** PHP 8 frees a handle by itself, and 8.5 deprecates closing one: a notice printed would send WordPress's headers early. */
+    private static function closeCurl($ch)
+    {
+        if (PHP_VERSION_ID < 80000) curl_close($ch);
     }
 
     private static function curlOptions($budgetMs)
@@ -523,7 +599,9 @@ final class Runtime
 
         while (ob_get_level() > 0 && @ob_end_clean()) {
         }
-        if (!headers_sent()) {
+        if (headers_sent($file, $line)) {
+            self::logEvery('sent early', 3600, "output from $file:$line went out before DNA, so its answers go out as that output's 200");
+        } else {
             header_remove();
             // PHP would otherwise add a text/html type to a redirect.
             if (!$answer['content_type']) ini_set('default_mimetype', '');
@@ -548,6 +626,12 @@ final class Runtime
         if (self::$state === null) return $chunk;
         if (!headers_sent()) self::decorate();
 
+        // Closed before the headers left, as a download closes every buffer before it sets its own:
+        // PHP's own callback puts ours on instead. Taken only for a response that needs it, since it has one slot.
+        if (($phase & PHP_OUTPUT_HANDLER_FINAL) && !headers_sent() && !self::shuttingDown() && self::carriesPayment()) {
+            header_register_callback([self::class, 'decorate']);
+        }
+
         $rewrite = &self::$state['rewrite'];
         if ($rewrite === null || $rewrite['passing']) return $chunk;
 
@@ -558,13 +642,19 @@ final class Runtime
         $final = ($phase & PHP_OUTPUT_HANDLER_FINAL) !== 0;
 
         if (!$rewrite['decided']) {
-            // An empty call (the buffer starting, an ob_clean) says nothing about the answer yet.
-            if ($chunk === '' && !$final) return '';
+            // Whitespace says nothing about the answer yet: the buffer starting, an ob_clean,
+            // a newline after some plugin's closing tag that output_buffering holds back.
+            if (!$final && trim($chunk) === '') {
+                $rewrite['held'] .= $chunk;
+                return '';
+            }
 
             $rewrite['decided'] = true;
             if (headers_sent() || !self::resultRewritable(headers_list())) {
                 $rewrite['passing'] = true;
-                return $chunk;
+                $out = $rewrite['held'] . $chunk;
+                $rewrite['held'] = '';
+                return $out;
             }
             self::decorate();
         }
@@ -590,9 +680,22 @@ final class Runtime
         return '';
     }
 
-    /** DNA's headers onto WordPress's, as they stand now. The status is kept: a Location or WWW-Authenticate would move it. */
-    private static function decorate()
+    private static function shuttingDown()
     {
+        return self::$state['shutting_down'] || (function_exists('doing_action') && doing_action('shutdown'));
+    }
+
+    /** A receipt or our Set-Cookie: what makes a response one visitor's. */
+    private static function carriesPayment()
+    {
+        return self::$state['payment_headers'] !== [];
+    }
+
+    /** DNA's headers onto WordPress's, as they stand now. The status is kept: a Location or WWW-Authenticate would move it. */
+    public static function decorate()
+    {
+        if (self::$state === null || headers_sent()) return;
+
         $state = &self::$state;
         $status = http_response_code();
         header('x-d3-edge: ' . $state['mode']);
@@ -727,7 +830,7 @@ final class Runtime
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $errno = curl_errno($ch);
         $error = curl_error($ch);
-        curl_close($ch);
+        self::closeCurl($ch);
         if ($ok === false || $status >= 300 || $status === 0) {
             self::logEvery(
                 'report ' . ($status !== 0 ? $status : 'curl ' . $errno),

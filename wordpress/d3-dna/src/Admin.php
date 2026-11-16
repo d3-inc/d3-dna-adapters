@@ -10,6 +10,7 @@ final class Admin
     const LOADER = '0-d3-dna-loader.php';
     const PAGE = 'd3-dna';
     const CHECK_ACTION = 'd3_dna_check';
+    const LOADER_MARK = '// Installed by the DNA by D3 plugin, which removes it on deactivation.';
 
     public static function register()
     {
@@ -30,7 +31,7 @@ final class Admin
     public static function loaderSource()
     {
         $boot = var_export('/' . basename(dirname(__DIR__)) . '/boot.php', true);
-        return "<?php\n// Installed by the DNA by D3 plugin, which removes it on deactivation.\n"
+        return "<?php\n" . self::LOADER_MARK . "\n"
             . "if (is_file(WP_PLUGIN_DIR . $boot)) include_once WP_PLUGIN_DIR . $boot;\n";
     }
 
@@ -48,8 +49,8 @@ final class Admin
         if (is_multisite() && !$networkWide) return;
 
         $path = self::loaderPath();
-        // Only ours: a file of that name someone else wrote stays.
-        if (is_file($path) && @file_get_contents($path) === self::loaderSource()) @unlink($path);
+        // Only ours, whichever version wrote it: a file of that name someone else wrote stays.
+        if (is_file($path) && strpos((string) @file_get_contents($path), self::LOADER_MARK) !== false) @unlink($path);
     }
 
     public static function addPage()
@@ -82,6 +83,19 @@ final class Admin
         return $meanings[$edge] ?? 'DNA answered that page itself, as a rule says.';
     }
 
+    /** From wp-config.php, WordPress's own address is not known yet: without DNA_HOSTS or WP_HOME, any Host is believed. */
+    private static function hostsRow($entry)
+    {
+        if (!class_exists(Runtime::class)) return '';
+
+        $pinned = Runtime::setting('DNA_HOSTS') !== null || defined('WP_HOME') || defined('WP_SITEURL');
+        if ($entry === 'wp-config' && !$pinned) {
+            return 'whichever a request names: define DNA_HOSTS in wp-config.php, or a request can name a host with no rules';
+        }
+
+        return implode(', ', Runtime::siteHosts());
+    }
+
     public static function renderPage()
     {
         if (!current_user_can('manage_options')) return;
@@ -98,6 +112,7 @@ final class Admin
                 'plugin' => 'the plugin itself, after the must-use plugins. A page cache serves its hits before DNA runs: add the wp-config.php line below.',
             ][$entry] ?? 'nowhere on this request.',
             'Endpoint' => $settings !== null && $settings['endpoint'] !== null ? $settings['endpoint'] : 'off: no DNA_API_KEY, or DNA_ENABLED is false',
+            'Hosts' => self::hostsRow($entry),
             'API key' => $key !== null && $key !== '' ? 'set, ending ' . substr($key, -4) : 'not set',
             'If DNA cannot answer' => $settings !== null && $settings['fail_mode'] === 'closed' ? 'block (DNA_FAIL_MODE=closed)' : 'serve the page',
             'Time limit' => $settings !== null ? $settings['timeout_ms'] . ' ms, ' . $settings['payment_timeout_ms'] . ' ms for a request that pays' : '',

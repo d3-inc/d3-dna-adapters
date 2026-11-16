@@ -571,7 +571,7 @@ async function core(label, { port, reports }) {
   s = await seen(id);
   check(
     `${label}: mcp: a call WordPress serves as POST under _method is read as one`,
-    s.decisions[0]?.payload.mcp?.tool === 'search' && s.decisions[0]?.payload.method === 'PUT',
+    s.decisions[0]?.payload.mcp?.tool === 'search' && s.decisions[0]?.payload.method === 'POST',
     s.decisions[0]?.payload
   );
 
@@ -658,10 +658,34 @@ async function core(label, { port, reports }) {
     body: rpc('tools/call', { name: 'search' }),
   });
   check(
-    `${label}: mcp: a server that clears the buffers first still gets the receipt`,
+    `${label}: mcp: a server that empties its buffer first still gets the receipt`,
     res.json?.result?._meta?.['x402/payment-response']?.success === true,
     res.text
   );
+
+  res = await send(port, `/mcp-raw?t=${tag()}&scenario=meta`, {
+    method: 'POST',
+    headers: { ...JSON_TYPE, 'x-test-end-clean': '1' },
+    body: rpc('tools/call', { name: 'search' }),
+  });
+  check(
+    `${label}: mcp: a server that closes every buffer is still served, without the receipt`,
+    res.json?.result?.content && res.json.result._meta === undefined,
+    res.text
+  );
+
+  if (label === 'apache') {
+    res = await send(port, `${MCP}?t=${tag()}&scenario=paidmeta`, {
+      method: 'POST',
+      headers: { ...JSON_TYPE, 'x-test-stray-newline': '1' },
+      body: rpc('tools/call', { name: 'search' }),
+    });
+    check(
+      `${label}: mcp: a stray newline before the result still gets the receipt`,
+      res.json?.result?._meta?.['x402/payment-response']?.success === true,
+      res.text
+    );
+  }
 
   res = await send(port, `/mcp-sse?t=${tag()}&scenario=paidmeta`, {
     method: 'POST',
@@ -800,6 +824,44 @@ async function core(label, { port, reports }) {
   check(`${label}: an ACME-shaped path is decided like any other`, res.status === 403, res.status);
 
   // ── WordPress's own headers, and DNA's beside them ────────────────────────
+  res = await send(port, `/download?t=${tag()}&scenario=paid`);
+  check(
+    `${label}: a download that closes every buffer and sets its own caching is still private`,
+    res.text === 'file bytes' &&
+      res.headers['payment-receipt'] === 'receipt-1' &&
+      /^private/.test(res.headers['cache-control'] ?? ''),
+    res.headers
+  );
+
+  res = await send(port, `/page?t=${tag()}&scenario=paid`);
+  check(
+    `${label}: a paid page is kept out of page-cache plugins`,
+    res.json?.pageCacheSkipped === true,
+    res.json?.pageCacheSkipped
+  );
+  res = await send(port, `/page?t=${tag()}`);
+  check(`${label}: an unpaid one is not`, res.json?.pageCacheSkipped === false, res.json?.pageCacheSkipped);
+
+  id = tag();
+  await send(port, `/page?t=${id}&scenario=block`, { headers: { host: 'evil.example' } });
+  s = await seen(id);
+  check(
+    `${label}: a Host the site doesn't list is decided as the site's own`,
+    s.decisions[0]?.payload.host === '127.0.0.1:8130',
+    s.decisions[0]?.payload.host
+  );
+  id = tag();
+  await send(port, `/wp-json/dna-test/v1/mcp?t=${id}&_method=POST`, {
+    headers: JSON_TYPE,
+    body: rpc('tools/call', { name: 'search' }),
+  });
+  s = await seen(id);
+  check(
+    `${label}: a GET the REST API runs as POST is decided as one`,
+    s.decisions[0]?.payload.method === 'POST' && s.decisions[0]?.payload.mcp?.tool === 'search',
+    s.decisions[0]?.payload
+  );
+
   res = await send(port, `/page?t=${tag()}&scenario=paid`, { headers: { 'x-test-own-callback': '1' } });
   check(
     `${label}: a paid page is decorated beside the site's own header callback, which still runs`,
@@ -879,7 +941,7 @@ async function dead() {
   for (let i = 0; i < 20; i++) await send(SITES.fpm.port, `/page?t=${tag()}`);
   await sleep(200);
   const after = (phpLog().match(/decision call failed/g) ?? []).length;
-  check('dead: twenty failed calls log one line, not twenty', after >= 1 && after - before <= 1, {
+  check('dead: twenty failed calls log one line, not twenty', after - before === 1, {
     before,
     after,
   });

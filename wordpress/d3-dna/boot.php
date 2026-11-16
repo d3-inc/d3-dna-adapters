@@ -75,12 +75,17 @@ try {
 if ($d3_dna_loaded) {
     \D3\Dna\Runtime::run();
 } else {
-    // Once a minute, not per request: Runtime.php's own throttle is what failed to load.
-    $d3_dna_marker = sys_get_temp_dir() . '/d3-dna-unloaded-' . md5(__DIR__);
-    if (@filemtime($d3_dna_marker) < time() - 60 && @touch($d3_dna_marker)) {
+    // Once a minute, not per request: Memory.php, which throttles the rest, may be what is missing.
+    // Where open_basedir keeps PHP out of every temp directory, every request says so.
+    $d3_dna_dir = null;
+    foreach ([sys_get_temp_dir(), (string) ini_get('upload_tmp_dir')] as $d3_dna_candidate) {
+        if ($d3_dna_dir === null && $d3_dna_candidate !== '' && @is_writable($d3_dna_candidate)) $d3_dna_dir = $d3_dna_candidate;
+    }
+    $d3_dna_marker = $d3_dna_dir === null ? null : $d3_dna_dir . '/d3-dna-unloaded-' . md5(__DIR__);
+    if ($d3_dna_marker === null || (@filemtime($d3_dna_marker) < time() - 60 && @touch($d3_dna_marker))) {
         error_log('d3-dna: a file under ' . __DIR__ . '/src is missing, so DNA is off and anything of ours is refused');
     }
-    unset($d3_dna_marker);
+    unset($d3_dna_marker, $d3_dna_dir, $d3_dna_candidate);
     $d3_dna_refuse_unloaded();
 }
 unset($d3_dna_loaded, $d3_dna_refuse_unloaded);

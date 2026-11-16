@@ -767,13 +767,39 @@ final class Protocol
     {
         if ($rpc !== null || $body === '' || !self::startsAsJson($body)) return false;
 
-        $parsed = strlen($body) <= self::MCP_BODY_MAX_BYTES ? self::jsonDecode($body) : null;
-        if ($parsed === null) return self::findQuoted($body, '"jsonrpc"') && self::namesCredential($body);
+        $readable = strlen($body) <= self::MCP_BODY_MAX_BYTES;
+        $parsed = $readable ? self::jsonDecode($body) : null;
+        if ($parsed === null) {
+            // PHP's objects refuse a key JSON.parse reads (one starting with \u0000), which could hide an
+            // escaped credential from the byte search: the same body read as arrays still shows it.
+            $arrays = $readable ? json_decode(strncmp($body, "\xEF\xBB\xBF", 3) === 0 ? substr($body, 3) : $body, true) : null;
+            if (is_array($arrays)) return self::arraysCarryCredential($arrays);
+
+            return self::findQuoted($body, '"jsonrpc"') && self::namesCredential($body);
+        }
 
         foreach (is_array($parsed) ? $parsed : [$parsed] as $item) {
             if (self::isRecord($item) && self::prop($item, 'jsonrpc') !== null && self::callCarriesCredential($item)) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    /** callCarriesCredential over a body json_decode could read only as arrays: one call, or a batch of them. */
+    private static function arraysCarryCredential(array $parsed)
+    {
+        $calls = $parsed !== [] && array_keys($parsed) === range(0, count($parsed) - 1) ? $parsed : [$parsed];
+        foreach ($calls as $call) {
+            if (!is_array($call) || !array_key_exists('jsonrpc', $call) || !is_array($call['params'] ?? null)) continue;
+
+            $params = $call['params'];
+            $meta = is_array($params['_meta'] ?? null) ? $params['_meta'] : [];
+            if (array_key_exists(self::MCP_X402_META, $meta) || array_key_exists(self::MCP_DNA_KEY_META, $meta)) return true;
+
+            $args = is_array($params['arguments'] ?? null) ? $params['arguments'] : [];
+            if (($call['method'] ?? null) === 'tools/call' && array_key_exists(self::MCP_KEY_ARGUMENT, $args)) return true;
         }
 
         return false;
@@ -959,8 +985,7 @@ final class Protocol
 
     /**
      * The decision payload, and the MCP carriage when revision 3 read one.
-     * $req: method, url, host, ip, secure, timestamp, entries, `call_method` when
-     * the site will serve the request as another method, and either `body`
+     * $req: method, url, host, ip, secure, timestamp, entries, and either `body`
      * (the bytes) or `streamed` (digest and credential search of a body too large
      * to hold), or `body_unavailable` when PHP consumed it (multipart).
      */
@@ -1002,7 +1027,7 @@ final class Protocol
             $getHeader = function ($name) use ($byName) {
                 return $byName[$name] ?? null;
             };
-            $mcp = self::mcpCarriageOf($req['call_method'] ?? $req['method'], $getHeader, $body ?? '', $exclude['headers'], $streamed);
+            $mcp = self::mcpCarriageOf($req['method'], $getHeader, $body ?? '', $exclude['headers'], $streamed);
         }
 
         $lifted = self::liftedPaymentToForward($byName, $mcp !== null ? $mcp['lifted'] : []);

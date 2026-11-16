@@ -18,6 +18,7 @@ x-wordpress-env: &wordpress-env
   DNA_PAYMENT_TIMEOUT_MS: '3000'
   DNA_EXCLUDE_HEADERS: x-internal-token
   DNA_EXCLUDE_COOKIES: sid
+  DNA_HOSTS: 127.0.0.1:8130,127.0.0.1:8131,127.0.0.1:8132
   DNA_ENABLED: ${DNA_ENABLED:-}
   DNA_FAIL_MODE: ${DNA_FAIL_MODE:-}
   DNA_TEST_BOOT: ${DNA_TEST_BOOT:-}
@@ -73,7 +74,13 @@ services:
   apache83:
     image: ${APACHE83_IMAGE}
     environment: *wordpress-env
-    volumes: *wordpress-volumes
+    volumes:
+      - wp:/var/www/html
+      - ${PLUGIN_DIR:-../d3-dna}:/var/www/html/wp-content/plugins/d3-dna:ro
+      - ./origin/dna-test-origin.php:/var/www/html/wp-content/plugins/dna-test-origin.php:ro
+      - ./origin/advanced-cache.php:/var/www/html/wp-content/advanced-cache.php:ro
+      # The one site with php.ini's production output buffering; the others print straight through.
+      - ./output-buffering.ini:/usr/local/etc/php/conf.d/zz-output-buffering.ini:ro
     ports:
       - '127.0.0.1:8131:80'
     depends_on:

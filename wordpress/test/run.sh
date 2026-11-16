@@ -8,6 +8,7 @@ cd "$(dirname "$0")"
 
 export PHP74_IMAGE=php:7.4-cli@sha256:620a6b9f4d4feef2210026172570465e9d0c1de79766418d3affd09190a7fda5
 export PHP83_IMAGE=php:8.3-cli@sha256:628102249d93494233b54490b785f12db9cd60f4dc89416dfca15973f2125f10
+export PHP85_IMAGE=php:8.5-cli@sha256:50956f094e90a716d43bea28087d447555ad80510e386ab8c9c10d8c70d781a9
 export FPM_IMAGE=wordpress:6.8-php8.3-fpm@sha256:906c25725c2edccb7809851f61f98560ea73b6c01d482d69d1b9fdf04b5ff75f
 export APACHE83_IMAGE=wordpress:6.8-php8.3-apache@sha256:30bff39330d1693b0ce13d32fc9b7bb67193064f040b7d60d3494e136fa599d4
 # WordPress publishes no PHP 7.4 image of 6.8; this one runs the 6.8 core the FPM image installs.
@@ -34,9 +35,9 @@ up() {
   fail "never came up: $1"
 }
 
-for image in "$PHP74_IMAGE" "$PHP83_IMAGE"; do
+for image in "$PHP74_IMAGE" "$PHP83_IMAGE" "$PHP85_IMAGE"; do
   echo "--- unit, ${image%%@*}"
-  docker run --rm -v "$PWD/../..":/repo:ro -w /repo "$image" php wordpress/test/unit.php || exit 1
+  docker run --rm -v "$PWD/../..":/repo:ro -w /repo "$image" php -d error_reporting=-1 wordpress/test/unit.php || exit 1
 done
 
 down

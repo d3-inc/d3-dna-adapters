@@ -18,20 +18,28 @@ own copies never reach `$_SERVER`.
 
 DNA runs in PHP, so it sees what PHP serves.
 
-| Request                                                                    | Checked                                         |
-| -------------------------------------------------------------------------- | ----------------------------------------------- |
-| Pages, the REST API, `wp-admin`, `wp-login.php`, feeds                     | Yes                                             |
-| A page-cache plugin's hit (WP Super Cache, W3 Total Cache, WP Rocket…)     | Only with the `wp-config.php` line (Install, 3) |
-| Files your web server sends itself: images, CSS, JS, uploads               | No: they never reach PHP                        |
-| Pages your host caches in front of PHP (WP Engine, Kinsta, Cloudflare APO) | No                                              |
+| Request                                                                                                                                                                | Checked                                         |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Pages, the REST API, `wp-admin`, `wp-login.php`, feeds                                                                                                                 | Yes                                             |
+| A page-cache plugin's hit served by PHP (WP Super Cache, W3 Total Cache…)                                                                                              | Only with the `wp-config.php` line (Install, 3) |
+| Files your web server sends itself: images, CSS, JS, uploads, and cached pages a cache plugin's rewrite rules serve as files (WP Rocket, WP Super Cache's expert mode) | No: they never reach PHP                        |
+| Pages your host caches in front of PHP (WP Engine, Kinsta, Cloudflare APO)                                                                                             | No                                              |
 
-For the last two, put DNA in front of your site instead:
+A paid page is never stored by a page-cache plugin: DNA sets `DONOTCACHEPAGE`
+on it, which they all honour. For the last two rows, put DNA in front of your
+site instead:
 [Cloudflare](../packages/cloudflare-adapter), or
 [nginx](../openresty) if you run your own server.
 
 WordPress's own requests are decided like a visitor's: `wp-cron.php`, Site
 Health's loopback, a payment provider's webhook. A rule that blocks agents DNA
 can't name blocks those too, so scope it to the paths it is for.
+
+WordPress also serves a page at URLs a rule on its path doesn't name:
+`/?rest_route=/x` for `/wp-json/x`, the path in other letter cases, its feed,
+its embed, and the REST API's posts endpoints. A rule covers the URLs it
+matches, so match each form a priced page is served under, or turn off the
+ones your site doesn't use.
 
 Behind a CDN or load balancer, DNA sees what PHP sees: set your server's
 real-IP module, and `HTTPS` above the include line in `wp-config.php`, so
@@ -93,7 +101,16 @@ PHP's environment. A constant wins. Nothing is stored in the database.
 | `DNA_EXCLUDE_HEADERS`       | unset                                 | Comma-separated header names that never leave your server. Up to 128: past that, a log warning.       |
 | `DNA_EXCLUDE_COOKIES`       | unset                                 | Comma-separated cookie names that never leave your server. Up to 128, likewise.                       |
 | `DNA_DEBUG_LOG_RAW_PAYLOAD` | unset                                 | `true` keeps every request header (but the excluded and the credentials) on DNA's record. Debug only. |
+| `DNA_HOSTS`                 | your WordPress address                | Comma-separated hosts your rules are for. A request naming another is decided as the first.           |
 | `DNA_ENDPOINT`              | `https://edge-api.d3.com/v1/decision` | Leave unset unless we give you another.                                                               |
+
+`DNA_HOSTS` matters because the `Host` header is the visitor's to write: on a
+server that answers any name, a request naming a host with no rules would skip
+yours. Unset, it is the host of `WP_HOME` and `WP_SITEURL`, or of WordPress's
+own address where the plugin runs after WordPress connects to its database;
+from the `wp-config.php` line with neither constant set, set `DNA_HOSTS`
+yourself. **Tools → DNA** shows the hosts in force. List every domain a
+multisite network serves.
 
 `DNA_TIMEOUT_MS` is 1 s where the SDKs use 2: PHP opens a new connection to
 DNA for each request, and every page waits on it. On PHP 8.5 the connection is
@@ -137,8 +154,8 @@ when a browser is navigating, and serves the page once the visitor pays.
   cookies, no `d3pay_*` parameter, and no payment inside an MCP call. They are
   removed from `$_SERVER`, `$_ENV`, `$_COOKIE`, `$_GET` and `$_REQUEST`, from
   `argv` and from Apache's `REDIRECT_QUERY_STRING`, before WordPress loads.
-  `getallheaders()`, and `getenv()` under PHP-FPM, read the server's own copy
-  of the request, which PHP cannot change: read the request from `$_SERVER`.
+  `getallheaders()` and `getenv()` read the server's own copy of the request,
+  which PHP cannot change: read the request from `$_SERVER`.
 - **The receipt rides WordPress's own response.** Our `Set-Cookie` and CORS
   list are added beside WordPress's, and the page's `Cache-Control` is narrowed
   to `private` with its freshness kept, so no shared cache stores a receipt.
