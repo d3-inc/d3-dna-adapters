@@ -685,6 +685,11 @@ async function core(label, { port, reports }) {
       res.json?.result?._meta?.['x402/payment-response']?.success === true,
       res.text
     );
+    check(
+      `${label}: mcp: and DNA's CORS entry survives the REST API replacing the list after it`,
+      headerValues(res, 'access-control-expose-headers').join(',').includes('payment-receipt'),
+      headerValues(res, 'access-control-expose-headers')
+    );
   }
 
   res = await send(port, `/mcp-sse?t=${tag()}&scenario=paidmeta`, {
@@ -861,6 +866,17 @@ async function core(label, { port, reports }) {
     s.decisions[0]?.payload.method === 'POST' && s.decisions[0]?.payload.mcp?.tool === 'search',
     s.decisions[0]?.payload
   );
+  res = await send(port, `${MCP}?t=${tag()}&_method=PUT`, {
+    method: 'POST',
+    headers: { ...JSON_TYPE, 'x-test-internal-get': '1' },
+    body: rpc('tools/call', { name: 'search' }),
+  });
+  check(
+    `${label}: a route's own GET through the REST API, inside a request overridden to PUT, still runs`,
+    res.json?.result?.internalGet === 200,
+    res.text
+  );
+
   id = tag();
   await send(port, `/blog//%77p-json/dna-test/v1/mcp?t=${id}`, {
     headers: { ...JSON_TYPE, 'x-http-method-override': 'POST' },
@@ -1157,6 +1173,18 @@ async function unloaded() {
   check(
     'no Runtime.php: named in the error log once, not per request',
     (phpLog().match(/src is missing/g) ?? []).length === 1
+  );
+  // Padding first, so neither `jsonrpc` nor the key sits in the first megabyte.
+  const padded = `{"params":{"arguments":{"pad":"${'x'.repeat(1_100_000)}","dna_account_key":"k"}},"jsonrpc":"2.0","id":1,"method":"tools/call"}`;
+  res = await send(SITES.fpm.port, `/mcp-raw?t=${tag()}`, {
+    method: 'POST',
+    headers: JSON_TYPE,
+    body: padded,
+  });
+  check(
+    'no Runtime.php: a key past the first megabyte of a call is still refused',
+    res.status === 502,
+    res.status
   );
 }
 

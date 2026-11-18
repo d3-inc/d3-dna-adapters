@@ -125,7 +125,10 @@ add_action('rest_api_init', function () {
         'permission_callback' => '__return_true',
         'callback' => function (WP_REST_Request $request) {
             $call = json_decode($request->get_body(), true);
-            $response = new WP_REST_Response(['jsonrpc' => '2.0', 'id' => $call['id'] ?? null, 'result' => dna_test_mcp_result($call)]);
+            $result = dna_test_mcp_result($call);
+            // A route calling the REST API in-process, while serving a request whose method was overridden.
+            if ($request->get_header('x-test-internal-get')) $result['internalGet'] = rest_do_request(new WP_REST_Request('GET', '/'))->get_status();
+            $response = new WP_REST_Response(['jsonrpc' => '2.0', 'id' => $call['id'] ?? null, 'result' => $result]);
             $response->header('ETag', '"v1"');
             $response->header('Cache-Control', 'public, max-age=60');
             return $response;

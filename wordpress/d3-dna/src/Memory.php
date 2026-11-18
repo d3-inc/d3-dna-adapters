@@ -58,12 +58,23 @@ final class Memory
         $file = self::file($key);
         if ($file === null) return 1;
 
-        // "<window start> <count>": a write moves the file's time, so the start is kept in it.
-        $parts = explode(' ', (string) @file_get_contents($file));
+        // "<window start> <count>", under a lock: PHP workers time out together in a brownout,
+        // and an unlocked read-then-write loses their counts. A write moves the file's time, so
+        // the window's start is kept in it.
+        $handle = @fopen($file, 'c+');
+        if ($handle === false || !flock($handle, LOCK_EX)) {
+            if ($handle !== false) fclose($handle);
+            return 1;
+        }
+        $parts = explode(' ', (string) stream_get_contents($handle));
         $start = (int) $parts[0];
         $n = $start > time() - $seconds ? (int) ($parts[1] ?? 0) + 1 : 1;
         if ($n === 1) $start = time();
-        @file_put_contents($file, "$start $n");
+        ftruncate($handle, 0);
+        rewind($handle);
+        fwrite($handle, "$start $n");
+        flock($handle, LOCK_UN);
+        fclose($handle);
 
         return $n;
     }

@@ -779,7 +779,8 @@ final class Protocol
         }
 
         foreach (is_array($parsed) ? $parsed : [$parsed] as $item) {
-            if (self::isRecord($item) && self::prop($item, 'jsonrpc') !== null && self::callCarriesCredential($item)) {
+            // Present, whatever its value: `"jsonrpc": null` is still a call's shape, as `'jsonrpc' in item` reads it.
+            if (self::isRecord($item) && self::has($item, 'jsonrpc') && self::callCarriesCredential($item)) {
                 return true;
             }
         }

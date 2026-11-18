@@ -459,6 +459,9 @@ $notified = P::buildPaymentAnswer($priced, 'payment-required', ['hasId' => false
 check('a priced notification gets the plain 402: there is no id to answer', $notified['status'] === 402 && strpos((string) $notified['body'], 'jsonrpc') === false, $notified);
 $nullId = P::buildPaymentAnswer($priced, 'payment-required', ['hasId' => true, 'id' => null]);
 check('a call whose id is null is answered in band with it', $nullId['status'] === 200 && strpos($nullId['body'], '"id":null') !== false, $nullId['body']);
+$nullRpc = '{"jsonrpc":null,"method":"tools/call","params":{"arguments":{"dna_account_key":"secret"}}}';
+check('a body with jsonrpc null naming a credential is refused: present is enough, as TS reads it',
+    P::mcpCarriageOf('POST', $getJson, $nullRpc, [])['unreadable_credential'] === true);
 check('a JSON-RPC id that is an object is no call', P::readJsonRpcRequest('POST', 'application/json', '{"jsonrpc":"2.0","id":{},"method":"x"}') === null);
 
 // ── Runtime: what PHP itself hands the site ──────────────────────────────────
@@ -580,6 +583,8 @@ $counted = array_map(function () use ($key) {
     return D3\Dna\Memory::count("$key count", 60);
 }, range(1, 3));
 check('memory: a count goes up within its window', $counted === [1, 2, 3], $counted);
+check('without the curl extension the timeout code is still curl\'s own', Runtime::CURL_TIMED_OUT === 28
+    && (!defined('CURLE_OPERATION_TIMEDOUT') || CURLE_OPERATION_TIMEDOUT === Runtime::CURL_TIMED_OUT));
 check('memory: and starts again once the window has passed', D3\Dna\Memory::count("$key count", -1) === 1);
 
 // php:// with the stripped call in php://input, and every other php:// stream PHP's own.
@@ -609,6 +614,10 @@ same('payment headers: an origin with no caching is made private', Runtime::deco
 same('no payment headers, no change to the origin\'s caching', Runtime::decoratedHeaders(['Cache-Control: public'], [], false), ['replace' => [], 'append' => []]);
 same('the answer\'s no-store replaces the origin\'s caching', Runtime::decoratedHeaders(['Cache-Control: public'], ['cache-control' => 'no-store'], true)['replace'], ['cache-control' => 'no-store']);
 
+$cors = ['Access-Control-Expose-Headers: X-WP-Total, Link', 'Set-Cookie: a=1; Expires=Thu, 01 Jan 2030 00:00:00 GMT'];
+check('an exact header line is found, its name in any case', Runtime::hasHeaderLine($cors, 'set-cookie', 'a=1; Expires=Thu, 01 Jan 2030 00:00:00 GMT')
+    && Runtime::hasHeaderLine($cors, 'ACCESS-CONTROL-EXPOSE-HEADERS', 'X-WP-Total, Link'));
+check('a CORS list WordPress replaced no longer holds ours', !Runtime::hasHeaderLine($cors, 'access-control-expose-headers', 'payment-receipt'));
 check('the origin\'s own header read back by name', Runtime::responseHeader(['Content-Type: application/json', 'content-type: x'], 'content-type') === 'application/json, x');
 
 // The plugin header names the version this build sends.

@@ -45,12 +45,27 @@ $d3_dna_refuse_unloaded = function () {
         if (stripos((string) $name, '__Host-d3') === 0 || stripos((string) $name, '__Secure-d3') === 0) unset($_COOKIE[$name]);
     }
 
-    // Matched loosely, so `d3pay%5Fhandoff` and a key behind a JSON escape count too.
-    $body = (string) @file_get_contents('php://input', false, null, 0, 1048577);
+    // Matched loosely, so `d3pay%5Fhandoff` and a key behind a JSON escape count too. The whole body
+    // is read, in chunks: a call can put its key past any prefix. The tail keeps a split key findable.
+    $names = false;
+    $jsonrpc = false;
+    $escaped = false;
+    $tail = '';
+    $in = @fopen('php://input', 'rb');
+    while ($in !== false && !feof($in)) {
+        $chunk = (string) fread($in, 65536);
+        if ($chunk === '') break;
+        $window = $tail . $chunk;
+        $names = $names || preg_match('~dna_account_key|dna\.d3\.com\\\\?/key|x402\\\\?/payment~i', $window) === 1;
+        $jsonrpc = $jsonrpc || stripos($window, 'jsonrpc') !== false;
+        $escaped = $escaped || strpos($window, '\\u') !== false;
+        $tail = substr($window, -32);
+    }
+    if ($in !== false) fclose($in);
     $ours = $ours
         || stripos(rawurldecode((string) ($_SERVER['QUERY_STRING'] ?? '')), 'd3pay_') !== false
-        || preg_match('~dna_account_key|dna\.d3\.com\\\\?/key|x402\\\\?/payment~i', $body) === 1
-        || (strpos($body, 'jsonrpc') !== false && (strpos($body, '\\u') !== false || strlen($body) > 1048576));
+        || $names
+        || ($jsonrpc && $escaped);
 
     if (!$ours) {
         header('x-d3-edge: fail-open');

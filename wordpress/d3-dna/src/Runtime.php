@@ -14,6 +14,8 @@ final class Runtime
     const DECISION_MAX_BYTES = 4194304;
     const BODY_CHUNK = 65536;
     const KEY_ARGUMENT_MEMORY_S = 300;
+    // curl's CURLE_OPERATION_TIMEDOUT, which PHP defines only when the curl extension is loaded.
+    const CURL_TIMED_OUT = 28;
 
     // A DNA that answers slowly holds a PHP worker per request for the whole budget: past this many
     // timeouts in the window, unpaid requests stop asking for a while and fail as DNA_FAIL_MODE says.
@@ -120,7 +122,6 @@ final class Runtime
             'answer' => null,
             'no_report' => false,
             'payment_headers' => [],
-            'appended' => false,
             'mcp_edits' => null,
             'rewrite' => null,
             'decided_at' => null,
@@ -143,7 +144,7 @@ final class Runtime
             ? ['status' => null, 'body' => null, 'error' => 'not asked: DNA timed out repeatedly just now', 'errno' => -1]
             : self::decide($settings, $payload, $paying ? $settings['payment_timeout_ms'] : $settings['timeout_ms']);
         self::$state['decided_at'] = microtime(true);
-        if (!$paying && $res['errno'] === CURLE_OPERATION_TIMEDOUT) self::countTimeout();
+        if (!$paying && $res['errno'] === self::CURL_TIMED_OUT) self::countTimeout();
 
         $decision = self::validDecision($res);
         if ($decision === null) {
@@ -253,8 +254,8 @@ final class Runtime
      * The REST API's own word on the method, at dispatch. restMethod() cannot know
      * a prefix a plugin renames wp-json to, and DNA reads a GET or DELETE as the
      * free MCP handshake: one the override runs as another method is refused.
-     * Only the request WordPress built from the wire, which alone the override
-     * reaches; a plugin's own rest_do_request() calls are left alone.
+     * Only a request that carries the override itself, as the one WordPress built
+     * from the wire does; a plugin's own rest_do_request() calls carry none.
      */
     public static function refuseOverriddenMethod($result, $server, $request)
     {
@@ -264,7 +265,7 @@ final class Runtime
 
         $runs = strtoupper((string) $request->get_method());
         $asked = self::$state['method'];
-        if (!self::overrideSent() || $asked === 'POST' || $runs === $asked) return $result;
+        if (!self::carriesOverride($request) || $asked === 'POST' || $runs === $asked) return $result;
 
         self::logEvery('overridden method', 3600, "a REST request sent as $asked ran as $runs, so it was refused");
         return new \WP_Error(
@@ -274,12 +275,13 @@ final class Runtime
         );
     }
 
-    /** Whether WordPress is serving a REST request whose method the visitor overrode, as the REST server reads one. */
-    private static function overrideSent()
+    /** Whether a REST request being dispatched carries a method override, where the REST server reads one from. */
+    private static function carriesOverride($request)
     {
         if (!defined('REST_REQUEST') || !REST_REQUEST) return false;
 
-        $override = $_GET['_method'] ?? $_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'] ?? null;
+        $query = method_exists($request, 'get_query_params') ? $request->get_query_params() : [];
+        $override = $query['_method'] ?? (method_exists($request, 'get_header') ? $request->get_header('x-http-method-override') : null);
         return is_string($override) && $override !== '';
     }
 
@@ -776,9 +778,9 @@ final class Runtime
         $narrow = $state['payment_headers'] !== [] || ($rewriting && $state['mcp_edits']['meta'] !== null);
         $decorated = self::decoratedHeaders(headers_list(), $state['payment_headers'], $narrow);
         foreach ($decorated['replace'] as $name => $value) header($name . ': ' . $value, true);
-        if (!$state['appended']) {
-            foreach ($decorated['append'] as $pair) header($pair[0] . ': ' . $pair[1], false);
-            $state['appended'] = true;
+        // Checked each time, not once: WordPress may replace its CORS list after DNA first added to it.
+        foreach ($decorated['append'] as $pair) {
+            if (!self::hasHeaderLine(headers_list(), $pair[0], $pair[1])) header($pair[0] . ': ' . $pair[1], false);
         }
         if ($rewriting) {
             foreach (self::BYTE_HEADERS as $name) header_remove($name);
@@ -810,6 +812,19 @@ final class Runtime
         }
 
         return ['replace' => $replace, 'append' => $append];
+    }
+
+    /** Whether headers_list() holds this exact header, name in any case. */
+    public static function hasHeaderLine(array $headerList, $name, $value)
+    {
+        foreach ($headerList as $line) {
+            $colon = strpos($line, ':');
+            if ($colon !== false && strcasecmp(substr($line, 0, $colon), $name) === 0 && Protocol::trim(substr($line, $colon + 1)) === $value) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** One response header from headers_list(), repeats joined; null when absent. */
