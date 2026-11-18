@@ -247,8 +247,13 @@ this repo implements identically.
    opt-in, never as the default.
 2. **Bound the call.** A hard timeout, not a socket default. If the
    platform cannot enforce one, it cannot host a correct adapter.
-3. **Ship a kill switch.** An unset decision endpoint means pure
-   passthrough, with no call and no dependency on us.
+3. **Ship a kill switch.** An unset decision endpoint means no call and no
+   dependency on us. Our headers, cookies and URL params still come off, by
+   name. The body goes as sent: a switch that still parses and rewrites
+   bodies may not switch a fault off. So an MCP key in `_meta` or
+   `dna_account_key` reaches the origin of a site with DNA off, and an agent
+   learns those routes only from an unpaid result, which an off adapter
+   never sends.
 4. **Block with `403`** and a JSON body:
    ```json
    { "blocked": true, "ruleId": "…", "tier": "…", "identity": "…" }
