@@ -53,11 +53,11 @@ real-IP module, and `HTTPS` above the include line in `wp-config.php`, so
 
 ## Install
 
-1. Copy [`d3-dna/`](./d3-dna) into `wp-content/plugins/`, or make a zip for
-   **Plugins → Add New → Upload Plugin** from a checkout of this repo:
-   ```sh
-   git archive --format=zip --prefix=d3-dna/ HEAD:wordpress/d3-dna > d3-dna.zip
-   ```
+1. Download
+   [`d3-dna.zip`](https://github.com/d3-inc/d3-dna-adapters/releases/latest/download/d3-dna.zip)
+   and upload it under **Plugins → Add New → Upload Plugin**. Its build
+   provenance checks with
+   `gh attestation verify d3-dna.zip --repo d3-inc/d3-dna-adapters`.
 2. Activate **DNA by D3**. It runs from then on, as a must-use plugin it
    installs, before your other plugins load. On a multisite network, activate
    it for the network: activated on one site, it runs there alone, after the
