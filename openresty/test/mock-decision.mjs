@@ -32,6 +32,15 @@ const SCENARIOS = {
         body: '{"error":"payment_required","priceUsd":"0.001"}',
       },
     }),
+  // An MPP offer: a WWW-Authenticate challenge beside the 402.
+  gate402mpp: () =>
+    pass({
+      payment: {
+        status: 402,
+        headers: { 'www-authenticate': 'Payment id="c1", method="tempo"' },
+        body: '{"error":"payment_required"}',
+      },
+    }),
   gate402html: () =>
     pass({
       payment: {
@@ -51,6 +60,7 @@ const SCENARIOS = {
   paid: () => pass({ payment: { headers: paidHeaders } }),
   paidmeta: () =>
     pass({ payment: { headers: paidHeaders, meta: { 'x402/payment-response': { success: true } } } }),
+  meta: () => pass({ payment: { meta: { 'x402/payment-response': { success: true } } } }),
   keyarg: () => pass({ mcpKeyArgument: true }),
   keyargoff: () => pass({ mcpKeyArgument: false }),
   jsonrpc402: () =>
@@ -114,4 +124,4 @@ createServer((req, res) => {
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(typeof body === 'string' ? body : JSON.stringify(body));
   });
-}).listen(PORT, '127.0.0.1');
+}).listen(PORT, process.env.MOCK_HOST ?? '127.0.0.1');

@@ -51,6 +51,7 @@ build can do. Any other adapter sends a type of its own, such as
 | `vercel-mcp`        | `@d3-inc/d3-dna-vercel-middleware`'s `withD3Mcp`                   | `/v1/decision`     |
 | `snippet`           | [`cloudflare-snippet/snippet.js`](./cloudflare-snippet/snippet.js) | `/v1/decision`     |
 | `openresty`         | [`openresty/`](./openresty/)                                       | `/v1/decision`     |
+| `wordpress`         | [`wordpress/`](./wordpress/)                                       | `/v1/decision`     |
 | `caddy`             | [`caddy/dna.caddy`](./caddy/dna.caddy)                             | `/v1/forward-auth` |
 | `nginx`             | [`nginx-auth-request/`](./nginx-auth-request/)                     | `/v1/forward-auth` |
 

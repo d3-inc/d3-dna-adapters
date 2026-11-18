@@ -110,6 +110,7 @@ describe('isAdapterVersion', () => {
 describe('isAdapterType', () => {
   it('takes each type we publish and nothing it inherits', () => {
     expect(isAdapterType('openresty')).toBe(true);
+    expect(isAdapterType('wordpress')).toBe(true);
     expect(isAdapterType('my-proxy')).toBe(false);
     expect(isAdapterType('constructor')).toBe(false);
     expect(isAdapterType('toString')).toBe(false);

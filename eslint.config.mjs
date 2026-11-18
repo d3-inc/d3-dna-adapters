@@ -66,7 +66,7 @@ export default defineConfig(
     rules: { '@typescript-eslint/no-unused-vars': 'off' },
   },
   {
-    files: ['caddy/test/**/*.mjs', 'openresty/test/**/*.mjs', 'test/**/*.mjs'],
+    files: ['caddy/test/**/*.mjs', 'openresty/test/**/*.mjs', 'wordpress/test/**/*.mjs', 'test/**/*.mjs'],
     languageOptions: { globals: globals.node },
   }
 );

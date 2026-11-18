@@ -34,6 +34,21 @@ export const RECIPES = [
     literal: /local DNA_ADAPTER = "([^"]+)"/g,
   },
   {
+    files: [
+      'wordpress/d3-dna/d3-dna.php',
+      'wordpress/d3-dna/boot.php',
+      'wordpress/d3-dna/src/Protocol.php',
+      'wordpress/d3-dna/src/Runtime.php',
+      'wordpress/d3-dna/src/InputStream.php',
+      'wordpress/d3-dna/src/Memory.php',
+      'wordpress/d3-dna/src/Admin.php',
+    ],
+    literalFile: 'wordpress/d3-dna/src/Runtime.php',
+    type: 'wordpress',
+    endpoint: 'decision',
+    literal: /const DNA_ADAPTER = '([^']+)';/g,
+  },
+  {
     files: ['caddy/dna.caddy'],
     literalFile: 'caddy/dna.caddy',
     type: 'caddy',
