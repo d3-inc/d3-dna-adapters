@@ -69,6 +69,11 @@ provenance naming this repo and `publish.yml`:
 - A fix for an older line is tagged on a `release/X.Y` branch and publishes
   under `release-X.Y`.
 
+The WordPress plugin has its own version: `wordpress-vX.Y.Z` on `main` runs its
+suite and attaches `d3-dna.zip` to a GitHub Release
+(`release-wordpress.yml`), once a reviewer approves. The tag must match the
+plugin's `Version` header and the `dna-adapter` version it sends.
+
 A release that does something new for DNA adds its build to
 [`proven-mechanisms.json`](./proven-mechanisms.json) before it is tagged: each
 mechanism it does, and the tests that fail if it stops. DNA serves a build only

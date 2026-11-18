@@ -1,0 +1,63 @@
+name: release-wordpress
+
+# A wordpress-v* tag on main attaches the plugin's zip to a GitHub Release. The
+# install docs link releases/latest/download/d3-dna.zip, and no v* tag makes a release.
+on:
+  push:
+    tags: ['wordpress-v*']
+
+permissions: {}
+
+concurrency:
+  group: release-wordpress
+  cancel-in-progress: false
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every branch, to check the tagged commit is on main.
+          fetch-depth: 0
+          persist-credentials: false
+      - run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: bash wordpress/test/run.sh
+      - run: bash wordpress/release.sh "${GITHUB_REF_NAME#wordpress-v}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wordpress-release
+          path: release/
+          if-no-files-found: error
+
+  release:
+    needs: pack
+    runs-on: ubuntu-latest
+    # Runs only for wordpress-v* tags, and waits for a reviewer, as npm's publish does.
+    environment: wordpress-release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wordpress-release
+          path: release
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release/d3-dna.zip
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#wordpress-v}"
+          notes="Install: https://ai.d3.com/docs/sdks/wordpress"$'\n\n'"Verify: \`gh attestation verify d3-dna.zip --repo $GITHUB_REPOSITORY\`"
+          gh release create "$TAG" release/d3-dna.zip release/d3-dna.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --latest \
+            --title "WordPress plugin $version" --notes "$notes"
