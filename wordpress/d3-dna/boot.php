@@ -42,7 +42,7 @@ $d3_dna_refuse_unloaded = function () {
     }
     unset($copy);
     foreach (array_keys($_COOKIE) as $name) {
-        if (stripos((string) $name, '__Host-d3') === 0 || stripos((string) $name, '__Secure-d3') === 0) unset($_COOKIE[$name]);
+        if (stripos((string) $name, '__Host-d3') === 0 || stripos((string) $name, '__Secure-d3') === 0) unset($_COOKIE[$name], $_REQUEST[$name]);
     }
 
     // Matched loosely, so `d3pay%5Fhandoff` and a key behind a JSON escape count too. The whole body

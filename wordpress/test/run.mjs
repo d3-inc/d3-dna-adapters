@@ -692,6 +692,17 @@ async function core(label, { port, reports }) {
     );
   }
 
+  res = await send(port, `/mcp-raw?t=${tag()}&scenario=paidmeta`, {
+    method: 'POST',
+    headers: { ...JSON_TYPE, 'x-test-keepalive': '1' },
+    body: rpc('tools/call', { name: 'search' }),
+  });
+  check(
+    `${label}: mcp: a keepalive flushed before the answer passes, not held`,
+    res.status === 200 && res.text.startsWith(' ') && !res.text.includes('payment-response'),
+    res.text
+  );
+
   res = await send(port, `/mcp-sse?t=${tag()}&scenario=paidmeta`, {
     method: 'POST',
     headers: JSON_TYPE,
@@ -795,6 +806,19 @@ async function core(label, { port, reports }) {
     s.decisions[0]?.payload.headers['content-digest']
   );
   check(`${label}: and reaches WordPress whole`, res.json?.bodyBytes === big.length, res.json?.bodyBytes);
+
+  id = tag();
+  res = await send(port, `/upload?t=${id}`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain' },
+    body: ' '.repeat(1_200_000) + rpc('tools/call', { name: 'a', arguments: { dna_account_key: 'k' } }),
+  });
+  s = await seen(id);
+  check(
+    `${label}: a call behind a megabyte of whitespace naming a credential is refused`,
+    res.status === 400 && s.decisions.length === 0,
+    { status: res.status, n: s.decisions.length }
+  );
 
   id = tag();
   const form = '--b\r\nContent-Disposition: form-data; name="f"; filename="a.txt"\r\n\r\nhello\r\n--b--\r\n';
@@ -1164,6 +1188,14 @@ async function unloaded() {
   );
   res = await send(SITES.fpm.port, `/page?t=${tag()}&d3pay%5Fhandoff=x`);
   check('no Runtime.php: an escaped param of ours is refused', res.status === 502, res.status);
+  res = await send(SITES.fpm.port, `/cached?t=${tag()}`, {
+    headers: { cookie: '__Secure-d3visitor=v; a=1' },
+  });
+  check(
+    'no Runtime.php: a page cache finds no cookie of ours in $_REQUEST either',
+    res.json?.request.includes('a') && !res.json.request.some((name) => name.includes('d3')),
+    res.json
+  );
   res = await send(SITES.fpm.port, `/mcp-raw?t=${tag()}`, {
     method: 'POST',
     headers: JSON_TYPE,

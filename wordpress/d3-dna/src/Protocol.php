@@ -724,15 +724,24 @@ final class Protocol
     /** The first byte of a JSON body's first value, past a UTF-8 BOM and whitespace; null when there is none. */
     public static function firstValueByte($body)
     {
-        $from = strncmp($body, "\xEF\xBB\xBF", 3) === 0 ? 3 : 0;
+        return self::firstNonSpaceByte($body, strncmp($body, "\xEF\xBB\xBF", 3) === 0 ? 3 : 0);
+    }
+
+    /** The first byte past JSON whitespace, or null when there is none: for a body read in parts after its first. */
+    public static function firstNonSpaceByte($body, $from = 0)
+    {
         $skip = strspn($body, " \t\r\n", $from);
         return $from + $skip < strlen($body) ? $body[$from + $skip] : null;
     }
 
+    public static function opensJson($byte)
+    {
+        return $byte === '{' || $byte === '[';
+    }
+
     public static function startsAsJson($body)
     {
-        $byte = self::firstValueByte($body);
-        return $byte === '{' || $byte === '[';
+        return self::opensJson(self::firstValueByte($body));
     }
 
     /** Whether a call carries one of our credentials where liftMcpPayment takes it from. */

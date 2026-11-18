@@ -434,6 +434,10 @@ check('one naming none is passed on', P::mcpCarriageOf('POST', $getJson, $loneFr
 $deep = str_repeat('[', 600) . str_repeat(']', 600);
 $nested = '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"a","x":' . $deep . ',"_meta":{"dna.d3.com/key":"k"}}}';
 check('a call nested past json_decode\'s depth naming a credential is unreadable', P::mcpCarriageOf('POST', $getJson, $nested, [])['unreadable_credential'] === true);
+check('a body read in parts finds its first value byte past whitespace', P::firstNonSpaceByte(" \r\n\t{") === '{');
+check('and none in a part that is only whitespace', P::firstNonSpaceByte("  \n") === null);
+check('a BOM counts only at the very start', P::firstValueByte("\xEF\xBB\xBF [") === '[' && P::firstNonSpaceByte("\xEF\xBB\xBF[") === "\xEF");
+check('an object or array opens JSON, nothing else does', P::opensJson('{') && P::opensJson('[') && !P::opensJson('"') && !P::opensJson(null));
 check('a streamed JSON-RPC body naming a credential is not one call',
     P::mcpCarriageOf('POST', $getJson, null, [], ['names_credential' => true, 'jsonrpc' => true, 'too_large' => false])['unreadable_reason'] === 'not-one-call');
 check('a streamed body that never says jsonrpc is left alone',

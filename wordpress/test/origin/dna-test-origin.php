@@ -67,6 +67,11 @@ add_action('init', function () {
         if (isset($_SERVER['HTTP_X_TEST_END_CLEAN'])) while (ob_get_level() > 0) ob_end_clean();
         $call = json_decode(file_get_contents('php://input'), true);
         header('Content-Type: application/json');
+        // A stream's keepalive: whitespace, flushed before the answer.
+        if (isset($_SERVER['HTTP_X_TEST_KEEPALIVE'])) {
+            echo ' ';
+            ob_flush();
+        }
         echo dna_test_json(['jsonrpc' => '2.0', 'id' => $call['id'] ?? null, 'result' => dna_test_mcp_result($call)]);
         exit;
     }

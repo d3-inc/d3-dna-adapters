@@ -471,8 +471,8 @@ final class Runtime
 
         // Past the read cap: hashed as it streams, and searched for our keys only where a call could be.
         $jsonCall = $method === 'POST' && Protocol::isJsonType($contentType);
-        $looksJson = Protocol::startsAsJson($first);
-        $search = $jsonCall || $looksJson;
+        // Whitespace padding can push a call's first byte past the read cap, so it is looked for as the body streams.
+        $opening = Protocol::firstValueByte($first);
         $digest = hash_init('sha256');
         $names = false;
         $jsonrpc = false;
@@ -480,7 +480,7 @@ final class Runtime
         $chunk = $first;
         while ($chunk !== '' && $chunk !== false) {
             hash_update($digest, $chunk);
-            if ($search) {
+            if ($jsonCall || Protocol::opensJson($opening)) {
                 // The previous chunk's tail keeps a key split across two chunks findable.
                 $window = $tail . $chunk;
                 $names = $names || Protocol::namesCredential($window);
@@ -488,13 +488,14 @@ final class Runtime
                 $tail = substr($chunk, -32);
             }
             $chunk = feof($in) ? '' : fread($in, self::BODY_CHUNK);
+            if ($opening === null && is_string($chunk)) $opening = Protocol::firstNonSpaceByte($chunk);
         }
         fclose($in);
 
         return ['streamed' => [
             'digest' => 'sha-256=:' . base64_encode(hash_final($digest, true)) . ':',
             'names_credential' => $names,
-            'jsonrpc' => $jsonrpc && $looksJson,
+            'jsonrpc' => $jsonrpc && Protocol::opensJson($opening),
             // Only a JSON POST past the read cap is streamed and still a call.
             'too_large' => $jsonCall,
         ]];
@@ -717,7 +718,10 @@ final class Runtime
         if (!$rewrite['decided']) {
             // Whitespace says nothing about the answer yet: the buffer starting, an ob_clean,
             // a newline after some plugin's closing tag that output_buffering holds back.
-            if (!$final && trim($chunk) === '') {
+            // A flush (a stream's keepalive) or the cap still decides, as for any output.
+            $waiting = !($phase & PHP_OUTPUT_HANDLER_FLUSH)
+                && strlen($rewrite['held']) + strlen($chunk) <= Protocol::MCP_RESULT_MAX_BYTES;
+            if (!$final && $waiting && trim($chunk) === '') {
                 $rewrite['held'] .= $chunk;
                 return '';
             }
