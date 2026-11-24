@@ -108,6 +108,12 @@ Every response carries `x-d3-edge`: `pass`, `block`, `fail-open`,
 { "blocked": true, "ruleId": "…", "tier": "…", "identity": "…" }
 ```
 
+From 1.1.0 the install answers `/.well-known/d3/check` itself, where the
+browser check posts its answer, and the origin never sees it: it relays the post
+to `/v1/check` beside `DNA_ENDPOINT`'s `/v1/decision`, under your key ([the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-post)).
+Those answers carry `x-d3-edge: check`. The single access line from before the
+include does not relay.
+
 ## Paid routes (D3 Pay)
 
 This install carries [D3 Pay](../PROTOCOL.md#paid-routes). A priced route

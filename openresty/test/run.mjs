@@ -101,13 +101,13 @@ async function live() {
   check('pass: the marker never reaches the visitor', res.headers['x-d3-ref'] === undefined, res.headers);
   check(
     'pass: one decision, revision 3',
-    s.decisions.length === 1 && p.adapterSet === 3 && p.headerSet === 2,
+    s.decisions.length === 1 && p.adapterSet === 4 && p.headerSet === 2,
     s.decisions.length
   );
   check('pass: the key as a bearer', s.decisions[0]?.auth === 'Bearer test-key');
   check(
     "pass: names this install, never the visitor's dna-adapter",
-    s.decisions[0]?.adapter === 'openresty:1.0.1',
+    s.decisions[0]?.adapter === 'openresty:1.1.0',
     s.decisions[0]?.adapter
   );
   check(
@@ -872,6 +872,76 @@ async function live() {
     { took, edge: res.headers['x-d3-edge'] }
   );
 
+  // ── The check relay ────────────────────────────────────────────────────────
+  const ANSWER = JSON.stringify({ v: 2, offer: 'o', signals: {} });
+  const relayPath = (query = '') => `/.well-known/d3/check?t=${tag()}${query}`;
+  const post = (headers = {}, body = ANSWER) => ({
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'sec-fetch-site': 'same-origin', ...headers },
+    body,
+  });
+  const checksBefore = (await log()).checks.length;
+  res = await send(SITES.include, relayPath(), post({ cookie: 'site=1' }));
+  const relayed = (await log()).checks.slice(checksBefore);
+  check(
+    'relay: the check answer, never the origin, and only cookies of ours',
+    res.status === 200 &&
+      res.json?.next === 'reload' &&
+      !res.json?.origin &&
+      res.headers['x-d3-edge'] === 'check' &&
+      res.headers['cache-control'] === 'no-store' &&
+      res.headers['x-content-type-options'] === 'nosniff' &&
+      headerValues(res, 'set-cookie').join('|') ===
+        '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax',
+    { status: res.status, headers: res.headers, text: res.text.slice(0, 200) }
+  );
+  check(
+    'relay: /v1/check under the key, the answer whole, the request as a decision call describes it',
+    relayed.length === 1 &&
+      relayed[0].auth === 'Bearer test-key' &&
+      relayed[0].adapter === 'openresty:1.1.0' &&
+      relayed[0].relayed.answer === ANSWER &&
+      relayed[0].relayed.payload.adapterSet === 4 &&
+      relayed[0].relayed.payload.method === 'POST' &&
+      relayed[0].relayed.payload.cookies?.site === '1' &&
+      relayed[0].relayed.payload.headers['content-digest'] === digestOf(ANSWER),
+    relayed
+  );
+  for (const [label, init, status] of [
+    ['a GET is 405', { method: 'GET' }, 405],
+    ['a cross-site post is 403', post({ 'sec-fetch-site': 'cross-site' }), 403],
+    ['a post past 32 KiB is 413', post({}, 'x'.repeat(32 * 1024 + 1)), 413],
+    ['an empty post is 400', post({}, ''), 400],
+  ]) {
+    const before = (await log()).checks.length;
+    res = await send(SITES.include, relayPath(), init);
+    const after = (await log()).checks.length;
+    check(
+      `relay: ${label}, relays nothing, never the origin`,
+      res.status === status && !res.json?.origin && after === before,
+      {
+        status: res.status,
+        text: res.text.slice(0, 200),
+      }
+    );
+  }
+
+  res = await send(SITES.include, relayPath('&check=html'), post());
+  check(
+    'relay: an answer that is not JSON is never served on the site',
+    res.status === 503 && !res.text.includes('<script>'),
+    { status: res.status, text: res.text.slice(0, 200) }
+  );
+  res = await send(SITES.legacy, relayPath(), post());
+  check(
+    'legacy: revision 1 relays nothing: the path is a page like any other',
+    res.status === 200 && res.json?.origin,
+    {
+      status: res.status,
+      text: res.text.slice(0, 200),
+    }
+  );
+
   // ── The install from before the include ───────────────────────────────────
   id = tag();
   res = await send(SITES.legacy, `/page?t=${id}`, { headers: { 'x-custom': 'c', cookie: 'theme=dark' } });
@@ -924,6 +994,16 @@ async function disabled() {
     !h['x-d3-tier'] && !h.x_d3_identity && !h['payment-authorization'] && h.cookie === 'site=1',
     h
   );
+  const relay = await send(SITES.include, `/.well-known/d3/check?t=${tag()}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"v":2}',
+  });
+  check(
+    'disabled: the check path is a page like any other',
+    relay.status === 200 && relay.json?.origin,
+    relay.status
+  );
   check(
     'disabled: our params gone',
     !res.json?.url.includes('d3pay_handoff') && res.json?.url.includes('keep=1'),
@@ -960,6 +1040,16 @@ async function dead() {
   );
   res = await send(SITES.tryFiles, `/missing?t=${tag()}`);
   check('dead: @app is served too', res.status === 200 && res.json?.origin, res.headers);
+  res = await send(SITES.include, `/.well-known/d3/check?t=${tag()}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"v":2}',
+  });
+  check(
+    'dead: the check post answers 503, and never the origin',
+    res.status === 503 && res.json?.error === 'check-unavailable' && !res.json?.origin,
+    { status: res.status, text: res.text.slice(0, 200) }
+  );
 }
 
 const logCount = (re) => (readFileSync(process.env.ERROR_LOG, 'utf8').match(re) ?? []).length;

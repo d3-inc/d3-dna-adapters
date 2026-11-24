@@ -49,6 +49,12 @@ before `next()` (rewriting when the URL changed), on a pass and on fail-open,
 and appends `Set-Cookie` and `Payment-Receipt` to the response on the way back.
 With DNA switched off the request continues as it arrived.
 
+From 0.12.0 one path never reaches the site while DNA is on:
+`/.well-known/d3/check`, where the browser check posts its answer. The
+middleware relays that post to `/v1/check` beside `DNA_ENDPOINT`'s
+`/v1/decision`, under your key, and answers with the result ([the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-post)). The
+default `config.matcher` covers it; a matcher of your own must too.
+
 An MCP route takes `withD3Mcp(handler)` instead, outside the middleware's
 matcher: it also lifts a payment out of the call's `_meta`, keeps it from the
 handler, and adds the receipt to the result.

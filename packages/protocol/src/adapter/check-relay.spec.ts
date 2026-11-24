@@ -164,6 +164,7 @@ describe('relayCheckPost', () => {
       timeoutMs: 1000,
       fetch: fetchImpl,
       payloadOf: () => Promise.resolve(payload),
+      logError: () => {},
       ...over,
     };
   }

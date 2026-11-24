@@ -143,6 +143,13 @@ WordPress never runs:
 { "blocked": true, "ruleId": "…", "tier": "…", "identity": "…" }
 ```
 
+From 1.1.0 the plugin answers `/.well-known/d3/check` itself, where the
+browser check posts its answer, and WordPress never runs for it: it relays the
+post to `/v1/check` beside `DNA_ENDPOINT`'s `/v1/decision`, under your key
+([the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-post)). Those answers carry `x-d3-edge: check`. The path must reach PHP: a
+host or web-server rule that serves or denies `/.well-known/` itself keeps the
+check from finishing.
+
 ## Paid routes (D3 Pay)
 
 This plugin carries [D3 Pay](../PROTOCOL.md#paid-routes). A priced route

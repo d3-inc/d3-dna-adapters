@@ -1,9 +1,6 @@
-import { edgeLogger } from '../logging/logger';
 import { isNamespaceCookie } from '../namespace';
 import type { RequestPayload } from '../types';
 import { DNA_ADAPTER_HEADER } from './adapter-name';
-
-const log = edgeLogger('check-relay');
 
 /** Ours on every site from revision 4: the check script posts its answer here, on the site's own host. */
 export const CHECK_RELAY_PATH = '/.well-known/d3/check';
@@ -32,6 +29,8 @@ export interface CheckRelayOptions {
   fetch: typeof fetch;
   /** The caller's own `extractEdgeRequest`, so the check sees the network facts a decision call sends. */
   payloadOf: (request: Request) => Promise<RequestPayload>;
+  /** The caller's logger: the Snippet cannot afford the protocol's, so none is imported here. */
+  logError: (message: string, detail?: Record<string, unknown>) => void;
 }
 
 export function isCheckRelayPath(url: string): boolean {
@@ -50,6 +49,7 @@ export function checkEndpointOf(decisionUrl: string): string | null {
 
   url.pathname = `${url.pathname.slice(0, -DECISION_PATH_SUFFIX.length)}/v1/check`;
   url.search = '';
+  url.hash = '';
   return url.toString();
 }
 
@@ -143,10 +143,7 @@ function isJson(contentType: string | null): boolean {
  * endpoint refused is the site's problem to read in its logs, not a visitor's: it answers as unavailable.
  */
 export function relayedCheckResponse(upstream: Response): Response {
-  if (upstream.status === 401 || upstream.status === 403) {
-    log.error(`check relay rejected: HTTP ${upstream.status} — check DNA_API_KEY / key status`);
-    return checkRelayRefusal(503);
-  }
+  if (upstream.status === 401 || upstream.status === 403) return checkRelayRefusal(503);
 
   if (!isJson(upstream.headers.get('content-type'))) return checkRelayRefusal(503);
 
@@ -201,11 +198,15 @@ export async function relayCheckPost(request: Request, opts: CheckRelayOptions):
     });
     if (upstream.status >= 300 && upstream.status < 400) return checkRelayRefusal(503);
 
+    if (upstream.status === 401 || upstream.status === 403) {
+      opts.logError(`check relay rejected: HTTP ${upstream.status} — check DNA_API_KEY / key status`);
+    }
+
     // Read inside the budget: an endpoint that stalls mid-body would otherwise hold the visitor's post open.
     const text = await upstream.text();
     return relayedCheckResponse(new Response(text, { status: upstream.status, headers: upstream.headers }));
   } catch (err) {
-    log.error('check relay failed', { err });
+    opts.logError('check relay failed', { err });
     return checkRelayRefusal(503);
   } finally {
     clearTimeout(timer);

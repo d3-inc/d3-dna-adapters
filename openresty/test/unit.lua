@@ -181,6 +181,53 @@ for _, case in ipairs(parity.edgeModes) do
   same("paymentEdgeMode: " .. case.status, dna.payment_edge_mode(case.status), case.out)
 end
 
+same("constants: CHECK_RELAY_PATH", dna.CHECK_RELAY_PATH, c.CHECK_RELAY_PATH)
+same("constants: CHECK_RELAY_MAX_BODY_BYTES", dna.CHECK_RELAY_MAX_BODY_BYTES, c.CHECK_RELAY_MAX_BODY_BYTES)
+
+for _, case in ipairs(parity.checkEndpoint) do
+  same("checkEndpointOf: " .. case.endpoint, dna.check_endpoint_of(case.endpoint), case.out)
+end
+
+for _, case in ipairs(parity.crossSite) do
+  local site = case.site ~= NULL and case.site or nil
+  same("isCrossSitePost: " .. tostring(site), dna.is_cross_site_post(site), case.out)
+end
+
+local function header_of(built, name)
+  for _, pair in ipairs(built.headers) do
+    if string.lower(pair[1]) == name then return pair[2] end
+  end
+end
+
+for _, case in ipairs(parity.relayedCheck) do
+  local type_ = case.type ~= NULL and case.type or nil
+  local built = dna.relayed_check_answer(case.status, type_, case.cookies, case.body)
+  same("relayedCheckResponse: " .. case.name, {
+    status = built.status,
+    contentType = header_of(built, "content-type"),
+    setCookies = setmetatable(built.set_cookies, cjson.array_mt),
+    body = built.body,
+  }, case.out)
+  check("relayedCheckResponse: " .. case.name .. ": never cached, never sniffed",
+    header_of(built, "cache-control") == "no-store" and header_of(built, "x-content-type-options") == "nosniff"
+      and header_of(built, "x-d3-edge") == "check")
+end
+
+check("is_utf8: plain, multibyte and four-byte text", dna.is_utf8("") and dna.is_utf8('{"a":"é→😀"}'))
+for label, bytes in pairs({
+  ["a lone continuation byte"] = "\128",
+  ["a truncated sequence"] = "\226\130",
+  ["an overlong slash"] = "\192\175",
+  ["a surrogate"] = "\237\160\128",
+  ["past U+10FFFF"] = "\244\144\128\128",
+  ["a byte no encoding uses"] = "\255\254A",
+}) do
+  check("is_utf8: refuses " .. label, not dna.is_utf8(bytes))
+end
+
+check("check_relay_refusal: 405 says what it allows",
+  header_of(dna.check_relay_refusal(405), "allow") == "POST")
+
 for _, case in ipairs(parity.recordableName) do
   same("recordableName: " .. case.name, dna.recordable_name(case.name), case.out)
 end

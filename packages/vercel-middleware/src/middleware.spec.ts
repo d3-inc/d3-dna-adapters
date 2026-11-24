@@ -1,4 +1,10 @@
-import { FORWARDS_ALL_SINCE, type ClientDecision, type ResponseReport } from '@d3-inc/d3-dna-protocol';
+import {
+  CHECK_RELAY_PATH,
+  FORWARDS_ALL_SINCE,
+  type CheckRelayBody,
+  type ClientDecision,
+  type ResponseReport,
+} from '@d3-inc/d3-dna-protocol';
 import { describe, expect, it } from 'vitest';
 import type { D3MiddlewareConfig } from './env';
 import { createD3Middleware, type MiddlewareDeps } from './middleware';
@@ -329,6 +335,88 @@ describe('createD3Middleware', () => {
       await h.flushReports();
       expect(h.reportCalls).toHaveLength(0);
     });
+  });
+});
+
+describe('the check relay', () => {
+  const CHECK_URL = 'https://edge-api.d3.com/v1/check';
+  const ANSWER = JSON.stringify({ v: 2, offer: 'o', signals: {} });
+
+  function relayHarness(answer: () => Response) {
+    const checkCalls: { headers: Record<string, string>; body: CheckRelayBody }[] = [];
+    const other: string[] = [];
+    const base = harness({ action: 'pass' });
+    const deps: MiddlewareDeps = {
+      ...base.deps,
+      fetchImpl: (async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url) === CHECK_URL) {
+          checkCalls.push({
+            headers: init?.headers as Record<string, string>,
+            body: JSON.parse(init?.body as string) as CheckRelayBody,
+          });
+          return answer();
+        }
+
+        other.push(String(url));
+        return Response.json({ action: 'pass' });
+      }) as typeof fetch,
+    };
+    return { ...base, deps, checkCalls, other };
+  }
+
+  const posted = (init: RequestInit = {}) =>
+    new Request(`https://ai.d3.com${CHECK_RELAY_PATH}`, {
+      method: 'POST',
+      body: ANSWER,
+      headers: { 'user-agent': 'Mozilla/5.0 Chrome/150', 'sec-fetch-site': 'same-origin' },
+      ...init,
+    });
+
+  it('relays the post to /v1/check under the key, and never continues to the site', async () => {
+    const h = relayHarness(() => {
+      const headers = new Headers({ 'content-type': 'application/json' });
+      headers.append('set-cookie', '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax');
+      return new Response(JSON.stringify({ next: 'reload' }), { headers });
+    });
+    const res = await createD3Middleware(BASE_CONFIG, h.deps)(posted());
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-d3-edge')).toBe('check');
+    expect(res.headers.getSetCookie()).toEqual([
+      '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax',
+    ]);
+    expect(h.nextCalls).toHaveLength(0);
+    expect(h.rewriteCalls).toHaveLength(0);
+    expect(h.other).toEqual([]);
+
+    const [call] = h.checkCalls;
+    expect(call.headers.authorization).toBe(`Bearer ${KEY}`);
+    expect(call.headers['dna-adapter']).toBe('vercel-middleware:0.0.0-test');
+    expect(call.body.answer).toBe(ANSWER);
+    expect(call.body.payload).toMatchObject({
+      method: 'POST',
+      url: CHECK_RELAY_PATH,
+      ip: '203.0.113.7',
+      adapterSet: FORWARDS_ALL_SINCE,
+    });
+  });
+
+  it('answers 503 where the endpoint has no check path beside it, and never continues', async () => {
+    const h = relayHarness(() => Response.json({}));
+    const res = await createD3Middleware(
+      { ...BASE_CONFIG, endpoint: 'https://gw.example/decide' },
+      h.deps
+    )(posted());
+    expect(res.status).toBe(503);
+    expect(h.checkCalls).toHaveLength(0);
+    expect(h.nextCalls).toHaveLength(0);
+  });
+
+  it('continues to the site like any other request when DNA is off', async () => {
+    const h = relayHarness(() => Response.json({}));
+    const res = await createD3Middleware({ ...BASE_CONFIG, endpoint: '' }, h.deps)(posted());
+    expect(res.headers.get('x-d3-edge')).toBe('disabled');
+    expect(h.checkCalls).toHaveLength(0);
   });
 });
 

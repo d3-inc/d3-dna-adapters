@@ -11,10 +11,11 @@ namespace D3\Dna;
 
 final class Protocol
 {
-    const ADAPTER_SET = 3;
+    const ADAPTER_SET = 4;
     const FORWARDED_HEADER_SET = 2;
     const FORWARDS_ALL_SINCE = 2;
     const CARRIES_MCP_SINCE = 3;
+    const RELAYS_CHECK_SINCE = 4;
 
     const FORWARDED_MAX_COOKIES = 256;
     const FORWARDED_MAX_NAMES = 128;
@@ -39,6 +40,12 @@ final class Protocol
     const COOKIE_TOKEN_MAX = 64;
     const VISITOR_ID_ZONE_COOKIE = '__Secure-d3visitor';
     const VISITOR_ID_HOST_COOKIE = '__Host-d3visitor';
+    const CHECK_RESULT_COOKIE = '__Host-d3check';
+
+    const CHECK_RELAY_PATH = '/.well-known/d3/check';
+    const CHECK_RELAY_MAX_BODY_BYTES = 32768;
+    const CHECK_RELAY_TIMEOUT_MS = 5000;
+    const DECISION_PATH_SUFFIX = '/v1/decision';
     const PAY_HANDOFF_PARAM = 'd3pay_handoff';
     const MCP_DNA_KEY_HEADER = 'mcp-param-dna-key';
     const MCP_KEY_ARGUMENT = 'dna_account_key';
@@ -297,7 +304,13 @@ final class Protocol
     {
         return in_array(
             $name,
-            [self::PAY_SESSION_COOKIE, self::PERSON_PASS_COOKIE, self::VISITOR_ID_ZONE_COOKIE, self::VISITOR_ID_HOST_COOKIE],
+            [
+                self::PAY_SESSION_COOKIE,
+                self::PERSON_PASS_COOKIE,
+                self::VISITOR_ID_ZONE_COOKIE,
+                self::VISITOR_ID_HOST_COOKIE,
+                self::CHECK_RESULT_COOKIE,
+            ],
             true
         );
     }
@@ -1231,6 +1244,72 @@ final class Protocol
             [['content-type', self::JSON_TYPE], ['cache-control', 'no-store']],
             'fail-closed'
         );
+    }
+
+    // ── The check relay (check-relay.ts) ─────────────────────────────────────
+
+    /** checkEndpointOf: /v1/check beside the decision path, prefix kept; null for any other endpoint. */
+    public static function checkEndpointOf($endpoint)
+    {
+        if (!is_string($endpoint)) return null;
+
+        $base = preg_split('/[?#]/', $endpoint, 2)[0];
+        if (!preg_match('~^([a-z][a-z0-9+.-]*://[^/]+)(/.*)$~i', $base, $m)) return null;
+
+        $path = $m[2];
+        $suffix = strlen(self::DECISION_PATH_SUFFIX);
+        if (strlen($path) < $suffix || substr($path, -$suffix) !== self::DECISION_PATH_SUFFIX) return null;
+
+        return $m[1] . substr($path, 0, -$suffix) . '/v1/check';
+    }
+
+    /** isCrossSitePost: a browser that labels the post as from elsewhere; no label lets it by. */
+    public static function isCrossSitePost($secFetchSite)
+    {
+        return $secFetchSite !== null && $secFetchSite !== 'same-origin';
+    }
+
+    /** Strict UTF-8: decoding lossily would relay an answer nobody posted. */
+    public static function isUtf8($s)
+    {
+        return is_string($s) && preg_match('//u', $s) === 1;
+    }
+
+    private static function relayHeaders()
+    {
+        return [
+            ['cache-control', 'no-store'],
+            ['x-content-type-options', 'nosniff'],
+            ['x-d3-edge', 'check'],
+            ['content-type', 'application/json'],
+        ];
+    }
+
+    public static function checkRelayRefusal($status)
+    {
+        $errors = [400 => 'malformed', 403 => 'cross-site', 405 => 'method-not-allowed', 413 => 'too-large', 503 => 'check-unavailable'];
+        $headers = self::relayHeaders();
+        if ($status === 405) $headers[] = ['allow', 'POST'];
+
+        return ['status' => $status, 'headers' => $headers, 'set_cookies' => [], 'body' => self::jsonEncode(['error' => $errors[$status]])];
+    }
+
+    /** relayedCheckResponse: served on the site's own host, so JSON only and cookies of ours only. */
+    public static function relayedCheckAnswer($status, $contentType, array $setCookies, $body)
+    {
+        if ($status === 401 || $status === 403) return self::checkRelayRefusal(503);
+
+        if (!is_string($contentType) || !preg_match('~^application/json\s*(;|$)~i', $contentType)) {
+            return self::checkRelayRefusal(503);
+        }
+
+        $kept = [];
+        foreach ($setCookies as $cookie) {
+            $eq = strpos($cookie, '=');
+            if ($eq !== false && self::isNamespaceCookie(self::trim(substr($cookie, 0, $eq)))) $kept[] = self::trim($cookie);
+        }
+
+        return ['status' => $status, 'headers' => self::relayHeaders(), 'set_cookies' => $kept, 'body' => (string) $body];
     }
 
     /** privateCacheControl: a receipt or our Set-Cookie is one visitor's, so no shared cache holds it. */

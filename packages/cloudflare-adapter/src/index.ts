@@ -1,6 +1,7 @@
 import {
   ADAPTER_SET,
   blockResponse,
+  CARRIES_MCP_SINCE,
   buildPaymentResponse,
   builtAnswerOf,
   checkEndpointOf,
@@ -15,7 +16,6 @@ import {
   McpKeyArgumentMemory,
   mcpOriginRequest,
   readAdapterSettings,
-  RELAYS_CHECK_SINCE,
   relayCheckPost,
   pathOf,
   paymentEdgeMode,
@@ -233,7 +233,7 @@ function extractOptionsOf(
     network: networkFactsFromCf(cf),
     debugHeaders: settings.debugLogRawPayload,
     // Every revision, the check relay only where there is somewhere to relay to: a 4 is offered a check it must finish.
-    adapterSet: check === null ? ADAPTER_SET : RELAYS_CHECK_SINCE,
+    adapterSet: check === null ? CARRIES_MCP_SINCE : ADAPTER_SET,
     exclude: settings.exclude,
   };
 }
@@ -253,6 +253,7 @@ async function relayCheck(
     timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
     fetch: check.fetch,
     payloadOf: async (posted) => (await extractEdgeRequest(posted, options)).payload,
+    logError: (message, detail) => log.error(message, detail),
   });
 }
 

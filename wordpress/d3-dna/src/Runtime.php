@@ -9,7 +9,7 @@ namespace D3\Dna;
 final class Runtime
 {
     // Our build of this plugin. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter).
-    const DNA_ADAPTER = 'wordpress:1.0.0';
+    const DNA_ADAPTER = 'wordpress:1.1.0';
 
     const DECISION_MAX_BYTES = 4194304;
     const BODY_CHUNK = 65536;
@@ -91,26 +91,39 @@ final class Runtime
         $entries = self::headerEntriesFromServer($_SERVER);
         $byName = Protocol::lookup($entries);
         $method = self::restMethod(strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')), $target, $_GET, $_SERVER);
-        $body = self::readBody($method, $byName['content-type'] ?? null);
         $host = self::decidedHost(self::requestHost($_SERVER), self::siteHosts());
         $requestId = self::requestId();
         $exclude = [
             'headers' => $settings['exclude']['headers'],
             'cookies' => self::withWordPressSessionCookies($settings['exclude']['cookies'], $byName['cookie'] ?? null),
         ];
+        // Revision 4 only where there is somewhere to relay to: a 4 is offered a check it must finish.
+        $checkUrl = Protocol::checkEndpointOf($settings['endpoint']);
+        $declared = $checkUrl === null ? Protocol::CARRIES_MCP_SINCE : Protocol::ADAPTER_SET;
+        $extract = function (array $body) use ($method, $target, $host, $entries, $exclude, $declared, $settings) {
+            return Protocol::extract([
+                'method' => $method,
+                'url' => $target,
+                'host' => $host,
+                'ip' => isset($_SERVER['REMOTE_ADDR']) && $_SERVER['REMOTE_ADDR'] !== '' ? (string) $_SERVER['REMOTE_ADDR'] : null,
+                'secure' => self::isSecure($_SERVER),
+                'timestamp' => microtime(true),
+                'entries' => $entries,
+                'body' => $body['data'] ?? null,
+                'streamed' => $body['streamed'] ?? null,
+                'body_unavailable' => !empty($body['unavailable']),
+            ], ['revision' => $declared, 'exclude' => $exclude, 'debug' => $settings['debug_log_raw_payload']]);
+        };
 
-        list($payload, $mcp) = Protocol::extract([
-            'method' => $method,
-            'url' => $target,
-            'host' => $host,
-            'ip' => isset($_SERVER['REMOTE_ADDR']) && $_SERVER['REMOTE_ADDR'] !== '' ? (string) $_SERVER['REMOTE_ADDR'] : null,
-            'secure' => self::isSecure($_SERVER),
-            'timestamp' => microtime(true),
-            'entries' => $entries,
-            'body' => $body['data'] ?? null,
-            'streamed' => $body['streamed'] ?? null,
-            'body_unavailable' => !empty($body['unavailable']),
-        ], ['revision' => Protocol::ADAPTER_SET, 'exclude' => $exclude, 'debug' => $settings['debug_log_raw_payload']]);
+        // The check script's post is ours to answer: it never reaches WordPress, and it takes no decision.
+        if (Protocol::pathOf($target) === Protocol::CHECK_RELAY_PATH) {
+            self::relayCheck($checkUrl, $settings, $byName, function ($answer) use ($extract) {
+                return $extract(['data' => $answer])[0];
+            });
+        }
+
+        $body = self::readBody($method, $byName['content-type'] ?? null);
+        list($payload, $mcp) = $extract($body);
         $payload['requestId'] = $requestId;
 
         self::$state = [
@@ -621,6 +634,96 @@ final class Runtime
         if ($ok === false || $status === 0) return $failed($error !== '' ? $error : 'no response', $errno);
 
         return ['status' => $status, 'body' => $body, 'error' => null, 'errno' => 0];
+    }
+
+    // ── The check relay (check-relay.ts) ─────────────────────────────────────
+
+    /** The post, read whole up to the cap: null past it. */
+    public static function cappedPost()
+    {
+        if (((int) ($_SERVER['CONTENT_LENGTH'] ?? 0)) > Protocol::CHECK_RELAY_MAX_BODY_BYTES) return null;
+
+        $in = @fopen('php://input', 'rb');
+        if ($in === false) return '';
+
+        $data = '';
+        while (strlen($data) <= Protocol::CHECK_RELAY_MAX_BODY_BYTES && !feof($in)) {
+            $chunk = fread($in, self::BODY_CHUNK);
+            if ($chunk === false || $chunk === '') break;
+            $data .= $chunk;
+        }
+        fclose($in);
+
+        return strlen($data) > Protocol::CHECK_RELAY_MAX_BODY_BYTES ? null : $data;
+    }
+
+    /** relayCheckPost: answers the check script's post itself, never WordPress. Ends the request. */
+    private static function relayCheck($checkUrl, array $settings, array $byName, callable $payloadOf)
+    {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') self::sendRelay(Protocol::checkRelayRefusal(405));
+        if (Protocol::isCrossSitePost($byName['sec-fetch-site'] ?? null)) self::sendRelay(Protocol::checkRelayRefusal(403));
+
+        $answer = self::cappedPost();
+        if ($answer === null) self::sendRelay(Protocol::checkRelayRefusal(413));
+        if ($answer === '' || !Protocol::isUtf8($answer)) self::sendRelay(Protocol::checkRelayRefusal(400));
+        if ($checkUrl === null || !function_exists('curl_init')) self::sendRelay(Protocol::checkRelayRefusal(503));
+
+        $json = Protocol::jsonEncode(['payload' => $payloadOf($answer), 'answer' => $answer]);
+        $headers = ['Content-Type: application/json', 'dna-adapter: ' . self::DNA_ADAPTER, 'Expect:'];
+        if ($settings['api_key'] !== null) $headers[] = 'Authorization: Bearer ' . Protocol::trim($settings['api_key']);
+
+        $body = '';
+        $type = null;
+        $cookies = [];
+        $ch = curl_init($checkUrl);
+        curl_setopt_array($ch, self::curlOptions(Protocol::CHECK_RELAY_TIMEOUT_MS) + [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $json,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$type, &$cookies) {
+                $colon = strpos($line, ':');
+                if ($colon !== false) {
+                    $name = strtolower(Protocol::trim(substr($line, 0, $colon)));
+                    $value = Protocol::trim(substr($line, $colon + 1));
+                    if ($name === 'content-type') $type = $value;
+                    if ($name === 'set-cookie') $cookies[] = $value;
+                }
+                return strlen($line);
+            },
+            CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$body) {
+                if (strlen($body) + strlen($data) > self::DECISION_MAX_BYTES) return 0;
+                $body .= $data;
+                return strlen($data);
+            },
+        ]);
+        $ok = curl_exec($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $error = curl_error($ch);
+        self::closeCurl($ch);
+
+        // CURLOPT_FOLLOWLOCATION is off, so a redirect, which would carry the key away, arrives as a 3xx.
+        if ($ok === false || $status === 0 || ($status >= 300 && $status < 400)) {
+            self::logEvery('check relay', 10, 'the check relay failed (' . ($error !== '' ? $error : "HTTP $status") . ')');
+            self::sendRelay(Protocol::checkRelayRefusal(503));
+        }
+        if ($status === 401 || $status === 403) self::logEvery('check relay key', 10, "the check relay was refused (HTTP $status): check DNA_API_KEY");
+
+        self::sendRelay(Protocol::relayedCheckAnswer($status, $type, $cookies, $body));
+    }
+
+    private static function sendRelay(array $answer)
+    {
+        while (ob_get_level() > 0 && @ob_end_clean()) {
+        }
+        if (!headers_sent()) {
+            header_remove();
+            foreach ($answer['headers'] as $pair) header($pair[0] . ': ' . $pair[1]);
+            // Never replacing: each cookie its own header.
+            foreach ($answer['set_cookies'] as $cookie) header('Set-Cookie: ' . $cookie, false);
+            http_response_code($answer['status']);
+        }
+        echo $answer['body'];
+        exit;
     }
 
     /** PHP 8 frees a handle by itself, and 8.5 deprecates closing one: a notice printed would send WordPress's headers early. */

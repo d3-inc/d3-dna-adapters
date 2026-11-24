@@ -406,6 +406,141 @@ function forwardCookie(headers, cookie, name, header, maxLength) {
   if (value !== null && value.length > 0 && value.length <= maxLength) headers[header] = value;
 }
 
+// packages/protocol/src/adapter/adapter-name.ts
+var DNA_ADAPTER_HEADER = 'dna-adapter';
+
+// packages/protocol/src/adapter/check-relay.ts
+var CHECK_RELAY_PATH = '/.well-known/d3/check';
+var CHECK_RELAY_MAX_BODY_BYTES = 32 * 1024;
+var DEFAULT_CHECK_RELAY_TIMEOUT_MS = 5e3;
+var CHECK_RELAY_EDGE_MODE = 'check';
+function isCheckRelayPath(url) {
+  return new URL(url).pathname === CHECK_RELAY_PATH;
+}
+var DECISION_PATH_SUFFIX = '/v1/decision';
+function checkEndpointOf(decisionUrl) {
+  const url = new URL(decisionUrl);
+  if (!url.pathname.endsWith(DECISION_PATH_SUFFIX)) return null;
+  url.pathname = `${url.pathname.slice(0, -DECISION_PATH_SUFFIX.length)}/v1/check`;
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+async function readCappedBody(request, maxBytes) {
+  const declared = Number(request.headers.get('content-length') ?? Number.NaN);
+  if (Number.isFinite(declared) && declared > maxBytes) return { ok: false };
+  if (request.body === null) return { ok: true, bytes: new Uint8Array(0) };
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      return { ok: false };
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { ok: true, bytes };
+}
+function utf8Of(bytes) {
+  try {
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+function isCrossSitePost(request) {
+  const site = request.headers.get('sec-fetch-site');
+  return site !== null && site !== 'same-origin';
+}
+var REFUSALS = {
+  400: 'malformed',
+  403: 'cross-site',
+  405: 'method-not-allowed',
+  413: 'too-large',
+  503: 'check-unavailable',
+};
+var RELAY_HEADERS = {
+  'cache-control': 'no-store',
+  'x-content-type-options': 'nosniff',
+  'x-d3-edge': CHECK_RELAY_EDGE_MODE,
+};
+function checkRelayRefusal(status) {
+  const headers = { ...RELAY_HEADERS };
+  if (status === 405) headers.allow = 'POST';
+  return Response.json({ error: REFUSALS[status] }, { status, headers });
+}
+function cookieNameOf(setCookie) {
+  const eq = setCookie.indexOf('=');
+  return eq === -1 ? null : setCookie.slice(0, eq).trim();
+}
+function isJson(contentType) {
+  return contentType !== null && /^application\/json\s*(;|$)/i.test(contentType);
+}
+function relayedCheckResponse(upstream) {
+  if (upstream.status === 401 || upstream.status === 403) return checkRelayRefusal(503);
+  if (!isJson(upstream.headers.get('content-type'))) return checkRelayRefusal(503);
+  const headers = new Headers({ ...RELAY_HEADERS, 'content-type': 'application/json' });
+  for (const cookie of upstream.headers.getSetCookie()) {
+    const name = cookieNameOf(cookie);
+    if (name !== null && isNamespaceCookie(name)) headers.append('set-cookie', cookie);
+  }
+  return new Response(upstream.body, { status: upstream.status, headers });
+}
+async function relayCheckPost(request, opts) {
+  if (request.method !== 'POST') return checkRelayRefusal(405);
+  if (isCrossSitePost(request)) return checkRelayRefusal(403);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
+  try {
+    const body = await Promise.race([
+      readCappedBody(request, CHECK_RELAY_MAX_BODY_BYTES),
+      new Promise((_resolve, reject) =>
+        controller.signal.addEventListener('abort', () => reject(new Error('check relay budget spent')))
+      ),
+    ]);
+    if (!body.ok) return checkRelayRefusal(413);
+    const answer = utf8Of(body.bytes);
+    if (answer === null || answer === '') return checkRelayRefusal(400);
+    const payload = await opts.payloadOf(
+      new Request(request.url, { method: 'POST', headers: request.headers, body: body.bytes })
+    );
+    const relayed = { payload, answer };
+    const upstream = await opts.fetch(opts.url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(opts.bearer === void 0 ? {} : { authorization: `Bearer ${opts.bearer}` }),
+        ...(opts.adapterName === void 0 ? {} : { [DNA_ADAPTER_HEADER]: opts.adapterName }),
+      },
+      body: JSON.stringify(relayed),
+      // A redirect would carry the key to wherever it points.
+      redirect: 'manual',
+      signal: controller.signal,
+    });
+    if (upstream.status >= 300 && upstream.status < 400) return checkRelayRefusal(503);
+    if (upstream.status === 401 || upstream.status === 403) {
+      opts.logError(`check relay rejected: HTTP ${upstream.status} — check DNA_API_KEY / key status`);
+    }
+    const text = await upstream.text();
+    return relayedCheckResponse(new Response(text, { status: upstream.status, headers: upstream.headers }));
+  } catch (err) {
+    opts.logError('check relay failed', { err });
+    return checkRelayRefusal(503);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // packages/protocol/src/adapter/edge-response.ts
 function blockResponse(decision, mode) {
   return new Response(
@@ -521,7 +656,7 @@ function withPaymentHeaders(response, payment) {
 // cloudflare-snippet/src/snippet.ts
 var DEFAULT_ENDPOINT = 'https://edge-api.d3.com/v1/decision';
 var ADAPTER_SET = 2;
-var DNA_ADAPTER = 'snippet:2.0.1';
+var DNA_ADAPTER = 'snippet:2.1.0';
 var MAX_HASHED_BODY_BYTES = 1e6;
 function dnaEndpoint(config) {
   if (String(config.enabled).trim().toLowerCase() === 'false') return void 0;
@@ -538,6 +673,19 @@ function createSnippet(config) {
     // waitUntil, so the request is logged at decision time and nothing more.
     async fetch(request) {
       if (!endpoint) return withEdgeHeader(await fetch(request), 'disabled');
+      if (isCheckRelayPath(request.url)) {
+        const checkUrl = checkEndpointOf(endpoint);
+        if (checkUrl === null) return checkRelayRefusal(503);
+        return relayCheckPost(request, {
+          url: checkUrl,
+          bearer: apiKey,
+          adapterName: DNA_ADAPTER,
+          timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
+          fetch: (input, init) => fetch(input, init),
+          payloadOf: (posted) => extractPayload(posted, exclude),
+          logError: (message, detail) => console.error(`d3-edge ${message}`, detail),
+        });
+      }
       const paying = requestPresentsPayment(request);
       if (!paying && !isSampled(request, config)) return fetch(stripPaymentHeaders(request));
       let decision;

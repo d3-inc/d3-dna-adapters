@@ -1,10 +1,15 @@
 import {
   buildPaymentResponse,
   builtAnswerOf,
+  checkEndpointOf,
+  checkRelayRefusal,
   createHttpPolicyClient,
+  DEFAULT_CHECK_RELAY_TIMEOUT_MS,
   edgeLogger,
   extractPayload,
   FORWARDS_ALL_SINCE,
+  isCheckRelayPath,
+  relayCheckPost,
   requestPresentsPayment,
   pathOf,
   paymentEdgeMode,
@@ -14,6 +19,7 @@ import {
   type BuiltAnswer,
   type ClientDecision,
   type EdgeMode,
+  type ExtractOptions,
 } from '@d3-inc/d3-dna-protocol';
 import { MIDDLEWARE_ADAPTER_NAME } from './adapter-name';
 import {
@@ -65,6 +71,33 @@ export function createD3Middleware(config?: D3MiddlewareConfig, deps: Middleware
     }
 
     const endpoint = cfg.endpoint;
+    const extractOptions: ExtractOptions = {
+      ip: ipFn(request),
+      network: networkFactsFromVercel(request),
+      debugHeaders: cfg.debugLogRawPayload,
+      // `next()` cannot replace the body nor see the origin's answer, so the MCP carriage is
+      // `withD3Mcp`'s on its own route; the forwarding is this one's. The check relay is in
+      // its build record, beside this revision: revision 4 would also claim 3.
+      adapterSet: FORWARDS_ALL_SINCE,
+      exclude: cfg.exclude,
+    };
+
+    // The check script's post is ours to answer: it never reaches the site, and it takes no decision.
+    if (isCheckRelayPath(request.url)) {
+      const checkUrl = checkEndpointOf(endpoint);
+      if (checkUrl === null) return checkRelayRefusal(503);
+
+      return relayCheckPost(request, {
+        url: checkUrl,
+        bearer: cfg.apiKey,
+        adapterName: MIDDLEWARE_ADAPTER_NAME,
+        timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
+        fetch: deps.fetchImpl ?? fetch,
+        payloadOf: (posted) => extractPayload(posted, extractOptions),
+        logError: (message, detail) => log.error(message, detail),
+      });
+    }
+
     const paying = requestPresentsPayment(request);
     // Config resolved once at construction; only the choice between its two
     // budgets is per request.
@@ -77,15 +110,7 @@ export function createD3Middleware(config?: D3MiddlewareConfig, deps: Middleware
       },
       deps.fetchImpl
     );
-    const payload = await extractPayload(request, {
-      ip: ipFn(request),
-      network: networkFactsFromVercel(request),
-      debugHeaders: cfg.debugLogRawPayload,
-      // `next()` cannot replace the body nor see the origin's answer, so the MCP carriage is
-      // `withD3Mcp`'s on its own route; the forwarding is this one's.
-      adapterSet: FORWARDS_ALL_SINCE,
-      exclude: cfg.exclude,
-    });
+    const payload = await extractPayload(request, extractOptions);
     const requestId = crypto.randomUUID();
     payload.requestId = requestId;
 

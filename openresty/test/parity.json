@@ -1,6 +1,6 @@
 {
   "constants": {
-    "ADAPTER_SET": 3,
+    "ADAPTER_SET": 4,
     "FORWARDED_HEADER_SET": 2,
     "FORWARDED_HEADERS": [
       "signature",
@@ -61,8 +61,147 @@
       "type": "string",
       "description": "A DNA account key that pays for this call. Leave it out to be told how to pay.",
       "x-mcp-header": "Dna-Key"
-    }
+    },
+    "CHECK_RELAY_PATH": "/.well-known/d3/check",
+    "CHECK_RELAY_MAX_BODY_BYTES": 32768
   },
+  "checkEndpoint": [
+    {
+      "endpoint": "https://edge-api.d3.com/v1/decision",
+      "out": "https://edge-api.d3.com/v1/check"
+    },
+    {
+      "endpoint": "https://gw.example:8443/tenant-a/v1/decision?x=1#f",
+      "out": "https://gw.example:8443/tenant-a/v1/check"
+    },
+    {
+      "endpoint": "http://127.0.0.1:9010/v1/decision",
+      "out": "http://127.0.0.1:9010/v1/check"
+    },
+    {
+      "endpoint": "https://gw.example/decide",
+      "out": null
+    },
+    {
+      "endpoint": "https://gw.example/v1/decision/",
+      "out": null
+    },
+    {
+      "endpoint": "https://gw.example/v1/decisions",
+      "out": null
+    }
+  ],
+  "crossSite": [
+    {
+      "site": "cross-site",
+      "out": true
+    },
+    {
+      "site": "same-site",
+      "out": true
+    },
+    {
+      "site": "none",
+      "out": true
+    },
+    {
+      "site": "same-origin",
+      "out": false
+    },
+    {
+      "site": null,
+      "out": false
+    }
+  ],
+  "relayedCheck": [
+    {
+      "name": "a JSON answer keeps its status and body, and only cookies of ours",
+      "status": 200,
+      "type": "application/json; charset=utf-8",
+      "cookies": [
+        "__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax",
+        "session=hijacked; Path=/",
+        "__Host-d3_acquisition=x",
+        "__Host-d3nameless",
+        " __Secure-d3visitor=v; Path=/"
+      ],
+      "body": "{\"next\":\"reload\"}",
+      "out": {
+        "status": 200,
+        "contentType": "application/json",
+        "setCookies": [
+          "__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax",
+          "__Secure-d3visitor=v; Path=/"
+        ],
+        "body": "{\"next\":\"reload\"}"
+      }
+    },
+    {
+      "name": "a JSON refusal of its own passes through",
+      "status": 409,
+      "type": "application/json",
+      "cookies": [],
+      "body": "{\"error\":\"stale\"}",
+      "out": {
+        "status": 409,
+        "contentType": "application/json",
+        "setCookies": [],
+        "body": "{\"error\":\"stale\"}"
+      }
+    },
+    {
+      "name": "HTML is never served on the site",
+      "status": 200,
+      "type": "text/html",
+      "cookies": [],
+      "body": "<script>x</script>",
+      "out": {
+        "status": 503,
+        "contentType": "application/json",
+        "setCookies": [],
+        "body": "{\"error\":\"check-unavailable\"}"
+      }
+    },
+    {
+      "name": "no type is never served either",
+      "status": 200,
+      "type": null,
+      "cookies": [],
+      "body": "{}",
+      "out": {
+        "status": 503,
+        "contentType": "application/json",
+        "setCookies": [],
+        "body": "{\"error\":\"check-unavailable\"}"
+      }
+    },
+    {
+      "name": "a refused key answers as unavailable",
+      "status": 401,
+      "type": "application/json",
+      "cookies": [],
+      "body": "{\"error\":\"unknown-key\"}",
+      "out": {
+        "status": 503,
+        "contentType": "application/json",
+        "setCookies": [],
+        "body": "{\"error\":\"check-unavailable\"}"
+      }
+    },
+    {
+      "name": "a forbidden key too",
+      "status": 403,
+      "type": "application/json",
+      "cookies": [],
+      "body": "{}",
+      "out": {
+        "status": 503,
+        "contentType": "application/json",
+        "setCookies": [],
+        "body": "{\"error\":\"check-unavailable\"}"
+      }
+    }
+  ],
   "forwardAll": [
     {
       "name": "every header but the never-sent, every cookie but ours",

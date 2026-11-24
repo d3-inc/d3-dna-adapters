@@ -1,5 +1,5 @@
 import {
-  ADAPTER_SET,
+  CARRIES_MCP_SINCE,
   buildPaymentResponse,
   builtAnswerOf,
   createHttpPolicyClient,
@@ -61,7 +61,7 @@ export function withD3Mcp<R extends Request, A extends unknown[]>(
       ip: ipFn(request),
       network: networkFactsFromVercel(request),
       debugHeaders: cfg.debugLogRawPayload,
-      adapterSet: ADAPTER_SET,
+      adapterSet: CARRIES_MCP_SINCE,
       exclude: cfg.exclude,
     });
     const requestId = crypto.randomUUID();

@@ -367,9 +367,12 @@ cookies. A budget of five seconds bounds the whole relay, reading the post and
 the answer included.
 
 Declare `4` only where you can relay: an endpoint that does not end in
-`/v1/decision`, or no check endpoint at all, declares `3`. An adapter below
-revision 4 is never offered the check. A site whose DNA is off passes the path
-to its origin like any other.
+`/v1/decision`, or no check endpoint at all, declares `3`. An adapter that cannot
+honour `3` (Vercel middleware and the Snippet, which cannot rewrite a body)
+relays all the same and keeps declaring its own revision; its build's record
+lists `relay-check`, and the endpoint offers the check by that record. An
+adapter that neither declares `4` nor has that record is never offered the
+check. A site whose DNA is off passes the path to its origin like any other.
 
 ### The budget
 

@@ -53,14 +53,16 @@ export const FORWARDED_HEADER_SET = 2;
  * forwards every header and cookie but the site's exclusions. 3 lifts an MCP
  * call's payment, strips it before the origin, and answers JSON-RPC.
  *
- * 4, the check relay, is `RELAYS_CHECK_SINCE`: this stays 3 until every adapter
- * that passes it relays, and one that does declares 4 itself.
+ * 4 relays the check script's post to the check endpoint, never the origin.
+ * An adapter that cannot reach a check endpoint declares 3; one that cannot
+ * honour 3 declares its own revision and lists `relay-check` in its build
+ * record instead.
  *
  * Never stamped here, unlike `FORWARDED_HEADER_SET`: it describes the caller's
  * own response path, which `extractPayload` cannot see, so the caller passes it
  * (ADR 0068 decision 2).
  */
-export const ADAPTER_SET = 3;
+export const ADAPTER_SET = 4;
 
 /**
  * Headers forwarded below revision 2, and all the worker keeps of a payload's

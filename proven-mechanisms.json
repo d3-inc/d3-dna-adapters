@@ -19,7 +19,7 @@
           "packages/protocol/src/adapter/forward-all.spec.ts: forwards it behind any number of cookies wearing our prefix"
         ],
         "forward-all": [
-          "packages/cloudflare-adapter/src/index.spec.ts: declares revision 3, forwards every header and cookie, and keeps back what the site lists",
+          "packages/cloudflare-adapter/src/index.spec.ts: declares its revision, forwards every header and cookie, and keeps back what the site lists",
           "packages/protocol/src/adapter/forward-all.spec.ts: forwards every header but the never-forwarded, lowercased"
         ],
         "answer": [
@@ -39,6 +39,60 @@
         "rewrite-body": [
           "packages/cloudflare-adapter/src/index.spec.ts: lifts a call's payment for the decision and never lets it reach the origin",
           "packages/cloudflare-adapter/src/index.spec.ts: adds the receipt to the origin's JSON result"
+        ]
+      }
+    },
+    {
+      "since": "0.12.0",
+      "sends": 4,
+      "proves": {
+        "credentials": [
+          "packages/cloudflare-adapter/src/index.spec.ts: forwards only our cookie, strips it before the origin, and appends the Set-Cookie a redemption returns",
+          "packages/cloudflare-adapter/src/index.spec.ts: should still keep our credentials off the origin when it fails open",
+          "packages/protocol/src/adapter/extract.spec.ts: forwards the browser-check pass under its own name, and only under its cap"
+        ],
+        "namespace": [
+          "packages/cloudflare-adapter/src/index.spec.ts: should forward a lone visitor id to DNA and keep it from the origin, on a pass and when it fails open",
+          "packages/cloudflare-adapter/src/index.spec.ts: strips ours from the challenge it sends on",
+          "packages/cloudflare-adapter/src/index.spec.ts: strips ours even with nothing configured",
+          "packages/protocol/src/x402/payment-header.spec.ts: removes the visitor id even when it is the only cookie of ours",
+          "packages/protocol/src/x402/payment-header.spec.ts: removes a parameter wearing our prefix, not only the three we read",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards the visitor id behind a jar past the shared cap",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards it behind any number of cookies wearing our prefix"
+        ],
+        "forward-all": [
+          "packages/cloudflare-adapter/src/index.spec.ts: declares its revision, forwards every header and cookie, and keeps back what the site lists",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards every header but the never-forwarded, lowercased"
+        ],
+        "answer": [
+          "packages/cloudflare-adapter/src/index.spec.ts: should return a machine-readable 403 on block without touching the origin",
+          "packages/cloudflare-adapter/src/index.spec.ts: never reaches the origin for a status it was handed",
+          "packages/cloudflare-adapter/src/index.spec.ts: fails closed with 502 payment_unavailable when the decision call throws and a payment header is present",
+          "packages/cloudflare-adapter/src/index.spec.ts: never falls open on a payment lifted from the body"
+        ],
+        "decorate": [
+          "packages/cloudflare-adapter/src/index.spec.ts: carries a receipt onto the origin response when nothing terminates",
+          "packages/protocol/src/adapter/payment-response.spec.ts: appends our Set-Cookie after the origin cookie rather than replacing it"
+        ],
+        "bare-pass": [
+          "packages/cloudflare-adapter/src/index.spec.ts: should proxy to origin on pass and tags the response",
+          "packages/cloudflare-adapter/src/index.spec.ts: should build nothing for the origin from a pass verdict"
+        ],
+        "rewrite-body": [
+          "packages/cloudflare-adapter/src/index.spec.ts: lifts a call's payment for the decision and never lets it reach the origin",
+          "packages/cloudflare-adapter/src/index.spec.ts: adds the receipt to the origin's JSON result"
+        ],
+        "relay-check": [
+          "packages/cloudflare-adapter/src/index.spec.ts: relays the script's post to /v1/check beside the decision path, under the key, and never to the origin",
+          "packages/cloudflare-adapter/src/index.spec.ts: answers 503 when the check endpoint is down, and still never reaches the origin",
+          "packages/cloudflare-adapter/src/index.spec.ts: declares revision 3 and answers 503 on the fleet without a check binding, and relays through one",
+          "packages/cloudflare-adapter/src/index.spec.ts: declares revision 3 where the endpoint has no check path beside it, and answers its posts 503",
+          "packages/protocol/src/adapter/check-relay.spec.ts: posts the payload and the answer to the check endpoint under the adapter key",
+          "packages/protocol/src/adapter/check-relay.spec.ts: passes only cookies of ours, so a check endpoint cannot set the site its own",
+          "packages/protocol/src/adapter/check-relay.spec.ts: serves nothing that is not JSON on the site, so no answer can run as its page",
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 503 when the check endpoint cannot be reached, or the payload cannot be built",
+          "packages/protocol/src/adapter/check-relay.spec.ts: follows no redirect, which would carry the key away, and answers 503",
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 403 to a post another site sent, and relays nothing"
         ]
       }
     }
@@ -77,6 +131,52 @@
         "bare-pass": [
           "packages/vercel-middleware/src/middleware.spec.ts: serves the site its own URL and cookies, none of ours, on a pass and when it fails open",
           "packages/vercel-middleware/src/middleware.spec.ts: continues with only what the visitor sent, building nothing from the verdict"
+        ]
+      }
+    },
+    {
+      "since": "0.12.0",
+      "sends": 2,
+      "proves": {
+        "credentials": [
+          "packages/vercel-middleware/src/middleware.spec.ts: forwards only our cookie, strips it from the upstream request, and sets the cookie a redemption returns",
+          "packages/vercel-middleware/src/middleware.spec.ts: still keeps our credentials off the upstream when it fails open",
+          "packages/vercel-middleware/src/middleware.spec.ts: serves the site its own URL and cookies, none of ours, on a pass and when it fails open",
+          "packages/protocol/src/adapter/extract.spec.ts: forwards the browser-check pass under its own name, and only under its cap"
+        ],
+        "namespace": [
+          "packages/vercel-middleware/src/middleware.spec.ts: forwards a lone visitor id to DNA and keeps it from the site, on a pass and when it fails open",
+          "packages/vercel-middleware/src/middleware.spec.ts: serves the site its own URL and cookies, none of ours, on a pass and when it fails open",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards the visitor id behind a jar past the shared cap",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards it behind any number of cookies wearing our prefix"
+        ],
+        "forward-all": [
+          "packages/vercel-middleware/src/middleware.spec.ts: forwards every header and cookie but what the config keeps back, and echoes it",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards every header but the never-forwarded, lowercased"
+        ],
+        "answer": [
+          "packages/vercel-middleware/src/middleware.spec.ts: never continues to the site for a status it was handed",
+          "packages/vercel-middleware/src/middleware.spec.ts: returns a machine-readable 403 on block, without calling next()",
+          "packages/vercel-middleware/src/middleware.spec.ts: fails closed with 502 payment_unavailable when the decision call throws and a payment header is present",
+          "packages/vercel-middleware/src/middleware.spec.ts: treats a handoff on the URL as paying: 502 rather than a fail-open pass"
+        ],
+        "decorate": [
+          "packages/vercel-middleware/src/middleware.spec.ts: carries a receipt onto the continuation when nothing terminates",
+          "packages/vercel-middleware/src/middleware.spec.ts: forwards only our cookie, strips it from the upstream request, and sets the cookie a redemption returns"
+        ],
+        "bare-pass": [
+          "packages/vercel-middleware/src/middleware.spec.ts: serves the site its own URL and cookies, none of ours, on a pass and when it fails open",
+          "packages/vercel-middleware/src/middleware.spec.ts: continues with only what the visitor sent, building nothing from the verdict"
+        ],
+        "relay-check": [
+          "packages/vercel-middleware/src/middleware.spec.ts: relays the post to /v1/check under the key, and never continues to the site",
+          "packages/vercel-middleware/src/middleware.spec.ts: answers 503 where the endpoint has no check path beside it, and never continues",
+          "packages/protocol/src/adapter/check-relay.spec.ts: posts the payload and the answer to the check endpoint under the adapter key",
+          "packages/protocol/src/adapter/check-relay.spec.ts: passes only cookies of ours, so a check endpoint cannot set the site its own",
+          "packages/protocol/src/adapter/check-relay.spec.ts: serves nothing that is not JSON on the site, so no answer can run as its page",
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 503 when the check endpoint cannot be reached, or the payload cannot be built",
+          "packages/protocol/src/adapter/check-relay.spec.ts: follows no redirect, which would carry the key away, and answers 503",
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 403 to a post another site sent, and relays nothing"
         ]
       }
     }
@@ -178,6 +278,55 @@
           "cloudflare-snippet/snippet.spec.ts: should pass a request the endpoint answered with no verdict at all"
         ]
       }
+    },
+    {
+      "since": "2.1.0",
+      "sends": 2,
+      "proves": {
+        "credentials": [
+          "cloudflare-snippet/snippet.spec.ts: should forward the pay cookie under its own name, never in the jar",
+          "cloudflare-snippet/snippet.spec.ts: should forward the browser-check pass as d3pay-person, and declare the revision that carries it",
+          "cloudflare-snippet/snippet.spec.ts: should let no credential reach the origin: header, cookie, or URL",
+          "cloudflare-snippet/snippet.spec.ts: should keep the pass off the origin, cookie and header alike"
+        ],
+        "namespace": [
+          "cloudflare-snippet/snippet.spec.ts: should carry a visitor id back in the cookie map (ADR 0087)",
+          "cloudflare-snippet/snippet.spec.ts: should strip every param of ours before the origin, not just the handoff",
+          "cloudflare-snippet/snippet.spec.ts: should let no credential reach the origin: header, cookie, or URL",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards the visitor id behind a jar past the shared cap",
+          "packages/protocol/src/x402/payment-header.spec.ts: removes the visitor id even when it is the only cookie of ours"
+        ],
+        "forward-all": [
+          "cloudflare-snippet/snippet.spec.ts: should send the site every header and cookie it did not keep back",
+          "cloudflare-snippet/snippet.spec.ts: should keep back the names CONFIG excludes, and say which",
+          "cloudflare-snippet/snippet.spec.ts: should never forward the credentials the platform owns",
+          "packages/protocol/src/adapter/forward-all.spec.ts: forwards every header but the never-forwarded, lowercased"
+        ],
+        "answer": [
+          "cloudflare-snippet/snippet.spec.ts: should return a machine-readable 403 on block without touching the origin",
+          "cloudflare-snippet/snippet.spec.ts: should render the 402 the worker handed it, without reaching the origin",
+          "cloudflare-snippet/snippet.spec.ts: should answer 502 rather than fall open when a paying request gets no decision",
+          "cloudflare-snippet/snippet.spec.ts: should answer 502 for a timed-out redemption carrying its handoff on the URL"
+        ],
+        "decorate": [
+          "cloudflare-snippet/snippet.spec.ts: should append the session cookie to the origin's own Set-Cookie, never replace it",
+          "cloudflare-snippet/snippet.spec.ts: should hand a minted visitor id to the browser without caching it anywhere shared"
+        ],
+        "bare-pass": [
+          "cloudflare-snippet/snippet.spec.ts: should build nothing for the origin from a pass verdict",
+          "cloudflare-snippet/snippet.spec.ts: should pass a request the endpoint answered with no verdict at all"
+        ],
+        "relay-check": [
+          "cloudflare-snippet/snippet.spec.ts: relays the post to /v1/check under the key, sampled out or not, and never to the origin",
+          "cloudflare-snippet/snippet.spec.ts: answers 503 where the endpoint has no check path beside it",
+          "packages/protocol/src/adapter/check-relay.spec.ts: posts the payload and the answer to the check endpoint under the adapter key",
+          "packages/protocol/src/adapter/check-relay.spec.ts: passes only cookies of ours, so a check endpoint cannot set the site its own",
+          "packages/protocol/src/adapter/check-relay.spec.ts: serves nothing that is not JSON on the site, so no answer can run as its page",
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 503 when the check endpoint cannot be reached, or the payload cannot be built",
+          "packages/protocol/src/adapter/check-relay.spec.ts: follows no redirect, which would carry the key away, and answers 503",
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 403 to a post another site sent, and relays nothing"
+        ]
+      }
     }
   ],
   "openresty": [
@@ -221,6 +370,55 @@
           "openresty/test/run.mjs: mcp: the key in _meta lifted onto the payload",
           "openresty/test/run.mjs: mcp: the origin gets the call without it",
           "openresty/test/run.mjs: mcp: the receipt added to the result's _meta"
+        ]
+      }
+    },
+    {
+      "since": "1.1.0",
+      "sends": 4,
+      "proves": {
+        "credentials": [
+          "openresty/test/run.mjs: pass: our cookies on their own headers",
+          "openresty/test/run.mjs: pass: the origin gets the verdict, not the credentials",
+          "openresty/test/run.mjs: strip: no payment header, mirrored key or cookie of ours at the origin",
+          "openresty/test/run.mjs: strip: our params gone, the rest in order",
+          "openresty/test/run.mjs: ${scenario}: still no credential at the origin"
+        ],
+        "namespace": [
+          "openresty/test/parity.cases.ts: ours ride outside the shared cookie cap",
+          "openresty/test/parity.cases.ts: the id we set outlasts cookies wearing our prefix",
+          "openresty/test/parity.cases.ts: a host-scoped id outlasts them too",
+          "openresty/test/run.mjs: ours: ${name} alone reaches DNA on ${scenario}, and never the origin",
+          "openresty/test/run.mjs: access raising: our cookie, our param and a forged verdict still never reach the origin"
+        ],
+        "forward-all": [
+          "openresty/test/run.mjs: pass: every header but authorization and the excluded",
+          "openresty/test/run.mjs: pass: the site cookies but sid and ours",
+          "openresty/test/run.mjs: pass: the exclusions echoed"
+        ],
+        "answer": [
+          "openresty/test/run.mjs: block: a 403 with its rule",
+          "openresty/test/run.mjs: 402: the gate as DNA sent it",
+          "openresty/test/run.mjs: a paying request never falls open",
+          "openresty/test/run.mjs: dead: a paying one is a 502"
+        ],
+        "decorate": [
+          "openresty/test/run.mjs: paid: our Set-Cookie beside the site's",
+          "openresty/test/run.mjs: paid: the page with our receipt"
+        ],
+        "bare-pass": [
+          "openresty/test/run.mjs: early pass: no verdict, so no verdict headers, and never the visitor's"
+        ],
+        "rewrite-body": [
+          "openresty/test/run.mjs: mcp: the key in _meta lifted onto the payload",
+          "openresty/test/run.mjs: mcp: the origin gets the call without it",
+          "openresty/test/run.mjs: mcp: the receipt added to the result's _meta"
+        ],
+        "relay-check": [
+          "openresty/test/run.mjs: relay: the check answer, never the origin, and only cookies of ours",
+          "openresty/test/run.mjs: relay: /v1/check under the key, the answer whole, the request as a decision call describes it",
+          "openresty/test/run.mjs: relay: an answer that is not JSON is never served on the site",
+          "openresty/test/run.mjs: dead: the check post answers 503, and never the origin"
         ]
       }
     }
@@ -330,6 +528,56 @@
           "wordpress/test/run.mjs: ${label}: mcp: the key in _meta lifted onto the payload",
           "wordpress/test/run.mjs: ${label}: mcp: WordPress gets the call without it",
           "wordpress/test/run.mjs: ${label}: mcp: a plugin reading php://input gets the call without it too"
+        ]
+      }
+    },
+    {
+      "since": "1.1.0",
+      "sends": 4,
+      "proves": {
+        "credentials": [
+          "wordpress/test/run.mjs: ${label}: pass: our cookies on their own headers",
+          "wordpress/test/run.mjs: ${label}: pass: WordPress gets the verdict, not the credentials",
+          "wordpress/test/run.mjs: ${label}: strip: no payment header, mirrored key or cookie of ours at WordPress",
+          "wordpress/test/run.mjs: ${label}: strip: our params gone from the URI, the rest in order",
+          "wordpress/test/run.mjs: ${label}: ${scenario}: still no credential at WordPress"
+        ],
+        "namespace": [
+          "wordpress/test/unit.php: the id we set outlasts cookies wearing our prefix and a jar past the shared cap",
+          "wordpress/test/unit.php: strip: nor in $_COOKIE, whatever PHP made of the name",
+          "wordpress/test/run.mjs: ${label}: ours: ${name} alone reaches DNA on ${scenario}, and never WordPress",
+          "wordpress/test/run.mjs: no Runtime.php: a cookie of ours is refused, never handed to WordPress"
+        ],
+        "forward-all": [
+          "wordpress/test/run.mjs: ${label}: pass: every header but authorization and the excluded",
+          "wordpress/test/run.mjs: ${label}: pass: the site cookies but sid and ours",
+          "wordpress/test/run.mjs: ${label}: pass: the exclusions echoed"
+        ],
+        "answer": [
+          "wordpress/test/run.mjs: ${label}: block: a 403 with its rule",
+          "wordpress/test/run.mjs: ${label}: 402: the gate as DNA sent it",
+          "wordpress/test/run.mjs: ${label}: a paying request never falls open",
+          "wordpress/test/run.mjs: dead: a paying one is a 502",
+          "wordpress/test/run.mjs: ${label}: mcp: an unpaid call is answered in band with its id"
+        ],
+        "decorate": [
+          "wordpress/test/run.mjs: ${label}: paid: our Set-Cookie beside the site's",
+          "wordpress/test/run.mjs: ${label}: paid: the page with our receipt",
+          "wordpress/test/run.mjs: ${label}: mcp: the receipt added to the result's _meta",
+          "wordpress/test/run.mjs: ${label}: paid: narrowed to private, freshness kept",
+          "wordpress/test/run.mjs: ${label}: a download that closes every buffer and sets its own caching is still private"
+        ],
+        "bare-pass": [
+          "wordpress/test/run.mjs: ${label}: early pass: no verdict, so no verdict headers, and never the visitor's"
+        ],
+        "rewrite-body": [
+          "wordpress/test/run.mjs: ${label}: mcp: the key in _meta lifted onto the payload",
+          "wordpress/test/run.mjs: ${label}: mcp: WordPress gets the call without it",
+          "wordpress/test/run.mjs: ${label}: mcp: a plugin reading php://input gets the call without it too"
+        ],
+        "relay-check": [
+          "wordpress/test/run.mjs: ${label}: relay: the check answer, never WordPress, and only cookies of ours",
+          "wordpress/test/run.mjs: ${label}: relay: /v1/check under the key, the answer whole, as a decision call describes it"
         ]
       }
     }

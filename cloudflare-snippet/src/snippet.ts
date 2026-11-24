@@ -29,6 +29,13 @@ import {
 } from '../../packages/protocol/src/adapter/forward-all';
 import { FORWARDED_MAX_NAMES } from '../../packages/protocol/src/adapter/forwarding.constants';
 import {
+  DEFAULT_CHECK_RELAY_TIMEOUT_MS,
+  checkEndpointOf,
+  checkRelayRefusal,
+  isCheckRelayPath,
+  relayCheckPost,
+} from '../../packages/protocol/src/adapter/check-relay';
+import {
   blockResponse,
   paymentUnavailableResponse,
   withEdgeHeader,
@@ -83,7 +90,7 @@ const DEFAULT_ENDPOINT = 'https://edge-api.d3.com/v1/decision';
 const ADAPTER_SET = 2;
 
 /** Our build of this file, by its own version. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter). */
-const DNA_ADAPTER = 'snippet:2.0.1';
+const DNA_ADAPTER = 'snippet:2.1.0';
 
 /** Snippets get 2 MB of memory, so only bodies up to this size are hashed. */
 const MAX_HASHED_BODY_BYTES = 1_000_000;
@@ -108,6 +115,23 @@ export function createSnippet(config: SnippetConfig): { fetch(request: Request):
     // waitUntil, so the request is logged at decision time and nothing more.
     async fetch(request: Request): Promise<Response> {
       if (!endpoint) return withEdgeHeader(await fetch(request), 'disabled');
+
+      // The check script's post is ours to answer, sampled or not: it never reaches the origin.
+      // Revision 2 still: this file's build record lists the relay beside it.
+      if (isCheckRelayPath(request.url)) {
+        const checkUrl = checkEndpointOf(endpoint);
+        if (checkUrl === null) return checkRelayRefusal(503);
+
+        return relayCheckPost(request, {
+          url: checkUrl,
+          bearer: apiKey,
+          adapterName: DNA_ADAPTER,
+          timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
+          fetch: (input, init) => fetch(input, init),
+          payloadOf: (posted) => extractPayload(posted, exclude),
+          logError: (message, detail) => console.error(`d3-edge ${message}`, detail),
+        });
+      }
 
       const paying = requestPresentsPayment(request);
       // No Response clone and no header either: an unsampled request costs what

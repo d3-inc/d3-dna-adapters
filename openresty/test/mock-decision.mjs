@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 
 const decisions = [];
 const reports = [];
+const checks = [];
 const PORT = Number(process.env.MOCK_PORT ?? 9010);
 
 const verdict = { tier: 'claimed', identity: 'test-bot' };
@@ -92,7 +93,27 @@ createServer((req, res) => {
     const text = Buffer.concat(chunks).toString('utf8');
     if (req.method === 'GET' && req.url === '/__log') {
       res.writeHead(200, { 'content-type': 'application/json' });
-      return res.end(JSON.stringify({ decisions, reports }));
+      return res.end(JSON.stringify({ decisions, reports, checks }));
+    }
+
+    // The check worker: `check=` in the relayed post's own query picks what it answers.
+    if (req.url === '/v1/check') {
+      const relayed = JSON.parse(text);
+      checks.push({ auth: req.headers.authorization, adapter: req.headers['dna-adapter'], relayed });
+      const kind = new URL(relayed.payload.url, 'http://x').searchParams.get('check') ?? 'pass';
+      if (kind === 'html') {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        return res.end('<script>alert(1)</script>');
+      }
+
+      res.writeHead(200, {
+        'content-type': 'application/json',
+        'set-cookie': [
+          '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax',
+          'session=hijacked; Path=/',
+        ],
+      });
+      return res.end(JSON.stringify({ next: 'reload' }));
     }
 
     if (req.url === '/v1/report') {

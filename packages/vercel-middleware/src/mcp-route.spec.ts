@@ -1,4 +1,4 @@
-import { ADAPTER_SET, type ClientDecision, type RequestPayload } from '@d3-inc/d3-dna-protocol';
+import { CARRIES_MCP_SINCE, type ClientDecision, type RequestPayload } from '@d3-inc/d3-dna-protocol';
 import { describe, expect, it } from 'vitest';
 import { withD3Mcp, type McpRouteDeps } from './mcp-route';
 
@@ -49,7 +49,7 @@ describe('withD3Mcp', () => {
     expect(h.decisions).toHaveLength(1);
     expect(h.names).toEqual(['vercel-mcp:0.0.0-test']);
     expect(h.decisions[0]).toMatchObject({
-      adapterSet: ADAPTER_SET,
+      adapterSet: CARRIES_MCP_SINCE,
       mcp: { method: 'tools/call', tool: 'a' },
       headers: { 'payment-authorization': 'Payment dna_k_1' },
     });

@@ -291,7 +291,7 @@ describe('the check relay', () => {
       ...init,
     } as RequestInit);
 
-  it("relays the script's post to /v1/check on the endpoint's host, under the key, and never to the origin", async () => {
+  it("relays the script's post to /v1/check beside the decision path, under the key, and never to the origin", async () => {
     const log = stubCheck(() => {
       const headers = new Headers({ 'content-type': 'application/json' });
       headers.append('set-cookie', '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax');
@@ -1029,7 +1029,7 @@ describe('forwarding and MCP carriage (ADR 0081)', () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 42, method, params }),
     }) as IncomingRequest;
 
-  it('declares revision 3, forwards every header and cookie, and keeps back what the site lists', async () => {
+  it('declares its revision, forwards every header and cookie, and keeps back what the site lists', async () => {
     const log = stubOutbound({ action: 'pass' });
     await run(
       siteRequest({

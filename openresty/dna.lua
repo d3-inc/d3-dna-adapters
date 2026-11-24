@@ -24,10 +24,11 @@ local NULL, ARRAY_MT = json.null, json.array_mt
 M.null = NULL
 
 -- Revisions (extract.ts ADAPTER_SET, forwarding.constants.ts).
-M.ADAPTER_SET            = 3
+M.ADAPTER_SET            = 4
 M.FORWARDED_HEADER_SET   = 2
 local FORWARDS_ALL_SINCE = 2
 local CARRIES_MCP_SINCE  = 3
+local RELAYS_CHECK_SINCE = 4
 
 local FORWARDED_MAX_COOKIES      = 256
 local FORWARDED_MAX_NAMES        = 128
@@ -53,6 +54,7 @@ local PERSON_PASS_HEADER  = "d3pay-person"
 local COOKIE_TOKEN_MAX    = 64
 local VISITOR_ID_ZONE_COOKIE = "__Secure-d3visitor"
 local VISITOR_ID_HOST_COOKIE = "__Host-d3visitor"
+local CHECK_RESULT_COOKIE = "__Host-d3check"
 local PAY_HANDOFF_PARAM   = "d3pay_handoff"
 local MCP_DNA_KEY_HEADER  = "mcp-param-dna-key"
 local MCP_KEY_ARGUMENT    = "dna_account_key"
@@ -113,7 +115,7 @@ local OWN_COOKIES     = set_of({ PAY_SESSION_COOKIE, PERSON_PASS_COOKIE })
 -- namespace.ts: ours on a site. The lowercase letter keeps out our own apps'
 -- `__Host-d3_*` and `__Secure-d3-*` cookies, which no adapter should touch.
 local RESERVED_COOKIES = set_of({
-  PAY_SESSION_COOKIE, PERSON_PASS_COOKIE, VISITOR_ID_ZONE_COOKIE, VISITOR_ID_HOST_COOKIE,
+  PAY_SESSION_COOKIE, PERSON_PASS_COOKIE, VISITOR_ID_ZONE_COOKIE, VISITOR_ID_HOST_COOKIE, CHECK_RESULT_COOKIE,
 })
 local NAMESPACE_MAX_COOKIES = 8
 local NAMESPACE_MAX_TOTAL_LENGTH = 4096
@@ -1314,7 +1316,7 @@ end
 
 -- Our build of this install, by its own version. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter).
 -- Only the full install sends it: web_bot_auth_verify.lua runs revision 1, a different build.
-local DNA_ADAPTER = "openresty:1.0.1"
+local DNA_ADAPTER = "openresty:1.1.0"
 
 local function post_decision(settings, payload, budget_ms)
   local httpc = http.new()
@@ -1326,7 +1328,8 @@ local function post_decision(settings, payload, budget_ms)
     headers = {
       ["Content-Type"] = "application/json",
       ["Authorization"] = settings.api_key and ("Bearer " .. settings.api_key) or nil,
-      ["dna-adapter"] = payload.adapterSet == M.ADAPTER_SET and DNA_ADAPTER or nil,
+      -- The full install declares 3 without a check endpoint; the revision-1 entry point is another build.
+      ["dna-adapter"] = payload.adapterSet >= CARRIES_MCP_SINCE and DNA_ADAPTER or nil,
     },
   })
 end
@@ -1334,10 +1337,10 @@ end
 -- set_timeout bounds each socket step, not the call: a resolver that never
 -- answers, or a decision trickled a byte at a time, would hold the request far
 -- past the budget. The call races a sleep, and the loser is killed.
-local function decide(settings, payload, budget_ms)
+local function within_budget(budget_ms, fn, ...)
   -- Before spawning: a thread that raises is logged by nginx on every request, past log_every.
   if http == nil then return nil, "lua-resty-http did not load" end
-  local call = ngx.thread.spawn(post_decision, settings, payload, budget_ms)
+  local call = ngx.thread.spawn(fn, ...)
   local clock = ngx.thread.spawn(function() ngx.sleep(budget_ms / 1000) end)
   local ok, res, err = ngx.thread.wait(call, clock)
   ngx.thread.kill(call)
@@ -1345,6 +1348,179 @@ local function decide(settings, payload, budget_ms)
   if not ok then return nil, tostring(res) end
   if res == nil and err == nil then return nil, "deadline" end
   return res, err
+end
+
+local function decide(settings, payload, budget_ms)
+  return within_budget(budget_ms, post_decision, settings, payload, budget_ms)
+end
+
+-- ── The check relay (check-relay.ts) ─────────────────────────────────────────
+
+M.CHECK_RELAY_PATH           = "/.well-known/d3/check"
+M.CHECK_RELAY_MAX_BODY_BYTES = 32 * 1024
+M.CHECK_RELAY_TIMEOUT_MS     = 5000
+local DECISION_PATH_SUFFIX   = "/v1/decision"
+
+-- checkEndpointOf: /v1/check beside the decision path, prefix kept; nil for any other endpoint.
+function M.check_endpoint_of(endpoint)
+  if type(endpoint) ~= "string" then return nil end
+
+  local base = endpoint:match("^[^?#]*")
+  local origin, path = base:match("^(%a[%w+.-]*://[^/]+)(/.*)$")
+  if path == nil or path:sub(-#DECISION_PATH_SUFFIX) ~= DECISION_PATH_SUFFIX then return nil end
+
+  return origin .. path:sub(1, #path - #DECISION_PATH_SUFFIX) .. "/v1/check"
+end
+
+-- isCrossSitePost: a browser that labels the post as from elsewhere; no label lets it by.
+function M.is_cross_site_post(sec_fetch_site)
+  return sec_fetch_site ~= nil and sec_fetch_site ~= "same-origin"
+end
+
+-- Strict UTF-8: decoding lossily would relay an answer nobody posted.
+function M.is_utf8(s)
+  local i, n = 1, #s
+  while i <= n do
+    local c = s:byte(i)
+    local extra, min
+    if c < 0x80 then extra, min = 0, 0
+    elseif c >= 0xC2 and c <= 0xDF then extra, min = 1, 0x80
+    elseif c >= 0xE0 and c <= 0xEF then extra, min = 2, 0x800
+    elseif c >= 0xF0 and c <= 0xF4 then extra, min = 3, 0x10000
+    else return false end
+
+    if i + extra > n then return false end
+
+    local code = extra == 0 and c or (c % (2 ^ (6 - extra)))
+    for k = 1, extra do
+      local b = s:byte(i + k)
+      if b < 0x80 or b > 0xBF then return false end
+
+      code = code * 64 + (b - 0x80)
+    end
+    if code < min or code > 0x10FFFF or (code >= 0xD800 and code <= 0xDFFF) then return false end
+
+    i = i + extra + 1
+  end
+
+  return true
+end
+
+local CHECK_REFUSALS = {
+  [400] = "malformed",
+  [403] = "cross-site",
+  [405] = "method-not-allowed",
+  [413] = "too-large",
+  [503] = "check-unavailable",
+}
+
+local function relay_headers()
+  return {
+    { "Cache-Control", "no-store" },
+    { "X-Content-Type-Options", "nosniff" },
+    { "x-d3-edge", "check" },
+    { "Content-Type", "application/json" },
+  }
+end
+
+function M.check_relay_refusal(status)
+  local headers = relay_headers()
+  if status == 405 then headers[#headers + 1] = { "Allow", "POST" } end
+
+  return { status = status, headers = headers, set_cookies = {}, body = M.json_encode({ error = CHECK_REFUSALS[status] }) }
+end
+
+local function is_json_answer(content_type)
+  return type(content_type) == "string" and ngx.re.find(content_type, [[^application/json\s*(;|$)]], "joi") ~= nil
+end
+
+-- relayedCheckResponse: served on the site's own host, so JSON only and cookies of ours only.
+function M.relayed_check_answer(status, content_type, set_cookies, body)
+  if status == 401 or status == 403 then
+    M.log_every("check relay key", 10, ngx.ERR, "dna: check relay rejected (HTTP ", status, "), check DNA_API_KEY")
+    return M.check_relay_refusal(503)
+  end
+
+  if not is_json_answer(content_type) then return M.check_relay_refusal(503) end
+
+  local kept = {}
+  for _, cookie in ipairs(set_cookies) do
+    local eq = cookie:find("=", 1, true)
+    if eq and is_namespace_cookie(trim(cookie:sub(1, eq - 1))) then kept[#kept + 1] = trim(cookie) end
+  end
+
+  return { status = status, headers = relay_headers(), set_cookies = kept, body = body or "" }
+end
+
+-- The post, read whole up to the cap: nil past it.
+local function capped_post(by_name)
+  local declared = tonumber(by_name["content-length"])
+  if declared and declared > M.CHECK_RELAY_MAX_BODY_BYTES then return nil end
+
+  ngx.req.read_body()
+  local data = ngx.req.get_body_data()
+  if data == nil then
+    local file = ngx.req.get_body_file()
+    local f = file and io.open(file, "rb")
+    if not f then return "" end
+
+    data = f:read(M.CHECK_RELAY_MAX_BODY_BYTES + 1) or ""
+    f:close()
+  end
+
+  if #data > M.CHECK_RELAY_MAX_BODY_BYTES then return nil end
+  return data
+end
+
+local function post_check(url, settings, relayed, budget_ms)
+  local httpc = http.new()
+  httpc:set_timeout(budget_ms)
+  -- lua-resty-http follows no redirect, which would carry the key away.
+  return httpc:request_uri(url, {
+    method = "POST",
+    body = relayed,
+    ssl_verify = true,
+    headers = {
+      ["Content-Type"] = "application/json",
+      ["Authorization"] = settings.api_key and ("Bearer " .. settings.api_key) or nil,
+      ["dna-adapter"] = DNA_ADAPTER,
+    },
+  })
+end
+
+local function send_relay(built)
+  ngx.status = built.status
+  for _, pair in ipairs(built.headers) do ngx.header[pair[1]] = pair[2] end
+  if #built.set_cookies > 0 then ngx.header["Set-Cookie"] = built.set_cookies end
+  ngx.print(built.body)
+  return ngx.exit(ngx.HTTP_OK)
+end
+
+-- relayCheckPost: answers the check script's post itself, never the origin.
+local function relay_check(url, settings, by_name, extract_request)
+  if ngx.req.get_method() ~= "POST" then return send_relay(M.check_relay_refusal(405)) end
+
+  if M.is_cross_site_post(by_name["sec-fetch-site"]) then return send_relay(M.check_relay_refusal(403)) end
+
+  local answer = capped_post(by_name)
+  if answer == nil then return send_relay(M.check_relay_refusal(413)) end
+
+  if answer == "" or not M.is_utf8(answer) then return send_relay(M.check_relay_refusal(400)) end
+
+  if url == nil then return send_relay(M.check_relay_refusal(503)) end
+
+  local payload = extract_request(answer)
+  local relayed = M.json_encode({ payload = payload, answer = answer })
+  local res, err = within_budget(M.CHECK_RELAY_TIMEOUT_MS, post_check, url, settings, relayed, M.CHECK_RELAY_TIMEOUT_MS)
+  if res == nil or (res.status >= 300 and res.status < 400) then
+    M.log_every("check relay " .. tostring(err or res.status), 10, ngx.ERR, "dna: check relay failed (",
+      tostring(err or ("HTTP " .. res.status)), ")")
+    return send_relay(M.check_relay_refusal(503))
+  end
+
+  local cookies = res.headers["Set-Cookie"]
+  if type(cookies) == "string" then cookies = { cookies } end
+  return send_relay(M.relayed_check_answer(res.status, res.headers["Content-Type"], cookies or {}, res.body))
 end
 
 -- Asks DNA about one request and answers as it says: the page, a block, or a
@@ -1381,22 +1557,34 @@ function M.access(revision)
   end
 
   local method = ngx.req.get_method()
-  local body = M.read_body(method, by_name["content-type"])
   local request_uri = ngx.var.request_uri
   local host = ngx.var.http_host or ngx.var.host
   local request_id = ngx.var.request_id
+  -- Revision 4 only where there is somewhere to relay to: a 4 is offered a check it must finish.
+  local relays = revision >= RELAYS_CHECK_SINCE
+  local check_url = relays and M.check_endpoint_of(settings.endpoint) or nil
+  local declared = (relays and check_url == nil) and CARRIES_MCP_SINCE or revision
+  local function extract_with(body_data, streamed)
+    return M.extract({
+      method = method,
+      url = request_uri,
+      host = host,
+      ip = ngx.var.remote_addr,
+      secure = ngx.var.scheme == "https",
+      timestamp = ngx.now(),
+      entries = entries,
+      body = body_data,
+      streamed = streamed,
+    }, { revision = declared, exclude = settings.exclude, debug = settings.debug_log_raw_payload })
+  end
 
-  local payload, mcp = M.extract({
-    method = method,
-    url = request_uri,
-    host = host,
-    ip = ngx.var.remote_addr,
-    secure = ngx.var.scheme == "https",
-    timestamp = ngx.now(),
-    entries = entries,
-    body = body.data,
-    streamed = body.streamed,
-  }, { revision = revision, exclude = settings.exclude, debug = settings.debug_log_raw_payload })
+  -- The check script's post is ours to answer: it never reaches the origin, and it takes no decision.
+  if relays and ngx.var.uri == M.CHECK_RELAY_PATH then
+    return relay_check(check_url, settings, by_name, function(answer) return (extract_with(answer, nil)) end)
+  end
+
+  local body = M.read_body(method, by_name["content-type"])
+  local payload, mcp = extract_with(body.data, body.streamed)
   payload.requestId = request_id
 
   local state = {

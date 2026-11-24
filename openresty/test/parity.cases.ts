@@ -8,6 +8,13 @@ import {
 } from '../../packages/protocol/src/adapter/mcp-response.ts';
 import { privateCacheControl } from '../../packages/protocol/src/adapter/payment-response.ts';
 import {
+  CHECK_RELAY_MAX_BODY_BYTES,
+  CHECK_RELAY_PATH,
+  checkEndpointOf,
+  isCrossSitePost,
+  relayedCheckResponse,
+} from '../../packages/protocol/src/adapter/check-relay.ts';
+import {
   ADAPTER_SET,
   buildPaymentResponse,
   cookiesOf,
@@ -664,6 +671,67 @@ const settingsCases: { name: string; env: Record<string, string> }[] = [
   },
 ];
 
+const relayedCheckCases: {
+  name: string;
+  status: number;
+  type: string | null;
+  cookies: string[];
+  body: string;
+}[] = [
+  {
+    name: 'a JSON answer keeps its status and body, and only cookies of ours',
+    status: 200,
+    type: 'application/json; charset=utf-8',
+    cookies: [
+      '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax',
+      'session=hijacked; Path=/',
+      '__Host-d3_acquisition=x',
+      '__Host-d3nameless',
+      ' __Secure-d3visitor=v; Path=/',
+    ],
+    body: '{"next":"reload"}',
+  },
+  {
+    name: 'a JSON refusal of its own passes through',
+    status: 409,
+    type: 'application/json',
+    cookies: [],
+    body: '{"error":"stale"}',
+  },
+  {
+    name: 'HTML is never served on the site',
+    status: 200,
+    type: 'text/html',
+    cookies: [],
+    body: '<script>x</script>',
+  },
+  { name: 'no type is never served either', status: 200, type: null, cookies: [], body: '{}' },
+  {
+    name: 'a refused key answers as unavailable',
+    status: 401,
+    type: 'application/json',
+    cookies: [],
+    body: '{"error":"unknown-key"}',
+  },
+  { name: 'a forbidden key too', status: 403, type: 'application/json', cookies: [], body: '{}' },
+];
+
+async function relayedCheckCase(c: (typeof relayedCheckCases)[number]) {
+  const headers = new Headers();
+  if (c.type !== null) headers.set('content-type', c.type);
+  for (const cookie of c.cookies) headers.append('set-cookie', cookie);
+  const out = relayedCheckResponse(new Response(c.body, { status: c.status, headers }));
+  return {
+    ...c,
+    out: {
+      status: out.status,
+      contentType: out.headers.get('content-type'),
+      setCookies: out.headers.getSetCookie(),
+      body: await out.text(),
+    },
+  };
+}
+
 export async function buildParity() {
   return {
     constants: {
@@ -673,7 +741,24 @@ export async function buildParity() {
       HEADER_LENGTH_CAPS: Object.fromEntries(HEADER_LENGTH_CAPS),
       NEVER_FORWARDED_HEADERS: [...NEVER_FORWARDED_HEADERS],
       MCP_KEY_ARGUMENT_SCHEMA,
+      CHECK_RELAY_PATH,
+      CHECK_RELAY_MAX_BODY_BYTES,
     },
+    checkEndpoint: [
+      'https://edge-api.d3.com/v1/decision',
+      'https://gw.example:8443/tenant-a/v1/decision?x=1#f',
+      'http://127.0.0.1:9010/v1/decision',
+      'https://gw.example/decide',
+      'https://gw.example/v1/decision/',
+      'https://gw.example/v1/decisions',
+    ].map((endpoint) => ({ endpoint, out: checkEndpointOf(endpoint) })),
+    crossSite: ['cross-site', 'same-site', 'none', 'same-origin', null].map((site) => ({
+      site,
+      out: isCrossSitePost(
+        new Request('https://s.example/', site === null ? {} : { headers: { 'sec-fetch-site': site } })
+      ),
+    })),
+    relayedCheck: await Promise.all(relayedCheckCases.map(relayedCheckCase)),
     forwardAll: forwardAllCases.map((c) => ({
       ...c,
       out: forwardAll(headersOf(c.headers), c.exclude, HEADER_LENGTH_CAPS),

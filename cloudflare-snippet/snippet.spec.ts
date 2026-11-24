@@ -89,6 +89,71 @@ function run(request: Request, overrides?: Partial<SnippetConfig>): Promise<Resp
   return createSnippet({ ...BASE_CONFIG, ...overrides }).fetch(request);
 }
 
+describe('the check relay', () => {
+  const CHECK_URL = 'https://edge-api.d3.com/v1/check';
+  const ANSWER = JSON.stringify({ v: 2, offer: 'o', signals: {} });
+
+  function stubCheck(answer: () => Response) {
+    const log = {
+      checkCalls: [] as { headers: Headers; body: { payload: RequestPayload; answer: string } }[],
+      other: 0,
+    };
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      if (request.url === CHECK_URL) {
+        log.checkCalls.push({ headers: request.headers, body: await request.json() });
+        return answer();
+      }
+
+      log.other++;
+      return new Response('origin says hi');
+    });
+    return log;
+  }
+
+  const posted = () =>
+    siteRequest({
+      url: 'https://ai.d3.com/.well-known/d3/check',
+      method: 'POST',
+      body: ANSWER,
+      headers: {
+        'user-agent': 'Mozilla/5.0 Chrome/150',
+        'cf-connecting-ip': '203.0.113.7',
+        'sec-fetch-site': 'same-origin',
+      },
+    });
+
+  it('relays the post to /v1/check under the key, sampled out or not, and never to the origin', async () => {
+    const log = stubCheck(() => {
+      const headers = new Headers({ 'content-type': 'application/json' });
+      headers.append('set-cookie', '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax');
+      headers.append('set-cookie', 'session=hijacked; Path=/');
+      return new Response(JSON.stringify({ next: 'reload' }), { headers });
+    });
+    const res = await run(posted(), { sampleRate: 0 });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-d3-edge')).toBe('check');
+    expect(res.headers.getSetCookie()).toEqual([
+      '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax',
+    ]);
+    expect(log.other).toBe(0);
+    const [call] = log.checkCalls;
+    expect(call.headers.get('authorization')).toBe(`Bearer ${KEY}`);
+    expect(call.headers.get('dna-adapter')).toBe('snippet:2.1.0');
+    expect(call.body.answer).toBe(ANSWER);
+    expect(call.body.payload).toMatchObject({ method: 'POST', url: '/.well-known/d3/check', adapterSet: 2 });
+  });
+
+  it('answers 503 where the endpoint has no check path beside it', async () => {
+    const log = stubCheck(() => Response.json({}));
+    const res = await run(posted(), { endpoint: 'https://gw.example/decide' });
+    expect(res.status).toBe(503);
+    expect(log.checkCalls).toHaveLength(0);
+    expect(log.other).toBe(0);
+  });
+});
+
 describe('enforcement', () => {
   it('should proxy to origin on pass and tag the response', async () => {
     const log = stubOutbound({ action: 'pass', policyAction: 'log-only' });
@@ -101,7 +166,7 @@ describe('enforcement', () => {
 
     const call = log.policyCalls[0];
     expect(call.headers.get('authorization')).toBe(`Bearer ${KEY}`);
-    expect(call.headers.get('dna-adapter')).toBe('snippet:2.0.1');
+    expect(call.headers.get('dna-adapter')).toBe('snippet:2.1.0');
     expect(call.payload).toMatchObject({
       method: 'GET',
       url: '/page?x=1',

@@ -110,7 +110,8 @@ function to_array($v)
 $parity = expand(json_decode(file_get_contents(__DIR__ . '/../../openresty/test/parity.json')));
 // A section the file lost would otherwise run no checks and pass.
 foreach (['constants', 'forwardAll', 'withheld', 'exclusionList', 'privateCacheControl', 'cookies', 'payParams', 'mcp', 'answers',
-    'results', 'exclusionOverflow', 'unreadableAnswers', 'edgeModes', 'recordableName', 'debugHeaders', 'settings'] as $section) {
+    'results', 'exclusionOverflow', 'unreadableAnswers', 'edgeModes', 'recordableName', 'debugHeaders', 'settings',
+    'checkEndpoint', 'crossSite', 'relayedCheck'] as $section) {
     if (empty($parity->{$section})) {
         echo "parity.json has no $section section\n";
         exit(1);
@@ -252,6 +253,52 @@ foreach ($parity->unreadableAnswers as $case) {
 foreach ($parity->edgeModes as $case) {
     same('paymentEdgeMode: ' . $case->status, P::paymentEdgeMode($case->status), $case->out);
 }
+
+same('constants: CHECK_RELAY_PATH', P::CHECK_RELAY_PATH, $c->CHECK_RELAY_PATH);
+same('constants: CHECK_RELAY_MAX_BODY_BYTES', P::CHECK_RELAY_MAX_BODY_BYTES, $c->CHECK_RELAY_MAX_BODY_BYTES);
+
+foreach ($parity->checkEndpoint as $case) {
+    same('checkEndpointOf: ' . $case->endpoint, P::checkEndpointOf($case->endpoint), $case->out);
+}
+
+foreach ($parity->crossSite as $case) {
+    same('isCrossSitePost: ' . var_export($case->site, true), P::isCrossSitePost($case->site), $case->out);
+}
+
+function relay_header(array $built, $name)
+{
+    foreach ($built['headers'] as $pair) {
+        if (strtolower($pair[0]) === $name) return $pair[1];
+    }
+    return null;
+}
+
+foreach ($parity->relayedCheck as $case) {
+    $built = P::relayedCheckAnswer($case->status, $case->type, $case->cookies, $case->body);
+    same('relayedCheckResponse: ' . $case->name, [
+        'status' => $built['status'],
+        'contentType' => relay_header($built, 'content-type'),
+        'setCookies' => $built['set_cookies'],
+        'body' => $built['body'],
+    ], $case->out);
+    check('relayedCheckResponse: ' . $case->name . ': never cached, never sniffed',
+        relay_header($built, 'cache-control') === 'no-store' && relay_header($built, 'x-content-type-options') === 'nosniff'
+            && relay_header($built, 'x-d3-edge') === 'check');
+}
+
+check('isUtf8: plain, multibyte and four-byte text', P::isUtf8('') && P::isUtf8('{"a":"é→😀"}'));
+foreach ([
+    'a lone continuation byte' => "\x80",
+    'a truncated sequence' => "\xE2\x82",
+    'an overlong slash' => "\xC0\xAF",
+    'a surrogate' => "\xED\xA0\x80",
+    'past U+10FFFF' => "\xF4\x90\x80\x80",
+    'a byte no encoding uses' => "\xFF\xFEA",
+] as $label => $bytes) {
+    check("isUtf8: refuses $label", !P::isUtf8($bytes));
+}
+
+check('checkRelayRefusal: 405 says what it allows', relay_header(P::checkRelayRefusal(405), 'allow') === 'POST');
 
 foreach ($parity->recordableName as $case) {
     same('recordableName: ' . $case->name, P::recordableName($case->name), $case->out);

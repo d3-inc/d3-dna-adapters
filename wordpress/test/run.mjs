@@ -106,14 +106,14 @@ async function core(label, { port, reports }) {
   );
   check(`${label}: pass: run from wp-config.php`, res.json?.entry === 'wp-config', res.json?.entry);
   check(
-    `${label}: pass: one decision, revision 3`,
-    s.decisions.length === 1 && p.adapterSet === 3 && p.headerSet === 2,
+    `${label}: pass: one decision, revision 4`,
+    s.decisions.length === 1 && p.adapterSet === 4 && p.headerSet === 2,
     s.decisions.length
   );
   check(`${label}: pass: the key as a bearer`, s.decisions[0]?.auth === 'Bearer test-key');
   check(
     `${label}: pass: names this plugin, never the visitor's dna-adapter`,
-    s.decisions[0]?.adapter === 'wordpress:1.0.0',
+    s.decisions[0]?.adapter === 'wordpress:1.1.0',
     s.decisions[0]?.adapter
   );
   check(
@@ -950,6 +950,60 @@ async function core(label, { port, reports }) {
     res.headers['x-d3-edge'] === 'pass' && res.text === '',
     res.headers
   );
+
+  // ── The check relay ────────────────────────────────────────────────────────
+  const ANSWER = JSON.stringify({ v: 2, offer: 'o', signals: {} });
+  const relayPath = (query = '') => `/.well-known/d3/check?t=${tag()}${query}`;
+  const post = (headers = {}, body = ANSWER) => ({
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'sec-fetch-site': 'same-origin', ...headers },
+    body,
+  });
+  const checksNow = async () => (await (await fetch(`${MOCK}/__log`)).json()).checks;
+  const before = (await checksNow()).length;
+  res = await send(port, relayPath(), post({ cookie: 'site=1' }));
+  const relayed = (await checksNow()).slice(before);
+  check(
+    `${label}: relay: the check answer, never WordPress, and only cookies of ours`,
+    res.status === 200 &&
+      res.json?.next === 'reload' &&
+      !res.json?.origin &&
+      res.headers['x-d3-edge'] === 'check' &&
+      res.headers['x-content-type-options'] === 'nosniff' &&
+      headerValues(res, 'set-cookie').join('|') ===
+        '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax',
+    { status: res.status, headers: res.headers, text: res.text.slice(0, 200) }
+  );
+  check(
+    `${label}: relay: /v1/check under the key, the answer whole, as a decision call describes it`,
+    relayed.length === 1 &&
+      relayed[0].auth === 'Bearer test-key' &&
+      relayed[0].adapter === 'wordpress:1.1.0' &&
+      relayed[0].relayed.answer === ANSWER &&
+      relayed[0].relayed.payload.adapterSet === 4 &&
+      relayed[0].relayed.payload.cookies?.site === '1' &&
+      relayed[0].relayed.payload.headers['content-digest'] === digestOf(ANSWER),
+    relayed
+  );
+  for (const [name, init, status, query] of [
+    ['a GET is 405', { method: 'GET' }, 405, ''],
+    ['a cross-site post is 403', post({ 'sec-fetch-site': 'cross-site' }), 403, ''],
+    ['a post past 32 KiB is 413', post({}, 'x'.repeat(32 * 1024 + 1)), 413, ''],
+    ['an empty post is 400', post({}, ''), 400, ''],
+    ['an answer that is not JSON is 503', post(), 503, '&check=html'],
+  ]) {
+    const was = (await checksNow()).length;
+    res = await send(port, relayPath(query), init);
+    const relays = (await checksNow()).length - was;
+    check(
+      `${label}: relay: ${name}, never WordPress`,
+      res.status === status &&
+        !res.json?.origin &&
+        !res.text.includes('<script>') &&
+        relays === (query ? 1 : 0),
+      { status: res.status, text: res.text.slice(0, 200) }
+    );
+  }
 }
 
 async function live() {

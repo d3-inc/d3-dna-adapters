@@ -126,6 +126,11 @@ with a JSON body:
 { "blocked": true, "ruleId": "…", "tier": "…", "identity": "…" }
 ```
 
+From `snippet:2.1.0` the snippet answers `/.well-known/d3/check` itself,
+sampled or not, where the browser check posts its answer, and the origin never
+sees it: it relays the post to `/v1/check` beside `endpoint`'s `/v1/decision`,
+under your key ([the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-post)). Those answers carry `x-d3-edge: check`.
+
 ## Paid routes (D3 Pay)
 
 The snippet carries [D3 Pay](../PROTOCOL.md#paid-routes). If you price a
