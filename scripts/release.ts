@@ -2,9 +2,14 @@ import { createHash } from 'node:crypto';
 
 /** What a release publishes, in order: both SDKs depend on protocol at the same version, so it goes first. */
 export const RELEASE_PACKAGES = [
-  { dir: 'protocol', name: '@d3-inc/d3-dna-protocol', namesItself: false },
-  { dir: 'cloudflare-adapter', name: '@d3-inc/d3-dna-cloudflare-adapter', namesItself: true },
-  { dir: 'vercel-middleware', name: '@d3-inc/d3-dna-vercel-middleware', namesItself: true },
+  { dir: 'protocol', name: '@d3-inc/d3-dna-protocol', namesItself: false, commonjs: true },
+  {
+    dir: 'cloudflare-adapter',
+    name: '@d3-inc/d3-dna-cloudflare-adapter',
+    namesItself: true,
+    commonjs: false,
+  },
+  { dir: 'vercel-middleware', name: '@d3-inc/d3-dna-vercel-middleware', namesItself: true, commonjs: true },
 ] as const;
 
 export const PROTOCOL_PACKAGE = RELEASE_PACKAGES[0].name;
@@ -123,10 +128,17 @@ function pathsIn(value: unknown): string[] {
   return [];
 }
 
+const tarballPath = (entry: string) => entry.replace(/^\.\//, '');
+
+export function runtimeEntries(manifest: PackedManifest): string[] {
+  const entries = pathsIn([manifest.main, manifest.exports]).map(tarballPath);
+  return [...new Set(entries)].filter((entry) => !/\.d\.[cm]?ts$/.test(entry));
+}
+
 /**
  * An SDK bundle that would not name itself by this release in `dna-adapter`:
  * built without `DNA_PACKED_VERSION`, it names no build, or the version it bakes
- * is another one. `bundle` is the tarball's `dist/index.js`.
+ * is another one.
  */
 export function bakedNameProblem(name: string, version: string, bundle: string): string | null {
   if (bundle.includes('__DNA_ADAPTER_VERSION__')) {
@@ -167,8 +179,9 @@ export function packedManifestProblems(
 
   const shipped = new Set(files);
   for (const entry of pathsIn([manifest.main, manifest.types, manifest.exports])) {
-    const path = entry.replace(/^\.\//, '');
-    if (!shipped.has(path)) problems.push(`${label} points at ${entry}, which the tarball does not contain`);
+    if (!shipped.has(tarballPath(entry))) {
+      problems.push(`${label} points at ${entry}, which the tarball does not contain`);
+    }
   }
 
   return problems;

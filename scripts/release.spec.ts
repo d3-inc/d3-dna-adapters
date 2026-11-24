@@ -12,6 +12,7 @@ import {
   publishDecision,
   publishIdentity,
   RETIRED_PACKAGES,
+  runtimeEntries,
   sha512Integrity,
   unpublishedVersions,
   versionsSinceRetirement,
@@ -96,6 +97,24 @@ describe('bakedNameProblem', () => {
     expect(bakedNameProblem(NAME, '0.11.0', 'adapterNameOf("cloudflare", "0.10.0")')).toMatch(
       /does not name itself 0\.11\.0/
     );
+  });
+});
+
+describe('runtimeEntries', () => {
+  it('lists both formats a dual package loads, and neither declaration file', () => {
+    expect(
+      runtimeEntries({
+        main: './dist/index.js',
+        types: './dist/index.d.ts',
+        exports: {
+          '.': {
+            import: { types: './dist/index.d.ts', default: './dist/index.js' },
+            require: { types: './dist/index.d.cts', default: './dist/index.cjs' },
+            default: './dist/index.js',
+          },
+        },
+      })
+    ).toEqual(['dist/index.js', 'dist/index.cjs']);
   });
 });
 

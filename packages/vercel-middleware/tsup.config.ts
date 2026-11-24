@@ -7,7 +7,7 @@ const packed = process.env.DNA_PACKED_VERSION;
 // @d3-inc/d3-dna-protocol and @vercel/functions stay external — real deps resolved by the consumer.
 export default defineConfig({
   entry: { index: 'src/index.ts' },
-  format: ['esm'],
+  format: ['esm', 'cjs'],
   dts: true,
   clean: true,
   sourcemap: true,

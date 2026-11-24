@@ -66,15 +66,15 @@ export function edgeConsoleFormatter(record: LogRecord): readonly unknown[] {
   return [`${record.category.join('·')} ${message}${props}`];
 }
 
-let configured = false;
+// ESM and CommonJS share LogTape's logger, so loading either build must preserve the other's settings.
+const loggingConfigured = Symbol.for('@d3-inc/d3-dna-protocol/loggingConfigured');
 
 /**
  * Point the d3-edge category at the console. Idempotent across a single isolate.
  * Uses the sync API so it's safe at module load in workerd (no top-level await).
  */
 export function configureEdgeLogging(lowestLevel: LogLevel = 'info'): void {
-  if (configured) return;
-  configured = true;
+  if (loggingConfigured in globalThis) return;
   configureSync({
     reset: true,
     sinks: { console: getConsoleSink({ formatter: edgeConsoleFormatter }) },
@@ -84,6 +84,7 @@ export function configureEdgeLogging(lowestLevel: LogLevel = 'info'): void {
       { category: ['logtape', 'meta'], lowestLevel: 'warning', sinks: ['console'] },
     ],
   });
+  Reflect.set(globalThis, loggingConfigured, true);
 }
 
 /**
@@ -95,6 +96,6 @@ export function configureEdgeLogging(lowestLevel: LogLevel = 'info'): void {
  * it both resets any existing config and trips the guard so nothing re-enables it.
  */
 export function silenceEdgeLogging(): void {
-  configured = true;
   resetSync();
+  Reflect.set(globalThis, loggingConfigured, true);
 }

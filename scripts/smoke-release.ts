@@ -26,10 +26,23 @@ const tarballs = RELEASE_PACKAGES.map((p) => {
 const project = mkdtempSync(join(tmpdir(), 'release-smoke-'));
 writeFileSync(join(project, 'package.json'), '{ "private": true, "type": "module" }\n');
 run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', ...tarballs], project);
-const imports = RELEASE_PACKAGES.map(
-  (p) => `if (!Object.keys(await import('${p.name}')).length) throw new Error('${p.name} exports nothing');`
-).join('\n');
-run('node', ['--input-type=module', '-e', imports], project);
+
+const all = RELEASE_PACKAGES.map((p) => p.name);
+const imports = `
+  for (const name of process.argv.slice(1)) {
+    if (!Object.keys(await import(name)).length) throw new Error(name + ' exports nothing');
+  }
+`;
+run('node', ['--input-type=module', '-e', imports, ...all], project);
+
+const dual = RELEASE_PACKAGES.filter((p) => p.commonjs).map((p) => p.name);
+const requires = `
+  for (const name of process.argv.slice(1)) require(name);
+  const { createD3Middleware } = require('@d3-inc/d3-dna-vercel-middleware');
+  if (typeof createD3Middleware() !== 'function') throw new Error('Expected a middleware function');
+`;
+// Node 24 can load ESM through require(), which would hide a missing CommonJS build.
+run('node', ['--no-experimental-require-module', '--input-type=commonjs', '-e', requires, ...dual], project);
 console.log(
-  `Installed and imported ${RELEASE_PACKAGES.map((p) => p.name).join(', ')} at ${approved.version}`
+  `Installed and imported ${all.join(', ')}, and required ${dual.join(', ')}, at ${approved.version}`
 );
