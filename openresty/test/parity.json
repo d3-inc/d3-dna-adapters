@@ -5248,7 +5248,7 @@
       "env": {},
       "out": {
         "failMode": "open",
-        "timeoutMs": 2000,
+        "timeoutMs": 10000,
         "paymentTimeoutMs": 10000,
         "debugLogRawPayload": false,
         "exclude": {
@@ -5266,7 +5266,7 @@
         "endpoint": "https://edge-api.d3.com/v1/decision",
         "apiKey": "k",
         "failMode": "open",
-        "timeoutMs": 2000,
+        "timeoutMs": 10000,
         "paymentTimeoutMs": 10000,
         "debugLogRawPayload": false,
         "exclude": {
@@ -5283,7 +5283,7 @@
       "out": {
         "apiKey": "k",
         "failMode": "open",
-        "timeoutMs": 2000,
+        "timeoutMs": 10000,
         "paymentTimeoutMs": 10000,
         "debugLogRawPayload": false,
         "exclude": {
@@ -5301,7 +5301,7 @@
       "out": {
         "apiKey": "k",
         "failMode": "open",
-        "timeoutMs": 2000,
+        "timeoutMs": 10000,
         "paymentTimeoutMs": 10000,
         "debugLogRawPayload": false,
         "exclude": {
@@ -5319,7 +5319,7 @@
       "out": {
         "apiKey": "k",
         "failMode": "open",
-        "timeoutMs": 2000,
+        "timeoutMs": 10000,
         "paymentTimeoutMs": 10000,
         "debugLogRawPayload": false,
         "exclude": {
@@ -5370,7 +5370,7 @@
         "endpoint": "https://edge-api.d3.com/v1/decision",
         "apiKey": "k",
         "failMode": "open",
-        "timeoutMs": 2000,
+        "timeoutMs": 10000,
         "paymentTimeoutMs": 10000,
         "debugLogRawPayload": false,
         "exclude": {
@@ -5411,7 +5411,7 @@
         "endpoint": "https://edge-api.d3.com/v1/decision",
         "apiKey": "k",
         "failMode": "open",
-        "timeoutMs": 2000,
+        "timeoutMs": 10000,
         "paymentTimeoutMs": 10000,
         "debugLogRawPayload": false,
         "exclude": {
@@ -5432,7 +5432,7 @@
         "endpoint": "https://edge-api.d3.com/v1/decision",
         "apiKey": "new",
         "failMode": "open",
-        "timeoutMs": 2000,
+        "timeoutMs": 10000,
         "paymentTimeoutMs": 10000,
         "debugLogRawPayload": false,
         "exclude": {

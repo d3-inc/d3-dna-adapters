@@ -66,7 +66,7 @@ describe('resolveConfig debug', () => {
 describe('resolveConfig budgets', () => {
   it('resolves both, so the request closure only has to choose', () => {
     const cfg = resolveConfig({});
-    expect(cfg.timeoutMs).toBe(2000);
+    expect(cfg.timeoutMs).toBe(10_000);
     expect(cfg.paymentTimeoutMs).toBe(10_000);
   });
 
@@ -78,13 +78,13 @@ describe('resolveConfig budgets', () => {
 
   it('falls back on a value that is not a usable budget', () => {
     const cfg = resolveConfig({ timeoutMs: 0, paymentTimeoutMs: Number.NaN });
-    expect(cfg.timeoutMs).toBe(2000);
+    expect(cfg.timeoutMs).toBe(10_000);
     expect(cfg.paymentTimeoutMs).toBe(10_000);
   });
 
-  it('keeps the payment budget well above the ordinary one', () => {
-    // Settlement happens inside that call; the short budget would abort it.
+  it('never gives the payment budget less than the ordinary one', () => {
+    // Settlement happens inside that call; a shorter budget would abort it.
     const cfg = resolveConfig({});
-    expect(cfg.paymentTimeoutMs).toBeGreaterThan(cfg.timeoutMs * 4);
+    expect(cfg.paymentTimeoutMs).toBeGreaterThanOrEqual(cfg.timeoutMs);
   });
 });

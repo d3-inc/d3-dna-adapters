@@ -21,9 +21,10 @@ const REPORT_TIMEOUT_MS = 3000;
  * Two budgets: a request presenting a payment waits for it to clear, ordinary
  * traffic does not (ADR 0032 decision 1). Exported because the hot-path budget
  * was written independently in each adapter, which is two places to get the
- * second wrong.
+ * second wrong. The ordinary one covers a reverse DNS lookup the worker may run
+ * before answering, which it caps at 1.5 s.
  */
-export const DEFAULT_POLICY_TIMEOUT_MS = 2000;
+export const DEFAULT_POLICY_TIMEOUT_MS = 10_000;
 
 export const DEFAULT_PAYMENT_TIMEOUT_MS = 10_000;
 

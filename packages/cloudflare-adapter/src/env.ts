@@ -13,7 +13,7 @@ export interface Env {
   DNA_ENABLED?: string;
   /** "open" (default): pass traffic when the policy call fails (§8); "closed": block. */
   DNA_FAIL_MODE?: string;
-  /** Hot-path budget for the policy call, ms (default 2000, §11). */
+  /** Hot-path budget for the policy call, ms (default 10000, §11). */
   DNA_TIMEOUT_MS?: string;
   /** Budget for a request presenting a payment, ms (default 10000). Sized in
    *  seconds, not the hot path's milliseconds: settlement happens inside this
