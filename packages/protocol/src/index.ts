@@ -120,6 +120,7 @@ export {
   checkEndpointOf,
   checkRelayRefusal,
   isCheckRelayPath,
+  isCrossSitePost,
   readCappedBody,
   relayCheckPost,
   relayedCheckResponse,

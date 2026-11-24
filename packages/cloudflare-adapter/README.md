@@ -110,7 +110,8 @@ Two paths hand the origin the request as it arrived: DNA switched off
 
 One path never reaches the origin while DNA is on: `/.well-known/d3/check`,
 where the browser check posts its answer. The adapter relays that post to
-`/v1/check` on `DNA_ENDPOINT`'s host under your key and answers with the result
+`/v1/check` beside `DNA_ENDPOINT`'s `/v1/decision`, under your key, and answers
+with the result
 (see [the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-post)).
 
 The policy call carries what Cloudflare saw of the connection, from `request.cf`

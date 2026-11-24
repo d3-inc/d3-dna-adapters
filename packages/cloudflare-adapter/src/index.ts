@@ -1,4 +1,5 @@
 import {
+  ADAPTER_SET,
   blockResponse,
   buildPaymentResponse,
   builtAnswerOf,
@@ -72,10 +73,13 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
     }
 
     // The check script's post is ours to answer: it never reaches the origin, and it takes no decision.
-    if (isCheckRelayPath(request.url)) return relayCheck(request, env, settings);
+    const check = checkTransport(env, settings);
+    if (isCheckRelayPath(request.url)) {
+      return relayCheck(request, check, extractOptionsOf(request, settings, check));
+    }
 
     const host = new URL(request.url).host;
-    const { payload, mcp } = await extractEdgeRequest(request, extractOptionsOf(request, settings));
+    const { payload, mcp } = await extractEdgeRequest(request, extractOptionsOf(request, settings, check));
     // Presence of a credential is all the adapter needs to tell the two budgets
     // apart, and it never decodes one (ADR 0032 decision 1); one lifted from an
     // MCP call's body counts when the payload carries it.
@@ -217,21 +221,29 @@ export function withD3Edge<E extends Env>(handler: ExportedHandler<E>): Exported
 // Cloudflare-specific, so core stays platform-free: the client IP comes from
 // cf-connecting-ip, and the client certificate and connection facts from the
 // handshake this zone terminated (never from a header — see ExtractOptions).
-function extractOptionsOf(request: Request, settings: AdapterSettings): ExtractOptions {
+function extractOptionsOf(
+  request: Request,
+  settings: AdapterSettings,
+  check: PolicyTransport | null
+): ExtractOptions {
   const cf = (request as Request<unknown, IncomingRequestCfProperties>).cf;
   return {
     ip: request.headers.get('cf-connecting-ip') ?? undefined,
     handshake: handshakeFromTlsClientAuth(cf?.tlsClientAuth),
     network: networkFactsFromCf(cf),
     debugHeaders: settings.debugLogRawPayload,
-    // This adapter honours every revision: the forwarding, the MCP lift, strip and answer, and the check relay.
-    adapterSet: RELAYS_CHECK_SINCE,
+    // Every revision, the check relay only where there is somewhere to relay to: a 4 is offered a check it must finish.
+    adapterSet: check === null ? ADAPTER_SET : RELAYS_CHECK_SINCE,
     exclude: settings.exclude,
   };
 }
 
-async function relayCheck(request: Request, env: Env, settings: AdapterSettings): Promise<Response> {
-  const check = checkTransport(env, settings);
+/** `options` come from the request as it arrived: one rebuilt from the capped body has no `cf`. */
+async function relayCheck(
+  request: Request,
+  check: PolicyTransport | null,
+  options: ExtractOptions
+): Promise<Response> {
   if (!check) return checkRelayRefusal(503);
 
   return relayCheckPost(request, {
@@ -240,9 +252,7 @@ async function relayCheck(request: Request, env: Env, settings: AdapterSettings)
     adapterName: ADAPTER_NAME,
     timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
     fetch: check.fetch,
-    // The original carries `cf`, which a request rebuilt from the capped body does not.
-    payloadOf: async (posted) =>
-      (await extractEdgeRequest(posted, extractOptionsOf(request, settings))).payload,
+    payloadOf: async (posted) => (await extractEdgeRequest(posted, options)).payload,
   });
 }
 
@@ -264,7 +274,9 @@ function checkTransport(env: Env, settings: AdapterSettings): PolicyTransport | 
   if (fleet) return { url: FLEET_CHECK_URL, fetch: (input, init) => fleet.fetch(input, init) };
 
   if (env.POLICY_WORKER || !settings.endpoint) return null;
-  return { url: checkEndpointOf(settings.endpoint), bearer: settings.apiKey, fetch };
+
+  const url = checkEndpointOf(settings.endpoint);
+  return url === null ? null : { url, bearer: settings.apiKey, fetch };
 }
 
 /**

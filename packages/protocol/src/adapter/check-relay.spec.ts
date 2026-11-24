@@ -5,6 +5,7 @@ import {
   CHECK_RELAY_PATH,
   checkEndpointOf,
   isCheckRelayPath,
+  isCrossSitePost,
   readCappedBody,
   relayCheckPost,
   relayedCheckResponse,
@@ -51,11 +52,28 @@ describe('isCheckRelayPath', () => {
 });
 
 describe('checkEndpointOf', () => {
-  it('is /v1/check on the decision endpoint host, whatever its path', () => {
+  it('is /v1/check beside the decision path, any prefix kept', () => {
     expect(checkEndpointOf('https://edge-api.d3.com/v1/decision')).toBe(CHECK_URL);
-    expect(checkEndpointOf('https://dna.example:8443/proxy/v1/decision?x=1')).toBe(
-      'https://dna.example:8443/v1/check'
+    expect(checkEndpointOf('https://gw.example:8443/tenant-a/v1/decision?x=1')).toBe(
+      'https://gw.example:8443/tenant-a/v1/check'
     );
+  });
+
+  it('is nothing for an endpoint not ending in the decision path, so the key goes nowhere guessed', () => {
+    expect(checkEndpointOf('https://gw.example/decide')).toBeNull();
+    expect(checkEndpointOf('https://gw.example/v1/decision/')).toBeNull();
+  });
+});
+
+describe('isCrossSitePost', () => {
+  it("is a post the browser says another site sent, and never one it doesn't label", () => {
+    const from = (site?: string) =>
+      post(ANSWER, site === undefined ? {} : { headers: { 'sec-fetch-site': site } });
+    expect(isCrossSitePost(from('cross-site'))).toBe(true);
+    expect(isCrossSitePost(from('same-site'))).toBe(true);
+    expect(isCrossSitePost(from('none'))).toBe(true);
+    expect(isCrossSitePost(from('same-origin'))).toBe(false);
+    expect(isCrossSitePost(from())).toBe(false);
   });
 });
 
@@ -84,12 +102,13 @@ describe('readCappedBody', () => {
 });
 
 describe('relayedCheckResponse', () => {
-  it("keeps the check worker's status, body and type, and is never cached", async () => {
+  it("keeps the check worker's status and JSON body, never sniffed and never cached", async () => {
     const upstream = Response.json({ next: 'reload' }, { status: 200, headers: { 'x-internal': 'secret' } });
     const relayed = relayedCheckResponse(upstream);
     expect(relayed.status).toBe(200);
     expect(await relayed.json()).toEqual({ next: 'reload' });
     expect(relayed.headers.get('content-type')).toBe('application/json');
+    expect(relayed.headers.get('x-content-type-options')).toBe('nosniff');
     expect(relayed.headers.get('cache-control')).toBe('no-store');
     expect(relayed.headers.get('x-d3-edge')).toBe('check');
     expect(relayed.headers.get('x-internal')).toBeNull();
@@ -100,10 +119,37 @@ describe('relayedCheckResponse', () => {
     headers.append('set-cookie', '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax');
     headers.append('set-cookie', 'session=hijacked; Path=/');
     headers.append('set-cookie', '__Host-d3_acquisition=x; Path=/');
-    const relayed = relayedCheckResponse(new Response(null, { status: 204, headers }));
+    headers.append('set-cookie', '__Host-d3nameless');
+    headers.set('content-type', 'application/json');
+    const relayed = relayedCheckResponse(new Response('{}', { status: 200, headers }));
     expect(relayed.headers.getSetCookie()).toEqual([
       '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax',
     ]);
+  });
+
+  it('serves nothing that is not JSON on the site, so no answer can run as its page', async () => {
+    for (const type of ['text/html', 'text/plain', 'application/jsonp']) {
+      const relayed = relayedCheckResponse(
+        new Response('<script>x</script>', { headers: { 'content-type': type } })
+      );
+      expect(relayed.status, type).toBe(503);
+      expect(await relayed.text()).not.toContain('<script>');
+    }
+
+    expect(relayedCheckResponse(new Response('{}')).status).toBe(503);
+    expect(
+      relayedCheckResponse(
+        new Response('{}', { headers: { 'content-type': 'application/json; charset=utf-8' } })
+      ).status
+    ).toBe(200);
+  });
+
+  it("answers a refused key as unavailable: the visitor learns nothing of the site's key", async () => {
+    for (const status of [401, 403]) {
+      const relayed = relayedCheckResponse(Response.json({ error: 'unknown-key' }, { status }));
+      expect(relayed.status).toBe(503);
+      expect(await relayed.json()).toEqual({ error: 'check-unavailable' });
+    }
   });
 });
 
@@ -194,12 +240,71 @@ describe('relayCheckPost', () => {
     expect((await relayCheckPost(post(ANSWER), options(hang, { timeoutMs: 10 }))).status).toBe(503);
   });
 
-  it("passes the check endpoint's own refusal through, so the script sees it", async () => {
+  it("passes the check endpoint's own JSON refusal through, so the script sees it", async () => {
     const response = await relayCheckPost(
       post(ANSWER),
-      options(() => Promise.resolve(Response.json({ error: 'unknown-key' }, { status: 401 })))
+      options(() => Promise.resolve(Response.json({ error: 'stale-offer' }, { status: 409 })))
     );
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(409);
+  });
+
+  it('answers 400 to an empty post or one that is not UTF-8, and relays nothing', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    expect((await relayCheckPost(post(''), options(fetchImpl))).status).toBe(400);
+    expect((await relayCheckPost(post(new Uint8Array([0xff, 0xfe, 0x41])), options(fetchImpl))).status).toBe(
+      400
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('answers 503 when the check endpoint stalls mid-body past the budget', async () => {
+    const stalled = new ReadableStream<Uint8Array>({ pull: () => new Promise(() => {}) });
+    const hang: typeof fetch = (_input, init) =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              init?.signal?.addEventListener('abort', () => controller.error(new Error('aborted')));
+            },
+            pull: () =>
+              stalled
+                .getReader()
+                .read()
+                .then(() => undefined),
+          }),
+          { headers: { 'content-type': 'application/json' } }
+        )
+      );
+    expect((await relayCheckPost(post(ANSWER), options(hang, { timeoutMs: 10 }))).status).toBe(503);
+  });
+
+  it('follows no redirect, which would carry the key away, and answers 503', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(null, { status: 307, headers: { location: 'https://elsewhere.example/' } })
+      )
+    );
+    const response = await relayCheckPost(post(ANSWER), options(fetchImpl));
+    expect(fetchImpl.mock.calls[0]![1]?.redirect).toBe('manual');
+    expect(response.status).toBe(503);
+  });
+
+  it('answers 403 to a post another site sent, and relays nothing', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const response = await relayCheckPost(
+      post(ANSWER, { headers: { 'sec-fetch-site': 'cross-site' } }),
+      options(fetchImpl)
+    );
+    expect(response.status).toBe(403);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('answers 503 when the post itself trickles in past the budget', async () => {
+    const trickle = new ReadableStream<Uint8Array>({ pull: () => new Promise(() => {}) });
+    const fetchImpl = vi.fn<typeof fetch>();
+    const response = await relayCheckPost(post(trickle), options(fetchImpl, { timeoutMs: 10 }));
+    expect(response.status).toBe(503);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('sends no authorization over a binding, which is its own credential', async () => {

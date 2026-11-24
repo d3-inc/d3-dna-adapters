@@ -164,7 +164,8 @@ can never crowd one out: the browser sends `Path=/` cookies last, which is
 where a freshly set one of ours sits.
 
 The prefix is a label no browser enforces, so any script on the site can mint a
-name wearing it. An adapter therefore keeps a place for the four we set — each
+name wearing it. An adapter therefore keeps a place for each we set — three, and
+`__Host-d3check` too from revision 4 — each
 under the 2048-char value cap, and named in `droppedCookies` if it is longer —
 and forwards at most eight other names wearing the prefix, up to 4096 chars of
 name and value between them. The rest are dropped and **not** named: a list of
@@ -345,22 +346,30 @@ From revision 4 the check script posts its answer to the site's own host, at
 answer rides in the page address. The adapter answers that path itself, before
 any decision call, and it never reaches the origin.
 
-| The post                    | The adapter answers                                                           |
-| --------------------------- | ----------------------------------------------------------------------------- |
-| Not `POST`                  | `405` with `Allow: POST`                                                      |
-| Body past 32 KiB            | `413`, read no further                                                        |
-| Check endpoint down or slow | `503`; the script shows its card                                              |
-| Otherwise                   | the check endpoint's status, body and `Content-Type`, and its cookies of ours |
+| The post                                      | The adapter answers                                          |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| Not `POST`                                    | `405` with `Allow: POST`                                     |
+| `Sec-Fetch-Site` other than `same-origin`     | `403`: another site sent it                                  |
+| Body past 32 KiB                              | `413`, read no further                                       |
+| Empty, or not UTF-8                           | `400`                                                        |
+| Endpoint down, slow, redirecting, key refused | `503`; the script shows its card                             |
+| Endpoint answers anything but JSON            | `503`                                                        |
+| Otherwise                                     | the endpoint's status and JSON body, and its cookies of ours |
 
-It relays to `/v1/check` on the decision endpoint's host, under the same key,
-as JSON: `{ "payload": <the request as a decision call describes it>,
-"answer": "<the posted body>" }`. Every answer it gives carries
-`Cache-Control: no-store` and `x-d3-edge: check`. It passes on only
-`Set-Cookie` headers [of ours](#our-names), so a check endpoint can never set a
-site its own cookies. A budget of five seconds bounds the call.
+It relays to `/v1/check` beside the decision endpoint's `/v1/decision`, path
+prefix kept, under the same key, as JSON: `{ "payload": <the request as a
+decision call describes it>, "answer": "<the posted body>" }`. It follows no
+redirect. Every answer it gives is JSON with `Cache-Control: no-store`,
+`X-Content-Type-Options: nosniff` and `x-d3-edge: check`, since it is served on
+the site's own host. It passes on only `Set-Cookie` headers
+[of ours](#our-names), so a check endpoint can never set a site its own
+cookies. A budget of five seconds bounds the whole relay, reading the post and
+the answer included.
 
-An adapter below revision 4 is never offered the check. A site whose DNA is off
-passes the path to its origin like any other.
+Declare `4` only where you can relay: an endpoint that does not end in
+`/v1/decision`, or no check endpoint at all, declares `3`. An adapter below
+revision 4 is never offered the check. A site whose DNA is off passes the path
+to its origin like any other.
 
 ### The budget
 

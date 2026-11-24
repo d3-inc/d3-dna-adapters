@@ -284,10 +284,12 @@ describe('the check relay', () => {
       headers: {
         'user-agent': 'Mozilla/5.0 Chrome/150',
         'cf-connecting-ip': '203.0.113.7',
+        'sec-fetch-site': 'same-origin',
         cookie: '__Host-d3visitor=v; sid=s',
       },
+      cf: { asn: 64500, country: 'DE' },
       ...init,
-    });
+    } as RequestInit);
 
   it("relays the script's post to /v1/check on the endpoint's host, under the key, and never to the origin", async () => {
     const log = stubCheck(() => {
@@ -303,6 +305,7 @@ describe('the check relay', () => {
       '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax',
     ]);
     expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('x-d3-edge')).toBe('check');
     expect(log.originCalls).toHaveLength(0);
     expect(log.policyCalls).toBe(0);
 
@@ -317,7 +320,12 @@ describe('the check relay', () => {
       ip: '203.0.113.7',
       adapterSet: RELAYS_CHECK_SINCE,
       cookies: { '__Host-d3visitor': 'v', sid: 's' },
+      network: { asn: 64500, country: 'DE' },
     });
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ANSWER));
+    expect(call.body.payload.headers['content-digest']).toBe(
+      `sha-256=:${btoa(String.fromCharCode(...new Uint8Array(digest)))}:`
+    );
   });
 
   it('answers 503 when the check endpoint is down, and still never reaches the origin', async () => {
@@ -337,11 +345,23 @@ describe('the check relay', () => {
     expect(log.originCalls).toHaveLength(0);
   });
 
-  it('answers 503 on the fleet without a check binding, and relays through one when bound', async () => {
+  it('declares revision 3 and answers 503 on the fleet without a check binding, and relays through one', async () => {
     const log = stubCheck(() => new Response(null));
-    const policy = { fetch: () => Promise.resolve(new Response(null)) } as unknown as Fetcher;
+    const declared: unknown[] = [];
+    const policy = {
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        if (request.url.endsWith('/v1/decision')) {
+          declared.push(((await request.json()) as RequestPayload).adapterSet);
+        }
+
+        return Response.json({ action: 'pass' });
+      },
+    } as unknown as Fetcher;
     expect((await run(posted(), { POLICY_WORKER: policy })).status).toBe(503);
     expect(log.checkCalls).toHaveLength(0);
+    await run(siteRequest(), { POLICY_WORKER: policy });
+    expect(declared).toEqual([3]);
 
     const bound: string[] = [];
     const checkWorker = {
@@ -353,6 +373,23 @@ describe('the check relay', () => {
     const res = await run(posted(), { POLICY_WORKER: policy, CHECK_WORKER: checkWorker });
     expect(res.status).toBe(200);
     expect(bound).toEqual(['https://check-worker.invalid/v1/check']);
+    await run(siteRequest(), { POLICY_WORKER: policy, CHECK_WORKER: checkWorker });
+    expect(declared).toEqual([3, 4]);
+  });
+
+  it('declares revision 3 where the endpoint has no check path beside it, and answers its posts 503', async () => {
+    const log = stubCheck(() => new Response(null));
+    const gateway = 'https://gw.example/decide';
+    const declared: unknown[] = [];
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      if (request.url === gateway) declared.push(((await request.json()) as RequestPayload).adapterSet);
+      return Response.json({ action: 'pass' });
+    });
+    expect((await run(posted(), { DNA_ENDPOINT: gateway })).status).toBe(503);
+    await run(siteRequest(), { DNA_ENDPOINT: gateway });
+    expect(declared).toEqual([3]);
+    expect(log.checkCalls).toHaveLength(0);
   });
 
   it('passes the path to the origin like any other request when DNA is off', async () => {

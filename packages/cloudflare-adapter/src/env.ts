@@ -7,8 +7,8 @@ export interface Env {
   POLICY_WORKER?: Fetcher;
   /**
    * The check worker, bound beside POLICY_WORKER on our fleet deployment. Without
-   * it the fleet answers the check script 503; a customer's install relays to
-   * /v1/check on DNA_ENDPOINT's host instead.
+   * it the fleet declares revision 3 and is never offered the check; a customer's
+   * install relays to /v1/check beside DNA_ENDPOINT's /v1/decision instead.
    */
   CHECK_WORKER?: Fetcher;
   /** The org's API key, a secret. Set ⇒ DNA is on, calling the default endpoint. */
