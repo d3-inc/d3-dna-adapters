@@ -9,6 +9,7 @@ import {
   packedManifestProblems,
   parseReleaseTag,
   RELEASE_PACKAGES,
+  runtimeEntries,
   type PackedManifest,
   type TaggedCommit,
 } from './release.ts';
@@ -78,9 +79,14 @@ export function assertTarballs(dir: string, version: string): void {
     const path = join(dir, tarballName(p.name, version));
     const { manifest, files } = readTarball(path);
     const named = p.namesItself
-      ? bakedNameProblem(p.name, version, tar('-xOzf', path, 'package/dist/index.js'))
-      : null;
-    return [...packedManifestProblems(manifest, { name: p.name, version }, files), ...(named ? [named] : [])];
+      ? runtimeEntries(manifest)
+          .filter((entry) => files.includes(entry))
+          .flatMap(
+            (entry) =>
+              bakedNameProblem(`${p.name} ${entry}`, version, tar('-xOzf', path, `package/${entry}`)) ?? []
+          )
+      : [];
+    return [...packedManifestProblems(manifest, { name: p.name, version }, files), ...named];
   });
   if (problems.length) throw new Error(`the tarballs cannot publish:\n- ${problems.join('\n- ')}`);
 }
