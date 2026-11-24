@@ -108,6 +108,11 @@ way back, plus the receipt under `_meta` in an MCP result.
 Two paths hand the origin the request as it arrived: DNA switched off
 (passthrough) and an ACME challenge.
 
+One path never reaches the origin while DNA is on: `/.well-known/d3/check`,
+where the browser check posts its answer. The adapter relays that post to
+`/v1/check` on `DNA_ENDPOINT`'s host under your key and answers with the result
+(see [the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-post)).
+
 The policy call carries what Cloudflare saw of the connection, from `request.cf`
 on every plan: ASN and organisation, country, HTTP protocol, TLS version and
 cipher, ClientHello length, extension and cipher hashes, TCP RTT. From 0.8.0 it

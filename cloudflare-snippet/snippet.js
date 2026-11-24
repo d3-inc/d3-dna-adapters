@@ -57,6 +57,7 @@ var PERSON_PASS_HEADER = 'd3pay-person';
 var PERSON_PASS_MAX_LENGTH = 64;
 var VISITOR_ID_ZONE_COOKIE = '__Secure-d3visitor';
 var VISITOR_ID_HOST_COOKIE = '__Host-d3visitor';
+var CHECK_RESULT_COOKIE = '__Host-d3check';
 var PAY_HANDOFF_PARAM = 'd3pay_handoff';
 var HANDOFF_ID_LENGTH = 22;
 var HANDOFF_SIG_LENGTH = 43;
@@ -125,7 +126,7 @@ function cookiesOf(cookieHeader) {
   return out;
 }
 var OWN_COOKIES = [PAY_SESSION_COOKIE, PERSON_PASS_COOKIE];
-var RESERVED_COOKIES = [...OWN_COOKIES, VISITOR_ID_ZONE_COOKIE, VISITOR_ID_HOST_COOKIE];
+var RESERVED_COOKIES = [...OWN_COOKIES, VISITOR_ID_ZONE_COOKIE, VISITOR_ID_HOST_COOKIE, CHECK_RESULT_COOKIE];
 function stripCookies(cookieHeader, ours) {
   const kept = cookieHeader
     .split(';')

@@ -29,6 +29,7 @@ export {
   RESERVED_COOKIES,
   VISITOR_ID_ZONE_COOKIE,
   VISITOR_ID_HOST_COOKIE,
+  CHECK_RESULT_COOKIE,
   cookiesOf,
   presentsPayCredential,
   readCookie,
@@ -109,7 +110,21 @@ export {
   MCP_METHOD_HEADER,
   MCP_NAME_HEADER,
   NEVER_FORWARDED_HEADERS,
+  RELAYS_CHECK_SINCE,
 } from './adapter/forwarding.constants';
+export {
+  CHECK_RELAY_EDGE_MODE,
+  CHECK_RELAY_MAX_BODY_BYTES,
+  CHECK_RELAY_PATH,
+  DEFAULT_CHECK_RELAY_TIMEOUT_MS,
+  checkEndpointOf,
+  checkRelayRefusal,
+  isCheckRelayPath,
+  readCappedBody,
+  relayCheckPost,
+  relayedCheckResponse,
+} from './adapter/check-relay';
+export type { CappedBody, CheckRelayBody, CheckRelayOptions } from './adapter/check-relay';
 export {
   MCP_DNA_KEY_META,
   MCP_KEY_ARGUMENT,

@@ -4,6 +4,9 @@ export const FORWARDS_ALL_SINCE = 2;
 /** The first `ADAPTER_SET` that lifts an MCP call's payment, strips it before the origin and answers JSON-RPC. */
 export const CARRIES_MCP_SINCE = 3;
 
+/** The first `ADAPTER_SET` that relays the check script's post to the check endpoint (`relayCheckPost`). */
+export const RELAYS_CHECK_SINCE = 4;
+
 /**
  * Both ends hold these, so nothing the adapter forwarded is lost at the worker:
  * past either the adapter says so (`droppedUnlisted`), and every name of that

@@ -150,8 +150,8 @@ Plus `d3pay-session`, which is not a client header at all — see
 
 Every cookie named `__Host-d3` or `__Secure-d3` followed by a lowercase
 letter, and every URL parameter named `d3pay_*`, is ours, for example
-`__Host-d3pay`, `__Host-d3person`, `__Secure-d3visitor`, `__Host-d3visitor` and
-`d3pay_handoff`.
+`__Host-d3pay`, `__Host-d3person`, `__Host-d3check`, `__Secure-d3visitor`,
+`__Host-d3visitor` and `d3pay_handoff`.
 Names compare exactly: a cookie's trimmed, a parameter's percent-decoded, case
 included. A site's own cookie or parameter in that space reads as ours, so a
 site must not name its own that way.
@@ -164,7 +164,7 @@ can never crowd one out: the browser sends `Path=/` cookies last, which is
 where a freshly set one of ours sits.
 
 The prefix is a label no browser enforces, so any script on the site can mint a
-name wearing it. An adapter therefore keeps a place for the three we set — each
+name wearing it. An adapter therefore keeps a place for the four we set — each
 under the 2048-char value cap, and named in `droppedCookies` if it is longer —
 and forwards at most eight other names wearing the prefix, up to 4096 chars of
 name and value between them. The rest are dropped and **not** named: a list of
@@ -261,7 +261,8 @@ this repo implements identically.
 5. **Tag every response** with `x-d3-edge`: `pass`, `block`, `fail-open`,
    `fail-closed`, or `disabled` — plus `payment-required`,
    `payment-redirect` and `payment-stub` on an adapter that enforces
-   [paid routes](#paid-routes).
+   [paid routes](#paid-routes), and `check` on one that
+   [relays the check post](#relaying-the-check-post).
 
 Passed traffic then flows to the origin without touching our
 infrastructure.
@@ -328,6 +329,7 @@ one the endpoint assumes.
 | 1        | forward `Cookie: __Host-d3person` as `d3pay-person`; append the answer's `Set-Cookie` to the origin's response rather than replacing it; and strip `d3pay_browser` from the URL before the origin |
 | 2        | all of 1, and [forward everything](#forwarding-everything) but the never-sent, the site's exclusions and our two cookies                                                                          |
 | 3        | all of 2, and lift an MCP call's payment out of `_meta`, strip it before the origin, answer a `json-rpc` instruction, and put `meta` and the key argument on a JSON-RPC result                    |
+| 4        | all of 3, and [relay the check script's post](#relaying-the-check-post) to the check endpoint, never the origin                                                                                   |
 
 All or nothing. A copy of this repository that drops any one of the three
 must not claim `1` — the cost falls on that site's own visitors, who get
@@ -335,6 +337,30 @@ checked on every page instead of once a day, and whose answer ends up in
 the origin's access log as a query parameter.
 
 The pass is **not** a payment. It never buys the budget below.
+
+### Relaying the check post
+
+From revision 4 the check script posts its answer to the site's own host, at
+`/.well-known/d3/check`, so no content policy on the site can block it and no
+answer rides in the page address. The adapter answers that path itself, before
+any decision call, and it never reaches the origin.
+
+| The post                    | The adapter answers                                                           |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| Not `POST`                  | `405` with `Allow: POST`                                                      |
+| Body past 32 KiB            | `413`, read no further                                                        |
+| Check endpoint down or slow | `503`; the script shows its card                                              |
+| Otherwise                   | the check endpoint's status, body and `Content-Type`, and its cookies of ours |
+
+It relays to `/v1/check` on the decision endpoint's host, under the same key,
+as JSON: `{ "payload": <the request as a decision call describes it>,
+"answer": "<the posted body>" }`. Every answer it gives carries
+`Cache-Control: no-store` and `x-d3-edge: check`. It passes on only
+`Set-Cookie` headers [of ours](#our-names), so a check endpoint can never set a
+site its own cookies. A budget of five seconds bounds the call.
+
+An adapter below revision 4 is never offered the check. A site whose DNA is off
+passes the path to its origin like any other.
 
 ### The budget
 

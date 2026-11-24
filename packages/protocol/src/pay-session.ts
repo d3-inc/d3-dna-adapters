@@ -39,6 +39,9 @@ export const VISITOR_ID_ZONE_COOKIE = '__Secure-d3visitor';
 
 export const VISITOR_ID_HOST_COOKIE = '__Host-d3visitor';
 
+/** The check's result, sealed by the check worker: a person's pass or an agent's name. Rides the cookie map. */
+export const CHECK_RESULT_COOKIE = '__Host-d3check';
+
 /** The browser check's signals ride back to the page under this name, base64url JSON. */
 export const BROWSER_CHECK_PARAM = 'd3pay_browser';
 
@@ -187,6 +190,7 @@ export const RESERVED_COOKIES: readonly string[] = [
   ...OWN_COOKIES,
   VISITOR_ID_ZONE_COOKIE,
   VISITOR_ID_HOST_COOKIE,
+  CHECK_RESULT_COOKIE,
 ];
 
 /**

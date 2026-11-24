@@ -1,6 +1,8 @@
 import {
-  ADAPTER_SET,
+  CHECK_RELAY_PATH,
   DEFAULT_POLICY_TIMEOUT_MS,
+  RELAYS_CHECK_SINCE,
+  type CheckRelayBody,
   type ClientDecision,
   type RequestPayload,
   type ResponseReport,
@@ -113,7 +115,7 @@ describe('enforcement', () => {
       url: '/page?x=1',
       host: 'ai.d3.com',
       ip: '203.0.113.7',
-      adapterSet: ADAPTER_SET,
+      adapterSet: RELAYS_CHECK_SINCE,
     });
     expect(call.payload.headers['user-agent']).toBe('GPTBot/1.0');
   });
@@ -245,6 +247,120 @@ describe('fail-open (§8: enforcement failure must never take the site down)', (
     expect(res.status).toBe(403);
     expect(res.headers.get('x-d3-edge')).toBe('fail-closed');
     expect(log.originCalls).toHaveLength(0);
+  });
+});
+
+describe('the check relay', () => {
+  const CHECK_URL = 'https://edge-api.d3.com/v1/check';
+  const ANSWER = JSON.stringify({ v: 2, offer: 'o', signals: {} });
+
+  interface CheckLog {
+    checkCalls: { headers: Headers; body: CheckRelayBody }[];
+    originCalls: Request[];
+    policyCalls: number;
+  }
+
+  function stubCheck(answer: () => Response | Promise<Response>): CheckLog {
+    const log: CheckLog = { checkCalls: [], originCalls: [], policyCalls: 0 };
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      if (request.url === CHECK_URL) {
+        log.checkCalls.push({ headers: request.headers, body: (await request.json()) as CheckRelayBody });
+        return answer();
+      }
+
+      if (request.url === POLICY_URL) log.policyCalls++;
+      else log.originCalls.push(request);
+      return new Response('origin');
+    });
+    return log;
+  }
+
+  const posted = (init: RequestInit = {}) =>
+    siteRequest({
+      url: `https://ai.d3.com${CHECK_RELAY_PATH}`,
+      method: 'POST',
+      body: ANSWER,
+      headers: {
+        'user-agent': 'Mozilla/5.0 Chrome/150',
+        'cf-connecting-ip': '203.0.113.7',
+        cookie: '__Host-d3visitor=v; sid=s',
+      },
+      ...init,
+    });
+
+  it("relays the script's post to /v1/check on the endpoint's host, under the key, and never to the origin", async () => {
+    const log = stubCheck(() => {
+      const headers = new Headers({ 'content-type': 'application/json' });
+      headers.append('set-cookie', '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax');
+      return new Response(JSON.stringify({ next: 'reload' }), { headers });
+    });
+    const res = await run(posted());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ next: 'reload' });
+    expect(res.headers.getSetCookie()).toEqual([
+      '__Host-d3check=sealed; Path=/; Secure; HttpOnly; SameSite=Lax',
+    ]);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(log.originCalls).toHaveLength(0);
+    expect(log.policyCalls).toBe(0);
+
+    const [call] = log.checkCalls;
+    expect(call.headers.get('authorization')).toBe(`Bearer ${KEY}`);
+    expect(call.headers.get('dna-adapter')).toBe('cloudflare:0.0.0-test');
+    expect(call.body.answer).toBe(ANSWER);
+    expect(call.body.payload).toMatchObject({
+      method: 'POST',
+      url: CHECK_RELAY_PATH,
+      host: 'ai.d3.com',
+      ip: '203.0.113.7',
+      adapterSet: RELAYS_CHECK_SINCE,
+      cookies: { '__Host-d3visitor': 'v', sid: 's' },
+    });
+  });
+
+  it('answers 503 when the check endpoint is down, and still never reaches the origin', async () => {
+    const log = stubCheck(() => {
+      throw new Error('unreachable');
+    });
+    const res = await run(posted());
+    expect(res.status).toBe(503);
+    expect(log.originCalls).toHaveLength(0);
+  });
+
+  it('answers 405 to a GET on the path and 413 to a post past the cap, relaying neither', async () => {
+    const log = stubCheck(() => new Response(null));
+    expect((await run(posted({ method: 'GET', body: undefined }))).status).toBe(405);
+    expect((await run(posted({ body: 'x'.repeat(32 * 1024 + 1) }))).status).toBe(413);
+    expect(log.checkCalls).toHaveLength(0);
+    expect(log.originCalls).toHaveLength(0);
+  });
+
+  it('answers 503 on the fleet without a check binding, and relays through one when bound', async () => {
+    const log = stubCheck(() => new Response(null));
+    const policy = { fetch: () => Promise.resolve(new Response(null)) } as unknown as Fetcher;
+    expect((await run(posted(), { POLICY_WORKER: policy })).status).toBe(503);
+    expect(log.checkCalls).toHaveLength(0);
+
+    const bound: string[] = [];
+    const checkWorker = {
+      fetch: (input: RequestInfo | URL) => {
+        bound.push(String(input instanceof Request ? input.url : input));
+        return Promise.resolve(Response.json({ next: 'reload' }));
+      },
+    } as unknown as Fetcher;
+    const res = await run(posted(), { POLICY_WORKER: policy, CHECK_WORKER: checkWorker });
+    expect(res.status).toBe(200);
+    expect(bound).toEqual(['https://check-worker.invalid/v1/check']);
+  });
+
+  it('passes the path to the origin like any other request when DNA is off', async () => {
+    const log = stubCheck(() => new Response(null));
+    const res = await run(posted(), UNCONFIGURED);
+    expect(res.headers.get('x-d3-edge')).toBe('disabled');
+    expect(log.checkCalls).toHaveLength(0);
+    expect(log.originCalls).toHaveLength(1);
   });
 });
 
@@ -890,8 +1006,8 @@ describe('forwarding and MCP carriage (ADR 0081)', () => {
       { DNA_EXCLUDE_HEADERS: 'X-Api-Key', DNA_EXCLUDE_COOKIES: 'sid' }
     );
     const sent = log.policyCalls[0].payload;
-    expect(sent.adapterSet).toBe(ADAPTER_SET);
-    expect(ADAPTER_SET).toBe(3);
+    expect(sent.adapterSet).toBe(RELAYS_CHECK_SINCE);
+    expect(RELAYS_CHECK_SINCE).toBe(4);
     expect(sent.headers['x-partner']).toBe('acme');
     expect(sent.headers['x-api-key']).toBeUndefined();
     expect(sent.cookies).toEqual({ plan: 'pro' });

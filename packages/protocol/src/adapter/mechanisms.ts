@@ -11,6 +11,7 @@ export const ADAPTER_MECHANISMS = [
   'decorate',
   'bare-pass',
   'rewrite-body',
+  'relay-check',
 ] as const;
 
 export type AdapterMechanism = (typeof ADAPTER_MECHANISMS)[number];

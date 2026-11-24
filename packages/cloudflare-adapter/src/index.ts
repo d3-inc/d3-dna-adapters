@@ -1,16 +1,21 @@
 import {
-  ADAPTER_SET,
   blockResponse,
   buildPaymentResponse,
   builtAnswerOf,
+  checkEndpointOf,
+  checkRelayRefusal,
+  DEFAULT_CHECK_RELAY_TIMEOUT_MS,
   configureEdgeLogging,
   createHttpPolicyClient,
   edgeLogger,
   edgeRequestPresentsPayment,
   extractEdgeRequest,
+  isCheckRelayPath,
   McpKeyArgumentMemory,
   mcpOriginRequest,
   readAdapterSettings,
+  RELAYS_CHECK_SINCE,
+  relayCheckPost,
   pathOf,
   paymentEdgeMode,
   paymentUnavailableResponse,
@@ -25,6 +30,7 @@ import {
   type AdapterSettingName,
   type AdapterSettings,
   type EdgeMode,
+  type ExtractOptions,
 } from '@d3-inc/d3-dna-protocol';
 import { ADAPTER_NAME } from './adapter-name';
 import type { Env } from './env';
@@ -65,20 +71,11 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
       return withEdgeHeader(response, 'pass');
     }
 
-    // Cloudflare-specific, so core stays platform-free: the client IP comes from
-    // cf-connecting-ip, and the client certificate and connection facts from the
-    // handshake this zone terminated (never from a header — see ExtractOptions).
-    const cf = (request as Request<unknown, IncomingRequestCfProperties>).cf;
+    // The check script's post is ours to answer: it never reaches the origin, and it takes no decision.
+    if (isCheckRelayPath(request.url)) return relayCheck(request, env, settings);
+
     const host = new URL(request.url).host;
-    const { payload, mcp } = await extractEdgeRequest(request, {
-      ip: request.headers.get('cf-connecting-ip') ?? undefined,
-      handshake: handshakeFromTlsClientAuth(cf?.tlsClientAuth),
-      network: networkFactsFromCf(cf),
-      debugHeaders: settings.debugLogRawPayload,
-      // This adapter honours every revision: the forwarding, the MCP lift, strip and answer.
-      adapterSet: ADAPTER_SET,
-      exclude: settings.exclude,
-    });
+    const { payload, mcp } = await extractEdgeRequest(request, extractOptionsOf(request, settings));
     // Presence of a credential is all the adapter needs to tell the two budgets
     // apart, and it never decodes one (ADR 0032 decision 1); one lifted from an
     // MCP call's body counts when the payload carries it.
@@ -217,6 +214,38 @@ export function withD3Edge<E extends Env>(handler: ExportedHandler<E>): Exported
   };
 }
 
+// Cloudflare-specific, so core stays platform-free: the client IP comes from
+// cf-connecting-ip, and the client certificate and connection facts from the
+// handshake this zone terminated (never from a header — see ExtractOptions).
+function extractOptionsOf(request: Request, settings: AdapterSettings): ExtractOptions {
+  const cf = (request as Request<unknown, IncomingRequestCfProperties>).cf;
+  return {
+    ip: request.headers.get('cf-connecting-ip') ?? undefined,
+    handshake: handshakeFromTlsClientAuth(cf?.tlsClientAuth),
+    network: networkFactsFromCf(cf),
+    debugHeaders: settings.debugLogRawPayload,
+    // This adapter honours every revision: the forwarding, the MCP lift, strip and answer, and the check relay.
+    adapterSet: RELAYS_CHECK_SINCE,
+    exclude: settings.exclude,
+  };
+}
+
+async function relayCheck(request: Request, env: Env, settings: AdapterSettings): Promise<Response> {
+  const check = checkTransport(env, settings);
+  if (!check) return checkRelayRefusal(503);
+
+  return relayCheckPost(request, {
+    url: check.url,
+    bearer: check.bearer,
+    adapterName: ADAPTER_NAME,
+    timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
+    fetch: check.fetch,
+    // The original carries `cf`, which a request rebuilt from the capped body does not.
+    payloadOf: async (posted) =>
+      (await extractEdgeRequest(posted, extractOptionsOf(request, settings))).payload,
+  });
+}
+
 interface PolicyTransport {
   url: string;
   bearer?: string;
@@ -226,6 +255,17 @@ interface PolicyTransport {
 // A binding routes by itself and the worker reads only the path, so the host is
 // a placeholder; `.invalid` keeps it from ever being taken for a public one.
 const FLEET_DECISION_URL = 'https://policy-worker.invalid/v1/decision';
+
+const FLEET_CHECK_URL = 'https://check-worker.invalid/v1/check';
+
+/** The check endpoint beside the decision one; the fleet reaches it only through its own binding. */
+function checkTransport(env: Env, settings: AdapterSettings): PolicyTransport | null {
+  const fleet = env.CHECK_WORKER;
+  if (fleet) return { url: FLEET_CHECK_URL, fetch: (input, init) => fleet.fetch(input, init) };
+
+  if (env.POLICY_WORKER || !settings.endpoint) return null;
+  return { url: checkEndpointOf(settings.endpoint), bearer: settings.apiKey, fetch };
+}
 
 /**
  * Our fleet deployment holds the binding and no key, a customer's install its

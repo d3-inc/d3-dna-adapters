@@ -5,6 +5,12 @@ export interface Env {
    * credential both: DNA_ENDPOINT and DNA_API_KEY go unread.
    */
   POLICY_WORKER?: Fetcher;
+  /**
+   * The check worker, bound beside POLICY_WORKER on our fleet deployment. Without
+   * it the fleet answers the check script 503; a customer's install relays to
+   * /v1/check on DNA_ENDPOINT's host instead.
+   */
+  CHECK_WORKER?: Fetcher;
   /** The org's API key, a secret. Set ⇒ DNA is on, calling the default endpoint. */
   DNA_API_KEY?: string;
   /** Decision endpoint override; empty ⇒ off. */
