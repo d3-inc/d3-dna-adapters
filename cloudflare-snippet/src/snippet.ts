@@ -83,7 +83,7 @@ const DEFAULT_ENDPOINT = 'https://edge-api.d3.com/v1/decision';
 const ADAPTER_SET = 2;
 
 /** Our build of this file, by its own version. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter). */
-const DNA_ADAPTER = 'snippet:2.0.0';
+const DNA_ADAPTER = 'snippet:2.0.1';
 
 /** Snippets get 2 MB of memory, so only bodies up to this size are hashed. */
 const MAX_HASHED_BODY_BYTES = 1_000_000;
