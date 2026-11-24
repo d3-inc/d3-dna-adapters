@@ -129,7 +129,11 @@ with a JSON body:
 From `snippet:2.1.0` the snippet answers `/.well-known/d3/check` itself,
 sampled or not, where the browser check posts its answer, and the origin never
 sees it: it relays the post to `/v1/check` beside `endpoint`'s `/v1/decision`,
-under your key ([the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-post)). Those answers carry `x-d3-edge: check`.
+under your key ([the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-post)).
+It serves the check script's own files, `/.well-known/d3/check-<version>.js`
+and `.css`, the same way: fetched from the check endpoint without your key and
+passed on unchanged, so a `script-src 'self'` policy allows them ([the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-scripts-files)).
+Those answers carry `x-d3-edge: check`.
 
 ## Paid routes (D3 Pay)
 

@@ -4,6 +4,7 @@ import {
   CARRIES_MCP_SINCE,
   buildPaymentResponse,
   builtAnswerOf,
+  checkAssetNameOf,
   checkEndpointOf,
   checkRelayRefusal,
   DEFAULT_CHECK_RELAY_TIMEOUT_MS,
@@ -16,6 +17,7 @@ import {
   McpKeyArgumentMemory,
   mcpOriginRequest,
   readAdapterSettings,
+  relayCheckAsset,
   relayCheckPost,
   pathOf,
   paymentEdgeMode,
@@ -76,6 +78,16 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
     const check = checkTransport(env, settings);
     if (isCheckRelayPath(request.url)) {
       return relayCheck(request, check, extractOptionsOf(request, settings, check));
+    }
+
+    // So is the check script's own file, served on this host for the site's `script-src 'self'`.
+    if (check && checkAssetNameOf(request.url) !== null) {
+      return relayCheckAsset(request, {
+        url: check.url,
+        fetch: check.fetch,
+        timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
+        logError: (message, detail) => log.error(message, detail),
+      });
     }
 
     const host = new URL(request.url).host;

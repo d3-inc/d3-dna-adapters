@@ -146,9 +146,14 @@ WordPress never runs:
 From 1.1.0 the plugin answers `/.well-known/d3/check` itself, where the
 browser check posts its answer, and WordPress never runs for it: it relays the
 post to `/v1/check` beside `DNA_ENDPOINT`'s `/v1/decision`, under your key
-([the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-post)). Those answers carry `x-d3-edge: check`. The path must reach PHP: a
-host or web-server rule that serves or denies `/.well-known/` itself keeps the
-check from finishing.
+([the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-post)).
+It serves the check script's own files, `/.well-known/d3/check-<version>.js`
+and `.css`, the same way: fetched from the check endpoint without your key and
+passed on unchanged, so a `script-src 'self'` policy allows them ([the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-scripts-files)).
+Those answers carry `x-d3-edge: check`. These paths must reach PHP: a host or
+web-server rule that serves or denies `/.well-known/` itself, or that answers
+a missing `.js` or `.css` file without WordPress, keeps the check from
+finishing.
 
 ## Paid routes (D3 Pay)
 

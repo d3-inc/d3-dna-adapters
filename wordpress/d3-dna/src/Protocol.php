@@ -46,6 +46,10 @@ final class Protocol
     const CHECK_RELAY_MAX_BODY_BYTES = 32768;
     const CHECK_RELAY_TIMEOUT_MS = 5000;
     const DECISION_PATH_SUFFIX = '/v1/decision';
+    const CHECK_ASSET_MAX_BYTES = 524288;
+    const CHECK_ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+    // A versioned name and nothing else: no slash, no percent, no other extension reaches the check worker.
+    const CHECK_ASSET_PATH = '~^/\.well-known/d3/(check-[0-9A-Za-z.-]{1,32}\.(?:js|css))\z~';
     const PAY_HANDOFF_PARAM = 'd3pay_handoff';
     const MCP_DNA_KEY_HEADER = 'mcp-param-dna-key';
     const MCP_KEY_ARGUMENT = 'dna_account_key';
@@ -1285,11 +1289,19 @@ final class Protocol
         ];
     }
 
-    public static function checkRelayRefusal($status)
+    /** `$allowed` is the one method the refusing relay takes, named on a 405. */
+    public static function checkRelayRefusal($status, $allowed = 'POST')
     {
-        $errors = [400 => 'malformed', 403 => 'cross-site', 405 => 'method-not-allowed', 413 => 'too-large', 503 => 'check-unavailable'];
+        $errors = [
+            400 => 'malformed',
+            403 => 'cross-site',
+            404 => 'not-found',
+            405 => 'method-not-allowed',
+            413 => 'too-large',
+            503 => 'check-unavailable',
+        ];
         $headers = self::relayHeaders();
-        if ($status === 405) $headers[] = ['allow', 'POST'];
+        if ($status === 405) $headers[] = ['allow', $allowed];
 
         return ['status' => $status, 'headers' => $headers, 'set_cookies' => [], 'body' => self::jsonEncode(['error' => $errors[$status]])];
     }
@@ -1310,6 +1322,55 @@ final class Protocol
         }
 
         return ['status' => $status, 'headers' => self::relayHeaders(), 'set_cookies' => $kept, 'body' => (string) $body];
+    }
+
+    // ── The check script's assets (check-relay.ts) ──────────────────────────
+
+    /** checkAssetNameOf: from the target as sent, never decoded; the query is ignored. */
+    public static function checkAssetNameOf($target)
+    {
+        if (!is_string($target)) return null;
+
+        $path = preg_split('/[?#]/', $target, 2)[0];
+        return preg_match(self::CHECK_ASSET_PATH, $path, $m) === 1 ? $m[1] : null;
+    }
+
+    public static function checkAssetUrlOf($checkUrl, $name)
+    {
+        return $checkUrl . '/assets/' . $name;
+    }
+
+    /** isCheckAssetType: a script only as JavaScript and a stylesheet only as CSS. */
+    public static function isCheckAssetType($name, $contentType)
+    {
+        if (!is_string($contentType)) return false;
+
+        $type = substr($name, -4) === '.css' ? 'css' : 'javascript';
+        return preg_match('~^text/' . $type . '\s*(;\s*charset=[\w-]+\s*)?\z~i', $contentType) === 1;
+    }
+
+    /** refusedCheckAsset: the status the visitor gets instead of the asset, or null when it may be served. */
+    public static function refusedCheckAsset($name, $status, $contentType)
+    {
+        if ($status === 404) return 404;
+
+        return $status === 200 && self::isCheckAssetType($name, $contentType) ? null : 503;
+    }
+
+    /** The body byte for byte: the page pins it with SRI. No header of the check worker's but its type. */
+    public static function checkAssetAnswer($contentType, $body)
+    {
+        return [
+            'status' => 200,
+            'headers' => [
+                ['content-type', $contentType],
+                ['cache-control', self::CHECK_ASSET_CACHE_CONTROL],
+                ['x-content-type-options', 'nosniff'],
+                ['x-d3-edge', 'check'],
+            ],
+            'set_cookies' => [],
+            'body' => (string) $body,
+        ];
     }
 
     /** privateCacheControl: a receipt or our Set-Cookie is one visitor's, so no shared cache holds it. */

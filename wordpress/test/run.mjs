@@ -35,7 +35,8 @@ function send(port, path, { method = 'GET', headers = {}, body } = {}) {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
-        const text = Buffer.concat(chunks).toString('utf8');
+        const bytes = Buffer.concat(chunks);
+        const text = bytes.toString('utf8');
         let json;
         try {
           json = JSON.parse(text);
@@ -43,7 +44,7 @@ function send(port, path, { method = 'GET', headers = {}, body } = {}) {
           json = null;
         }
 
-        resolve({ status: res.statusCode, headers: res.headers, raw: res.rawHeaders, text, json });
+        resolve({ status: res.statusCode, headers: res.headers, raw: res.rawHeaders, bytes, text, json });
       });
     });
     req.on('error', reject);
@@ -53,6 +54,10 @@ function send(port, path, { method = 'GET', headers = {}, body } = {}) {
 }
 
 const tag = () => `t${++seq}${Date.now()}`;
+// mock-decision.mjs serves it as check-6.0.0.js.
+const ASSET_SCRIPT = Buffer.from([
+  0xef, 0xbb, 0xbf, 0x28, 0x29, 0x3d, 0x3e, 0x7b, 0x7d, 0x00, 0xff, 0x0d, 0x0a,
+]);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** The decisions and reports for one tagged request. */
@@ -1004,6 +1009,61 @@ async function core(label, { port, reports }) {
       { status: res.status, text: res.text.slice(0, 200) }
     );
   }
+
+  // ── The check script's assets ──────────────────────────────────────────────
+  const assetsNow = async () => (await (await fetch(`${MOCK}/__log`)).json()).assets;
+  const assetsBefore = (await assetsNow()).length;
+  res = await send(port, `/.well-known/d3/check-6.0.0.js?t=${tag()}`, {
+    headers: { authorization: 'Bearer site-token', cookie: 'sid=private; __Host-d3check=c' },
+  });
+  const fetchedAssets = (await assetsNow()).slice(assetsBefore);
+  check(
+    `${label}: asset: the check worker's script byte for byte, never WordPress`,
+    res.status === 200 && res.bytes.equals(ASSET_SCRIPT),
+    { status: res.status, bytes: [...res.bytes].slice(0, 40) }
+  );
+  check(
+    `${label}: asset: its type, cached for a year, never sniffed, tagged, and no header of the check worker`,
+    res.headers['content-type'] === 'text/javascript; charset=utf-8' &&
+      res.headers['cache-control'] === 'public, max-age=31536000, immutable' &&
+      res.headers['x-content-type-options'] === 'nosniff' &&
+      res.headers['x-d3-edge'] === 'check' &&
+      res.headers['set-cookie'] === undefined &&
+      res.headers['x-internal'] === undefined,
+    res.headers
+  );
+  check(
+    `${label}: asset: a GET with no key and no cookie`,
+    fetchedAssets.length === 1 &&
+      fetchedAssets[0].method === 'GET' &&
+      fetchedAssets[0].headers.authorization === undefined &&
+      fetchedAssets[0].headers.cookie === undefined,
+    fetchedAssets
+  );
+  for (const [name, status] of [
+    ['check-wrongtype.js', 503],
+    ['check-redirect.js', 503],
+    ['check-error.js', 503],
+    ['check-big.js', 503],
+    ['check-missing.js', 404],
+  ]) {
+    res = await send(port, `/.well-known/d3/${name}?t=${tag()}`);
+    check(
+      `${label}: asset: ${name} is a ${status}, never WordPress`,
+      res.status === status && !res.json?.origin && res.headers['x-d3-edge'] === 'check',
+      { status: res.status, text: res.text.slice(0, 200) }
+    );
+  }
+
+  const beforePost = (await assetsNow()).length;
+  res = await send(port, `/.well-known/d3/check-6.0.0.js?t=${tag()}`, { method: 'POST', body: 'x' });
+  check(
+    `${label}: asset: a POST is 405, allows GET, fetches nothing`,
+    res.status === 405 && res.headers.allow === 'GET' && (await assetsNow()).length === beforePost,
+    { status: res.status, headers: res.headers }
+  );
+  res = await send(port, `/.well-known/d3/check-6.0.0.html?t=${tag()}`);
+  check(`${label}: asset: another name is not ours`, res.headers['x-d3-edge'] !== 'check', res.headers);
 }
 
 async function live() {
@@ -1093,6 +1153,12 @@ async function dead() {
     body: rpc('tools/call', { name: 'search', arguments: { dna_account_key: 'k' } }),
   });
   check('dead: a call carrying a key is a 502', call.status === 502, call.text);
+  const asset = await send(SITES.fpm.port, `/.well-known/d3/check-6.0.0.js?t=${tag()}`);
+  check(
+    'dead: an asset answers 503, and never WordPress',
+    asset.status === 503 && asset.json?.error === 'check-unavailable' && !asset.json?.origin,
+    asset.text.slice(0, 200)
+  );
 }
 
 async function closed() {
@@ -1125,6 +1191,8 @@ async function disabled() {
       res.json?.url === `/page?t=${id}&keep=1`,
     res.json
   );
+  const asset = await send(SITES.fpm.port, `/.well-known/d3/check-6.0.0.js?t=${tag()}`);
+  check('disabled: an asset path is WordPress like any other', asset.json?.origin, asset.status);
 }
 
 async function fromPlugin(entry) {

@@ -1,6 +1,7 @@
 import {
   buildPaymentResponse,
   builtAnswerOf,
+  checkAssetNameOf,
   checkEndpointOf,
   checkRelayRefusal,
   createHttpPolicyClient,
@@ -9,6 +10,7 @@ import {
   extractPayload,
   FORWARDS_ALL_SINCE,
   isCheckRelayPath,
+  relayCheckAsset,
   relayCheckPost,
   requestPresentsPayment,
   pathOf,
@@ -83,8 +85,8 @@ export function createD3Middleware(config?: D3MiddlewareConfig, deps: Middleware
     };
 
     // The check script's post is ours to answer: it never reaches the site, and it takes no decision.
+    const checkUrl = checkEndpointOf(endpoint);
     if (isCheckRelayPath(request.url)) {
-      const checkUrl = checkEndpointOf(endpoint);
       if (checkUrl === null) return checkRelayRefusal(503);
 
       return relayCheckPost(request, {
@@ -94,6 +96,16 @@ export function createD3Middleware(config?: D3MiddlewareConfig, deps: Middleware
         timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
         fetch: deps.fetchImpl ?? fetch,
         payloadOf: (posted) => extractPayload(posted, extractOptions),
+        logError: (message, detail) => log.error(message, detail),
+      });
+    }
+
+    // So is the check script's own file, served on this host for the site's `script-src 'self'`.
+    if (checkUrl !== null && checkAssetNameOf(request.url) !== null) {
+      return relayCheckAsset(request, {
+        url: checkUrl,
+        fetch: deps.fetchImpl ?? fetch,
+        timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
         logError: (message, detail) => log.error(message, detail),
       });
     }

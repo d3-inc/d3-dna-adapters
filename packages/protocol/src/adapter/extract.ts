@@ -53,7 +53,7 @@ export const FORWARDED_HEADER_SET = 2;
  * forwards every header and cookie but the site's exclusions. 3 lifts an MCP
  * call's payment, strips it before the origin, and answers JSON-RPC.
  *
- * 4 relays the check script's post to the check endpoint, never the origin.
+ * 4 relays the check script's post and files to the check endpoint, never the origin.
  * An adapter that cannot reach a check endpoint declares 3; one that cannot
  * honour 3 declares its own revision and lists `relay-check` in its build
  * record instead.

@@ -30,7 +30,8 @@ function send(port, path, { method = 'GET', headers = {}, body } = {}) {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
-        const text = Buffer.concat(chunks).toString('utf8');
+        const bytes = Buffer.concat(chunks);
+        const text = bytes.toString('utf8');
         let json;
         try {
           json = JSON.parse(text);
@@ -38,7 +39,7 @@ function send(port, path, { method = 'GET', headers = {}, body } = {}) {
           json = null;
         }
 
-        resolve({ status: res.statusCode, headers: res.headers, raw: res.rawHeaders, text, json });
+        resolve({ status: res.statusCode, headers: res.headers, raw: res.rawHeaders, bytes, text, json });
       });
     });
     req.on('error', reject);
@@ -77,6 +78,10 @@ const handoff = `${'A'.repeat(22)}.${'b'.repeat(43)}`;
 const digestOf = (body) => `sha-256=:${createHash('sha256').update(body).digest('base64')}:`;
 const JSON_TYPE = { 'content-type': 'application/json' };
 const rpc = (method, params, id = 7) => JSON.stringify({ jsonrpc: '2.0', id, method, params });
+// mock-decision.mjs serves it as check-6.0.0.js.
+const ASSET_SCRIPT = Buffer.from([
+  0xef, 0xbb, 0xbf, 0x28, 0x29, 0x3d, 0x3e, 0x7b, 0x7d, 0x00, 0xff, 0x0d, 0x0a,
+]);
 
 async function live() {
   // ── A pass, and what crossed to DNA ────────────────────────────────────────
@@ -942,6 +947,84 @@ async function live() {
     }
   );
 
+  // ── The check script's assets ──────────────────────────────────────────────
+  const assetsBefore = (await log()).assets.length;
+  id = tag();
+  res = await send(SITES.include, `/.well-known/d3/check-6.0.0.js?t=${id}`, {
+    headers: { authorization: 'Bearer site-token', cookie: 'sid=private; __Host-d3check=c' },
+  });
+  s = await seen(id);
+  const fetchedAssets = (await log()).assets.slice(assetsBefore);
+  check(
+    "asset: the check worker's script byte for byte, never the origin, and no decision",
+    res.status === 200 && res.bytes.equals(ASSET_SCRIPT) && s.decisions.length === 0,
+    { status: res.status, bytes: [...res.bytes].slice(0, 40), decisions: s.decisions.length }
+  );
+  check(
+    'asset: its type, cached for a year, never sniffed, tagged, and no header of the check worker',
+    res.headers['content-type'] === 'text/javascript; charset=utf-8' &&
+      res.headers['cache-control'] === 'public, max-age=31536000, immutable' &&
+      res.headers['x-content-type-options'] === 'nosniff' &&
+      res.headers['x-d3-edge'] === 'check' &&
+      res.headers['set-cookie'] === undefined &&
+      res.headers['x-internal'] === undefined,
+    res.headers
+  );
+  check(
+    'asset: a GET with no key, no cookie and no query',
+    fetchedAssets.length === 1 &&
+      fetchedAssets[0].name === 'check-6.0.0.js' &&
+      fetchedAssets[0].method === 'GET' &&
+      fetchedAssets[0].headers.authorization === undefined &&
+      fetchedAssets[0].headers.cookie === undefined,
+    fetchedAssets
+  );
+  res = await send(SITES.include, `/.well-known/d3/check-6.0.0.css?t=${tag()}`);
+  check(
+    'asset: the stylesheet as CSS',
+    res.status === 200 && res.headers['content-type'] === 'text/css' && res.text === '.d3{display:grid}',
+    { status: res.status, headers: res.headers }
+  );
+  for (const [name, status] of [
+    ['check-wrongtype.js', 503],
+    ['check-redirect.js', 503],
+    ['check-error.js', 503],
+    ['check-big.js', 503],
+    ['check-missing.js', 404],
+  ]) {
+    res = await send(SITES.include, `/.well-known/d3/${name}?t=${tag()}`);
+    check(
+      `asset: ${name} is a ${status}, never the origin`,
+      res.status === status && !res.json?.origin && res.headers['x-d3-edge'] === 'check',
+      { status: res.status, text: res.text.slice(0, 200) }
+    );
+  }
+
+  const beforePost = (await log()).assets.length;
+  res = await send(SITES.include, `/.well-known/d3/check-6.0.0.js?t=${tag()}`, { method: 'POST', body: 'x' });
+  check(
+    'asset: a POST is 405, allows GET, fetches nothing',
+    res.status === 405 && res.headers.allow === 'GET' && (await log()).assets.length === beforePost,
+    { status: res.status, headers: res.headers }
+  );
+  for (const path of ['/.well-known/d3/check-6.0.0.html', '/.well-known/d3/check-%2F..%2Fx.js']) {
+    id = tag();
+    res = await send(SITES.include, `${path}?t=${id}`);
+    s = await seen(id);
+    check(
+      `asset: ${path} is not ours: a decision, then the origin`,
+      res.json?.origin && s.decisions.length === 1,
+      { status: res.status, decisions: s.decisions.length }
+    );
+  }
+
+  res = await send(SITES.legacy, `/.well-known/d3/check-6.0.0.js?t=${tag()}`);
+  check(
+    'legacy: revision 1 relays no asset: the path is a page like any other',
+    res.json?.origin,
+    res.status
+  );
+
   // ── The install from before the include ───────────────────────────────────
   id = tag();
   res = await send(SITES.legacy, `/page?t=${id}`, { headers: { 'x-custom': 'c', cookie: 'theme=dark' } });
@@ -1004,6 +1087,8 @@ async function disabled() {
     relay.status === 200 && relay.json?.origin,
     relay.status
   );
+  const asset = await send(SITES.include, `/.well-known/d3/check-6.0.0.js?t=${tag()}`);
+  check('disabled: an asset path is a page like any other', asset.json?.origin, asset.status);
   check(
     'disabled: our params gone',
     !res.json?.url.includes('d3pay_handoff') && res.json?.url.includes('keep=1'),
@@ -1047,6 +1132,12 @@ async function dead() {
   });
   check(
     'dead: the check post answers 503, and never the origin',
+    res.status === 503 && res.json?.error === 'check-unavailable' && !res.json?.origin,
+    { status: res.status, text: res.text.slice(0, 200) }
+  );
+  res = await send(SITES.include, `/.well-known/d3/check-6.0.0.js?t=${tag()}`);
+  check(
+    'dead: an asset answers 503, and never the origin',
     res.status === 503 && res.json?.error === 'check-unavailable' && !res.json?.origin,
     { status: res.status, text: res.text.slice(0, 200) }
   );

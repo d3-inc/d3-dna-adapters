@@ -401,6 +401,122 @@ describe('the check relay', () => {
   });
 });
 
+describe("the check script's assets", () => {
+  const ASSET_PATH = '/.well-known/d3/check-6.0.0.js';
+  const ASSET_URL = 'https://edge-api.d3.com/v1/check/assets/check-6.0.0.js';
+  const SCRIPT = 'window.d3check=1;';
+
+  interface AssetLog {
+    assetCalls: Request[];
+    originCalls: Request[];
+    policyCalls: number;
+  }
+
+  function stubAssets(answer: () => Response): AssetLog {
+    const log: AssetLog = { assetCalls: [], originCalls: [], policyCalls: 0 };
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      if (request.url === ASSET_URL) {
+        log.assetCalls.push(request);
+        return Promise.resolve(answer());
+      }
+
+      if (request.url === POLICY_URL) {
+        log.policyCalls++;
+        return Promise.resolve(Response.json({ action: 'pass' }));
+      }
+
+      if (request.url !== REPORT_URL) log.originCalls.push(request);
+      return Promise.resolve(new Response('origin'));
+    });
+    return log;
+  }
+
+  const script = () =>
+    new Response(SCRIPT, {
+      headers: { 'content-type': 'text/javascript; charset=utf-8', 'set-cookie': 'session=hijacked; Path=/' },
+    });
+
+  const fetched = (init: RequestInit & { url?: string } = {}) =>
+    siteRequest({
+      url: `https://ai.d3.com${ASSET_PATH}?v=1`,
+      headers: { cookie: '__Host-d3visitor=v; sid=s', 'user-agent': 'Mozilla/5.0 Chrome/150' },
+      ...init,
+    });
+
+  it("serves the check worker's script on the site's host, keyless, and never asks the origin or DNA", async () => {
+    const log = stubAssets(script);
+    const res = await run(fetched());
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(SCRIPT);
+    expect(res.headers.get('content-type')).toBe('text/javascript; charset=utf-8');
+    expect(res.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(res.headers.get('x-d3-edge')).toBe('check');
+    expect(res.headers.getSetCookie()).toEqual([]);
+    expect(log.originCalls).toHaveLength(0);
+    expect(log.policyCalls).toBe(0);
+
+    const [call] = log.assetCalls;
+    expect(call.method).toBe('GET');
+    expect(call.headers.get('authorization')).toBeNull();
+    expect(call.headers.get('cookie')).toBeNull();
+  });
+
+  it('answers 405 to a post on an asset path, and fetches nothing', async () => {
+    const log = stubAssets(script);
+    const res = await run(fetched({ method: 'POST', body: 'x' }));
+    expect(res.status).toBe(405);
+    expect(res.headers.get('allow')).toBe('GET');
+    expect(log.assetCalls).toHaveLength(0);
+    expect(log.originCalls).toHaveLength(0);
+  });
+
+  it('relays through the check binding on the fleet', async () => {
+    stubAssets(script);
+    const bound: string[] = [];
+    const checkWorker = {
+      fetch: (input: RequestInfo | URL) => {
+        bound.push(String(input instanceof Request ? input.url : input));
+        return Promise.resolve(script());
+      },
+    } as unknown as Fetcher;
+    const policy = { fetch: () => Promise.resolve(Response.json({ action: 'pass' })) } as unknown as Fetcher;
+    const res = await run(fetched(), { POLICY_WORKER: policy, CHECK_WORKER: checkWorker });
+    expect(res.status).toBe(200);
+    expect(bound).toEqual(['https://check-worker.invalid/v1/check/assets/check-6.0.0.js']);
+  });
+
+  it('falls through to a decision and the origin where there is no check endpoint to relay to', async () => {
+    const log = stubAssets(script);
+    const gateway = 'https://gw.example/decide';
+    const decided: string[] = [];
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      if (request.url === gateway) {
+        decided.push(request.url);
+        return Promise.resolve(Response.json({ action: 'pass' }));
+      }
+
+      if (request.url.startsWith('https://ai.d3.com/')) log.originCalls.push(request);
+      return Promise.resolve(new Response('origin'));
+    });
+    const res = await run(fetched(), { DNA_ENDPOINT: gateway });
+    expect(res.headers.get('x-d3-edge')).toBe('pass');
+    expect(decided).toEqual([gateway]);
+    expect(log.originCalls).toHaveLength(1);
+    expect(log.assetCalls).toHaveLength(0);
+  });
+
+  it('takes a name outside the pattern for a page like any other', async () => {
+    const log = stubAssets(script);
+    const res = await run(fetched({ url: 'https://ai.d3.com/.well-known/d3/check-6.0.0.html' }));
+    expect(res.headers.get('x-d3-edge')).toBe('pass');
+    expect(log.policyCalls).toBe(1);
+    expect(log.assetCalls).toHaveLength(0);
+  });
+});
+
 describe('certificate challenges', () => {
   it('sends an ACME challenge to the origin without asking for a decision', async () => {
     const log = stubOutbound({ action: 'block' });

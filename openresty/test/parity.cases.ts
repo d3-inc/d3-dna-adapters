@@ -8,10 +8,15 @@ import {
 } from '../../packages/protocol/src/adapter/mcp-response.ts';
 import { privateCacheControl } from '../../packages/protocol/src/adapter/payment-response.ts';
 import {
+  CHECK_ASSET_CACHE_CONTROL,
+  CHECK_ASSET_MAX_BYTES,
   CHECK_RELAY_MAX_BODY_BYTES,
   CHECK_RELAY_PATH,
+  checkAssetNameOf,
+  checkAssetUrlOf,
   checkEndpointOf,
   isCrossSitePost,
+  refusedCheckAsset,
   relayedCheckResponse,
 } from '../../packages/protocol/src/adapter/check-relay.ts';
 import {
@@ -743,6 +748,8 @@ export async function buildParity() {
       MCP_KEY_ARGUMENT_SCHEMA,
       CHECK_RELAY_PATH,
       CHECK_RELAY_MAX_BODY_BYTES,
+      CHECK_ASSET_MAX_BYTES,
+      CHECK_ASSET_CACHE_CONTROL,
     },
     checkEndpoint: [
       'https://edge-api.d3.com/v1/decision',
@@ -759,6 +766,49 @@ export async function buildParity() {
       ),
     })),
     relayedCheck: await Promise.all(relayedCheckCases.map(relayedCheckCase)),
+    checkAssetName: [
+      '/.well-known/d3/check-6.0.0.js',
+      '/.well-known/d3/check-6.0.0.css?v=1',
+      `/.well-known/d3/check-${'a'.repeat(32)}.js`,
+      `/.well-known/d3/check-${'a'.repeat(33)}.js`,
+      '/.well-known/d3/check.js',
+      '/.well-known/d3/check-../x.js',
+      '/.well-known/d3/check-6.0.0.html',
+      '/.well-known/d3/check-%2F..%2Fx.js',
+      '/.well-known/d3/check-6%2E0.js',
+      '/.well-known/d3/CHECK-6.0.0.js',
+      '/.well-known/d3/check-6.0.0.JS',
+      '/.well-known/d3/check-6.0.0.js/',
+      '/.well-known/d3/x/check-6.0.0.js',
+      '/.well-known/d3/check',
+      '/assets/check-6.0.0.js',
+      '/page?next=/.well-known/d3/check-6.0.0.js',
+    ].map((target) => ({ target, out: checkAssetNameOf(`https://s.example${target}`) })),
+    checkAssetUrl: [
+      ['https://edge-api.d3.com/v1/check', 'check-6.0.0.js'],
+      ['https://gw.example:8443/tenant-a/v1/check', 'check-6.0.0.css'],
+    ].map(([checkUrl, name]) => ({ checkUrl, name, out: checkAssetUrlOf(checkUrl!, name!) })),
+    refusedCheckAsset: (
+      [
+        ['check-6.0.0.js', 200, 'text/javascript'],
+        ['check-6.0.0.js', 200, 'text/javascript; charset=utf-8'],
+        ['check-6.0.0.js', 200, 'Text/JavaScript;charset=UTF-8'],
+        ['check-6.0.0.css', 200, 'text/css'],
+        ['check-6.0.0.css', 200, 'text/css; charset=utf-8'],
+        ['check-6.0.0.js', 200, 'text/css'],
+        ['check-6.0.0.css', 200, 'text/javascript'],
+        ['check-6.0.0.js', 200, 'application/javascript'],
+        ['check-6.0.0.js', 200, 'text/html'],
+        ['check-6.0.0.js', 200, 'text/javascript; charset=utf-8; x=y'],
+        ['check-6.0.0.js', 200, 'text/javascriptx'],
+        ['check-6.0.0.js', 200, null],
+        ['check-6.0.0.js', 404, 'application/json'],
+        ['check-6.0.0.js', 302, 'text/javascript'],
+        ['check-6.0.0.js', 304, 'text/javascript'],
+        ['check-6.0.0.js', 401, 'text/javascript'],
+        ['check-6.0.0.js', 500, 'text/javascript'],
+      ] as const
+    ).map(([name, status, type]) => ({ name, status, type, out: refusedCheckAsset(name, status, type) })),
     forwardAll: forwardAllCases.map((c) => ({
       ...c,
       out: forwardAll(headersOf(c.headers), c.exclude, HEADER_LENGTH_CAPS),

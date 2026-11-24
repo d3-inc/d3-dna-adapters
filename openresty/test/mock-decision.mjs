@@ -6,7 +6,44 @@ import { createServer } from 'node:http';
 const decisions = [];
 const reports = [];
 const checks = [];
+const assets = [];
 const PORT = Number(process.env.MOCK_PORT ?? 9010);
+
+// The check worker's files: the name picks the answer. The script is bytes no text decoding keeps.
+const ASSET_PREFIX = '/v1/check/assets/';
+const ASSET_SCRIPT = Buffer.from([
+  0xef, 0xbb, 0xbf, 0x28, 0x29, 0x3d, 0x3e, 0x7b, 0x7d, 0x00, 0xff, 0x0d, 0x0a,
+]);
+const ASSETS = {
+  'check-6.0.0.js': [
+    200,
+    {
+      'content-type': 'text/javascript; charset=utf-8',
+      'set-cookie': 'session=hijacked; Path=/',
+      'x-internal': 'secret',
+    },
+    ASSET_SCRIPT,
+  ],
+  'check-6.0.0.css': [200, { 'content-type': 'text/css' }, '.d3{display:grid}'],
+  'check-wrongtype.js': [200, { 'content-type': 'text/css' }, 'alert(1)'],
+  'check-redirect.js': [302, { location: 'https://elsewhere.example/x.js' }, ''],
+  'check-error.js': [500, { 'content-type': 'text/javascript' }, ''],
+};
+
+function answerAsset(req, res) {
+  const name = req.url.slice(ASSET_PREFIX.length);
+  assets.push({ name, method: req.method, headers: req.headers });
+  // Past the 512 KiB cap, streamed with no length, so only a reader that counts can refuse it.
+  if (name === 'check-big.js') {
+    res.writeHead(200, { 'content-type': 'text/javascript' });
+    for (let i = 0; i < 9; i += 1) res.write(Buffer.alloc(64 * 1024, 0x20));
+    return res.end();
+  }
+
+  const [status, headers, body] = ASSETS[name] ?? [404, { 'content-type': 'application/json' }, '{}'];
+  res.writeHead(status, headers);
+  return res.end(body);
+}
 
 const verdict = { tier: 'claimed', identity: 'test-bot' };
 const pass = (extra = {}) => [200, { action: 'pass', verdict, ...extra }];
@@ -93,8 +130,10 @@ createServer((req, res) => {
     const text = Buffer.concat(chunks).toString('utf8');
     if (req.method === 'GET' && req.url === '/__log') {
       res.writeHead(200, { 'content-type': 'application/json' });
-      return res.end(JSON.stringify({ decisions, reports, checks }));
+      return res.end(JSON.stringify({ decisions, reports, checks, assets }));
     }
+
+    if (req.url.startsWith(ASSET_PREFIX)) return answerAsset(req, res);
 
     // The check worker: `check=` in the relayed post's own query picks what it answers.
     if (req.url === '/v1/check') {

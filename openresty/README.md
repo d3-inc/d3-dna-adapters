@@ -111,6 +111,9 @@ Every response carries `x-d3-edge`: `pass`, `block`, `fail-open`,
 From 1.1.0 the install answers `/.well-known/d3/check` itself, where the
 browser check posts its answer, and the origin never sees it: it relays the post
 to `/v1/check` beside `DNA_ENDPOINT`'s `/v1/decision`, under your key ([the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-post)).
+It serves the check script's own files, `/.well-known/d3/check-<version>.js`
+and `.css`, the same way: fetched from the check endpoint without your key and
+passed on unchanged, so a `script-src 'self'` policy allows them ([the protocol](https://github.com/d3-inc/d3-dna-adapters/blob/main/PROTOCOL.md#relaying-the-check-scripts-files)).
 Those answers carry `x-d3-edge: check`. The single access line from before the
 include does not relay.
 

@@ -420,6 +420,74 @@ describe('the check relay', () => {
   });
 });
 
+describe("the check script's assets", () => {
+  const ASSET_URL = 'https://edge-api.d3.com/v1/check/assets/check-6.0.0.css';
+  const STYLES = '.d3-card{display:grid}';
+
+  function assetHarness() {
+    const assetCalls: (RequestInit | undefined)[] = [];
+    const other: string[] = [];
+    const base = harness({ action: 'pass' });
+    const deps: MiddlewareDeps = {
+      ...base.deps,
+      fetchImpl: (async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url) === ASSET_URL) {
+          assetCalls.push(init);
+          return new Response(STYLES, {
+            headers: { 'content-type': 'text/css', 'set-cookie': 'session=hijacked; Path=/' },
+          });
+        }
+
+        other.push(String(url));
+        return Response.json({ action: 'pass' });
+      }) as typeof fetch,
+    };
+    return { ...base, deps, assetCalls, other };
+  }
+
+  const fetched = (init: RequestInit = {}) =>
+    new Request('https://ai.d3.com/.well-known/d3/check-6.0.0.css', {
+      headers: { 'user-agent': 'Mozilla/5.0 Chrome/150', cookie: 'sid=s' },
+      ...init,
+    });
+
+  it("serves the check worker's stylesheet keyless, and never continues to the site", async () => {
+    const h = assetHarness();
+    const res = await createD3Middleware(BASE_CONFIG, h.deps)(fetched());
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(STYLES);
+    expect(res.headers.get('content-type')).toBe('text/css');
+    expect(res.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(res.headers.get('x-d3-edge')).toBe('check');
+    expect(res.headers.getSetCookie()).toEqual([]);
+    expect(h.nextCalls).toHaveLength(0);
+    expect(h.other).toEqual([]);
+    expect(new Headers(h.assetCalls[0]?.headers).get('authorization')).toBeNull();
+  });
+
+  it('answers 405 to a post on an asset path, and never continues', async () => {
+    const h = assetHarness();
+    const res = await createD3Middleware(BASE_CONFIG, h.deps)(fetched({ method: 'POST', body: 'x' }));
+    expect(res.status).toBe(405);
+    expect(res.headers.get('allow')).toBe('GET');
+    expect(h.assetCalls).toHaveLength(0);
+    expect(h.nextCalls).toHaveLength(0);
+  });
+
+  it('takes the path to a decision where the endpoint has no check path beside it', async () => {
+    const h = assetHarness();
+    const res = await createD3Middleware(
+      { ...BASE_CONFIG, endpoint: 'https://gw.example/decide' },
+      h.deps
+    )(fetched());
+    expect(res.headers.get('x-d3-edge')).toBe('pass');
+    expect(h.assetCalls).toHaveLength(0);
+    expect(h.other).toContain('https://gw.example/decide');
+    expect(h.nextCalls).toHaveLength(1);
+  });
+});
+
 describe('paid routes', () => {
   const paying = () =>
     new Request('https://ai.d3.com/premium', {

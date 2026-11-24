@@ -227,6 +227,37 @@ end
 
 check("check_relay_refusal: 405 says what it allows",
   header_of(dna.check_relay_refusal(405), "allow") == "POST")
+check("check_relay_refusal: 405 names the asset relay's own method",
+  header_of(dna.check_relay_refusal(405, "GET"), "allow") == "GET")
+check("check_relay_refusal: a missing asset is not-found, never cached",
+  dna.check_relay_refusal(404).body == '{"error":"not-found"}'
+    and header_of(dna.check_relay_refusal(404), "cache-control") == "no-store")
+
+same("constants: CHECK_ASSET_MAX_BYTES", dna.CHECK_ASSET_MAX_BYTES, c.CHECK_ASSET_MAX_BYTES)
+same("constants: CHECK_ASSET_CACHE_CONTROL", dna.CHECK_ASSET_CACHE_CONTROL, c.CHECK_ASSET_CACHE_CONTROL)
+
+for _, case in ipairs(parity.checkAssetName) do
+  same("checkAssetNameOf: " .. case.target, dna.check_asset_name_of(case.target), case.out)
+end
+
+for _, case in ipairs(parity.checkAssetUrl) do
+  same("checkAssetUrlOf: " .. case.checkUrl, dna.check_asset_url_of(case.checkUrl, case.name), case.out)
+end
+
+for _, case in ipairs(parity.refusedCheckAsset) do
+  local type_ = case.type ~= NULL and case.type or nil
+  same("refusedCheckAsset: " .. case.name .. " " .. case.status .. " " .. tostring(type_),
+    dna.refused_check_asset(case.name, case.status, type_), case.out)
+end
+
+local asset = dna.check_asset_answer("text/javascript", "\0\255()=>{}\r\n")
+check("check_asset_answer: the body byte for byte, cached for a year, never sniffed, no cookie",
+  asset.status == 200 and asset.body == "\0\255()=>{}\r\n"
+    and header_of(asset, "content-type") == "text/javascript"
+    and header_of(asset, "cache-control") == "public, max-age=31536000, immutable"
+    and header_of(asset, "x-content-type-options") == "nosniff"
+    and header_of(asset, "x-d3-edge") == "check"
+    and #asset.headers == 4 and #asset.set_cookies == 0)
 
 for _, case in ipairs(parity.recordableName) do
   same("recordableName: " .. case.name, dna.recordable_name(case.name), case.out)

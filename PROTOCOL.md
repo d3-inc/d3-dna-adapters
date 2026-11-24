@@ -330,7 +330,7 @@ one the endpoint assumes.
 | 1        | forward `Cookie: __Host-d3person` as `d3pay-person`; append the answer's `Set-Cookie` to the origin's response rather than replacing it; and strip `d3pay_browser` from the URL before the origin |
 | 2        | all of 1, and [forward everything](#forwarding-everything) but the never-sent, the site's exclusions and our two cookies                                                                          |
 | 3        | all of 2, and lift an MCP call's payment out of `_meta`, strip it before the origin, answer a `json-rpc` instruction, and put `meta` and the key argument on a JSON-RPC result                    |
-| 4        | all of 3, and [relay the check script's post](#relaying-the-check-post) to the check endpoint, never the origin                                                                                   |
+| 4        | all of 3, and [relay the check script's post](#relaying-the-check-post) and [files](#relaying-the-check-scripts-files) to the check endpoint, never the origin                                    |
 
 All or nothing. A copy of this repository that drops any one of the three
 must not claim `1` — the cost falls on that site's own visitors, who get
@@ -373,6 +373,36 @@ relays all the same and keeps declaring its own revision; its build's record
 lists `relay-check`, and the endpoint offers the check by that record. An
 adapter that neither declares `4` nor has that record is never offered the
 check. A site whose DNA is off passes the path to its origin like any other.
+
+### Relaying the check script's files
+
+The check page loads its script and stylesheet from the site's own host too,
+so a content policy of `script-src 'self'` allows them. Every adapter that
+relays the post also answers a `GET` of `/.well-known/d3/<name>` itself, where
+`<name>` matches `^check-[0-9A-Za-z.-]{1,32}\.(?:js|css)$` in the path as sent.
+The query is ignored. Any other name is not ours: it takes a decision and
+reaches the origin like any other path. So does every name where the adapter
+has no check endpoint to relay to.
+
+| The request or the check endpoint's answer              | The adapter answers                |
+| ------------------------------------------------------- | ---------------------------------- |
+| Not `GET`                                               | `405` with `Allow: GET`            |
+| `404`                                                   | `404`                              |
+| `200`, `.js` as `text/javascript`, `.css` as `text/css` | `200` with the body, byte for byte |
+| A wrong or missing type, another status, a redirect     | `503`                              |
+| Body past 512 KiB, endpoint down or slow                | `503`, read no further             |
+
+It fetches `<check endpoint>/assets/<name>`, so production serves
+`https://edge-api.d3.com/v1/check/assets/check-6.0.0.js`. The fetch is a plain
+`GET` with no key, no cookie and no body, and it follows no redirect: the asset
+is public, and the name is the visitor's choice. The five-second budget of the
+post bounds it.
+
+The body is served unchanged, since the page pins it with an SRI `integrity`
+hash. Its headers are the validated `Content-Type`, `Cache-Control: public,
+max-age=31536000, immutable`, `X-Content-Type-Options: nosniff` and
+`x-d3-edge: check`. No other header of the check endpoint's passes, `Set-Cookie`
+included. A refusal is the post relay's JSON, `404` as `not-found`.
 
 ### The budget
 

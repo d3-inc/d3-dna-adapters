@@ -1409,6 +1409,7 @@ end
 local CHECK_REFUSALS = {
   [400] = "malformed",
   [403] = "cross-site",
+  [404] = "not-found",
   [405] = "method-not-allowed",
   [413] = "too-large",
   [503] = "check-unavailable",
@@ -1423,9 +1424,10 @@ local function relay_headers()
   }
 end
 
-function M.check_relay_refusal(status)
+-- `allowed` is the one method the refusing relay takes, named on a 405.
+function M.check_relay_refusal(status, allowed)
   local headers = relay_headers()
-  if status == 405 then headers[#headers + 1] = { "Allow", "POST" } end
+  if status == 405 then headers[#headers + 1] = { "Allow", allowed or "POST" } end
 
   return { status = status, headers = headers, set_cookies = {}, body = M.json_encode({ error = CHECK_REFUSALS[status] }) }
 end
@@ -1523,6 +1525,134 @@ local function relay_check(url, settings, by_name, extract_request)
   return send_relay(M.relayed_check_answer(res.status, res.headers["Content-Type"], cookies or {}, res.body))
 end
 
+-- ── The check script's assets (check-relay.ts) ──────────────────────────────
+
+M.CHECK_ASSET_MAX_BYTES     = 512 * 1024
+M.CHECK_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+-- A versioned name and nothing else: no slash, no percent, no other extension reaches the check worker.
+local CHECK_ASSET_PATH = [[^/\.well-known/d3/(check-[0-9A-Za-z.-]{1,32}\.(?:js|css))\z]]
+
+-- checkAssetNameOf: from the target as sent, never decoded; the query is ignored.
+function M.check_asset_name_of(target)
+  if type(target) ~= "string" then return nil end
+
+  local m = ngx.re.match(target:match("^[^?#]*"), CHECK_ASSET_PATH, "jo")
+  return m and m[1] or nil
+end
+
+function M.check_asset_url_of(check_url, name)
+  return check_url .. "/assets/" .. name
+end
+
+-- isCheckAssetType: a script only as JavaScript and a stylesheet only as CSS.
+function M.is_check_asset_type(name, content_type)
+  if type(content_type) ~= "string" then return false end
+
+  local kind = name:sub(-4) == ".css" and "css" or "javascript"
+  return ngx.re.find(content_type, [[^text/]] .. kind .. [[\s*(;\s*charset=[\w-]+\s*)?\z]], "joi") ~= nil
+end
+
+-- refusedCheckAsset: the status the visitor gets instead of the asset, or nil when it may be served.
+function M.refused_check_asset(name, status, content_type)
+  if status == 404 then return 404 end
+
+  if status == 200 and M.is_check_asset_type(name, content_type) then return nil end
+  return 503
+end
+
+-- The body byte for byte: the page pins it with SRI. No header of the check worker's but its type.
+function M.check_asset_answer(content_type, body)
+  return {
+    status = 200,
+    headers = {
+      { "Content-Type", content_type },
+      { "Cache-Control", M.CHECK_ASSET_CACHE_CONTROL },
+      { "X-Content-Type-Options", "nosniff" },
+      { "x-d3-edge", "check" },
+    },
+    set_cookies = {},
+    body = body,
+  }
+end
+
+-- The capped body, or nil past the cap: read a chunk at a time and never the rest.
+local function capped_answer_body(res)
+  local declared = tonumber(res.headers["Content-Length"])
+  if declared and declared > M.CHECK_ASSET_MAX_BYTES then return nil end
+
+  local parts, total = {}, 0
+  while true do
+    local chunk, err = res.body_reader(65536)
+    if err then return nil, err end
+    if not chunk then break end
+
+    total = total + #chunk
+    if total > M.CHECK_ASSET_MAX_BYTES then return nil end
+
+    parts[#parts + 1] = chunk
+  end
+
+  return table.concat(parts)
+end
+
+-- request_uri reads a body whole, so the asset is fetched a step lower to cap it. No key, no cookie:
+-- the asset is public and the name is the visitor's choice. lua-resty-http follows no redirect.
+local function get_check_asset(url, name, budget_ms)
+  local httpc = http.new()
+  httpc:set_timeout(budget_ms)
+  local parsed, perr = httpc:parse_uri(url, false)
+  if not parsed then return nil, perr end
+
+  local scheme, host, port, path = parsed[1], parsed[2], parsed[3], parsed[4]
+  local ok, cerr = httpc:connect({ scheme = scheme, host = host, port = port, ssl_verify = true, ssl_server_name = host })
+  if not ok then return nil, cerr end
+
+  local default_port = (scheme == "https" and port == 443) or (scheme == "http" and port == 80)
+  local res, rerr = httpc:request({
+    method = "GET",
+    path = path,
+    headers = { ["Host"] = default_port and host or (host .. ":" .. port) },
+  })
+  if not res then
+    httpc:close()
+    return nil, rerr
+  end
+
+  local fetched = { status = res.status, content_type = res.headers["Content-Type"] }
+  if M.refused_check_asset(name, res.status, fetched.content_type) == nil then
+    local body, berr = capped_answer_body(res)
+    if berr then
+      httpc:close()
+      return nil, berr
+    end
+
+    fetched.body = body
+  end
+
+  httpc:close()
+  return fetched
+end
+
+-- relayCheckAsset: serves the check script's file itself, never the origin.
+local function relay_check_asset(url, name)
+  if ngx.req.get_method() ~= "GET" then return send_relay(M.check_relay_refusal(405, "GET")) end
+
+  local fetched, err = within_budget(M.CHECK_RELAY_TIMEOUT_MS, get_check_asset, M.check_asset_url_of(url, name), name,
+    M.CHECK_RELAY_TIMEOUT_MS)
+  local refused, why = 503, err
+  if fetched then
+    refused = M.refused_check_asset(name, fetched.status, fetched.content_type)
+    why = "HTTP " .. fetched.status .. " " .. tostring(fetched.content_type)
+    if refused == nil and fetched.body == nil then refused, why = 503, "past its cap" end
+  end
+  if refused then
+    M.log_every("check asset", 10, ngx.ERR, "dna: check asset refused (", tostring(why), ")")
+    return send_relay(M.check_relay_refusal(refused))
+  end
+
+  return send_relay(M.check_asset_answer(fetched.content_type, fetched.body))
+end
+
 -- Asks DNA about one request and answers as it says: the page, a block, or a
 -- gate's own answer. Fails open, except for a request that pays. `revision` is
 -- what the install honours: 3 from dna.server.conf, which also installs the
@@ -1582,6 +1712,10 @@ function M.access(revision)
   if relays and ngx.var.uri == M.CHECK_RELAY_PATH then
     return relay_check(check_url, settings, by_name, function(answer) return (extract_with(answer, nil)) end)
   end
+
+  -- So is the check script's own file, served on this host for the site's `script-src 'self'`.
+  local asset = check_url and M.check_asset_name_of(request_uri)
+  if asset then return relay_check_asset(check_url, asset) end
 
   local body = M.read_body(method, by_name["content-type"])
   local payload, mcp = extract_with(body.data, body.streamed)

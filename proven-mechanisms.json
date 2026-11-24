@@ -87,12 +87,20 @@
           "packages/cloudflare-adapter/src/index.spec.ts: answers 503 when the check endpoint is down, and still never reaches the origin",
           "packages/cloudflare-adapter/src/index.spec.ts: declares revision 3 and answers 503 on the fleet without a check binding, and relays through one",
           "packages/cloudflare-adapter/src/index.spec.ts: declares revision 3 where the endpoint has no check path beside it, and answers its posts 503",
+          "packages/cloudflare-adapter/src/index.spec.ts: serves the check worker's script on the site's host, keyless, and never asks the origin or DNA",
+          "packages/cloudflare-adapter/src/index.spec.ts: relays through the check binding on the fleet",
+          "packages/cloudflare-adapter/src/index.spec.ts: falls through to a decision and the origin where there is no check endpoint to relay to",
           "packages/protocol/src/adapter/check-relay.spec.ts: posts the payload and the answer to the check endpoint under the adapter key",
           "packages/protocol/src/adapter/check-relay.spec.ts: passes only cookies of ours, so a check endpoint cannot set the site its own",
           "packages/protocol/src/adapter/check-relay.spec.ts: serves nothing that is not JSON on the site, so no answer can run as its page",
           "packages/protocol/src/adapter/check-relay.spec.ts: answers 503 when the check endpoint cannot be reached, or the payload cannot be built",
           "packages/protocol/src/adapter/check-relay.spec.ts: follows no redirect, which would carry the key away, and answers 503",
-          "packages/protocol/src/adapter/check-relay.spec.ts: answers 403 to a post another site sent, and relays nothing"
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 403 to a post another site sent, and relays nothing",
+          "packages/protocol/src/adapter/check-relay.spec.ts: sends no key, no cookie, no body and none of the visitor's headers, and follows no redirect",
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 503 to the wrong type, a script served as CSS, or no type",
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 503 to a body past the cap, declared or streamed, and reads no further",
+          "packages/protocol/src/adapter/check-relay.spec.ts: drops every header of the check worker's but the type, cookies included",
+          "packages/protocol/src/adapter/check-relay.spec.ts: serves the body byte for byte, so its SRI hash still matches"
         ]
       }
     }
@@ -171,12 +179,19 @@
         "relay-check": [
           "packages/vercel-middleware/src/middleware.spec.ts: relays the post to /v1/check under the key, and never continues to the site",
           "packages/vercel-middleware/src/middleware.spec.ts: answers 503 where the endpoint has no check path beside it, and never continues",
+          "packages/vercel-middleware/src/middleware.spec.ts: serves the check worker's stylesheet keyless, and never continues to the site",
+          "packages/vercel-middleware/src/middleware.spec.ts: takes the path to a decision where the endpoint has no check path beside it",
           "packages/protocol/src/adapter/check-relay.spec.ts: posts the payload and the answer to the check endpoint under the adapter key",
           "packages/protocol/src/adapter/check-relay.spec.ts: passes only cookies of ours, so a check endpoint cannot set the site its own",
           "packages/protocol/src/adapter/check-relay.spec.ts: serves nothing that is not JSON on the site, so no answer can run as its page",
           "packages/protocol/src/adapter/check-relay.spec.ts: answers 503 when the check endpoint cannot be reached, or the payload cannot be built",
           "packages/protocol/src/adapter/check-relay.spec.ts: follows no redirect, which would carry the key away, and answers 503",
-          "packages/protocol/src/adapter/check-relay.spec.ts: answers 403 to a post another site sent, and relays nothing"
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 403 to a post another site sent, and relays nothing",
+          "packages/protocol/src/adapter/check-relay.spec.ts: sends no key, no cookie, no body and none of the visitor's headers, and follows no redirect",
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 503 to the wrong type, a script served as CSS, or no type",
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 503 to a body past the cap, declared or streamed, and reads no further",
+          "packages/protocol/src/adapter/check-relay.spec.ts: drops every header of the check worker's but the type, cookies included",
+          "packages/protocol/src/adapter/check-relay.spec.ts: serves the body byte for byte, so its SRI hash still matches"
         ]
       }
     }
@@ -319,12 +334,19 @@
         "relay-check": [
           "cloudflare-snippet/snippet.spec.ts: relays the post to /v1/check under the key, sampled out or not, and never to the origin",
           "cloudflare-snippet/snippet.spec.ts: answers 503 where the endpoint has no check path beside it",
+          "cloudflare-snippet/snippet.spec.ts: serves the check worker's script keyless, sampled out or not, and never asks the origin",
+          "cloudflare-snippet/snippet.spec.ts: takes the path to a decision where the endpoint has no check path beside it",
           "packages/protocol/src/adapter/check-relay.spec.ts: posts the payload and the answer to the check endpoint under the adapter key",
           "packages/protocol/src/adapter/check-relay.spec.ts: passes only cookies of ours, so a check endpoint cannot set the site its own",
           "packages/protocol/src/adapter/check-relay.spec.ts: serves nothing that is not JSON on the site, so no answer can run as its page",
           "packages/protocol/src/adapter/check-relay.spec.ts: answers 503 when the check endpoint cannot be reached, or the payload cannot be built",
           "packages/protocol/src/adapter/check-relay.spec.ts: follows no redirect, which would carry the key away, and answers 503",
-          "packages/protocol/src/adapter/check-relay.spec.ts: answers 403 to a post another site sent, and relays nothing"
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 403 to a post another site sent, and relays nothing",
+          "packages/protocol/src/adapter/check-relay.spec.ts: sends no key, no cookie, no body and none of the visitor's headers, and follows no redirect",
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 503 to the wrong type, a script served as CSS, or no type",
+          "packages/protocol/src/adapter/check-relay.spec.ts: answers 503 to a body past the cap, declared or streamed, and reads no further",
+          "packages/protocol/src/adapter/check-relay.spec.ts: drops every header of the check worker's but the type, cookies included",
+          "packages/protocol/src/adapter/check-relay.spec.ts: serves the body byte for byte, so its SRI hash still matches"
         ]
       }
     }
@@ -418,7 +440,11 @@
           "openresty/test/run.mjs: relay: the check answer, never the origin, and only cookies of ours",
           "openresty/test/run.mjs: relay: /v1/check under the key, the answer whole, the request as a decision call describes it",
           "openresty/test/run.mjs: relay: an answer that is not JSON is never served on the site",
-          "openresty/test/run.mjs: dead: the check post answers 503, and never the origin"
+          "openresty/test/run.mjs: dead: the check post answers 503, and never the origin",
+          "openresty/test/run.mjs: asset: the check worker's script byte for byte, never the origin, and no decision",
+          "openresty/test/run.mjs: asset: its type, cached for a year, never sniffed, tagged, and no header of the check worker",
+          "openresty/test/run.mjs: asset: a GET with no key, no cookie and no query",
+          "openresty/test/run.mjs: dead: an asset answers 503, and never the origin"
         ]
       }
     }
@@ -577,7 +603,10 @@
         ],
         "relay-check": [
           "wordpress/test/run.mjs: ${label}: relay: the check answer, never WordPress, and only cookies of ours",
-          "wordpress/test/run.mjs: ${label}: relay: /v1/check under the key, the answer whole, as a decision call describes it"
+          "wordpress/test/run.mjs: ${label}: relay: /v1/check under the key, the answer whole, as a decision call describes it",
+          "wordpress/test/run.mjs: ${label}: asset: the check worker's script byte for byte, never WordPress",
+          "wordpress/test/run.mjs: ${label}: asset: its type, cached for a year, never sniffed, tagged, and no header of the check worker",
+          "wordpress/test/run.mjs: ${label}: asset: a GET with no key and no cookie"
         ]
       }
     }

@@ -111,7 +111,7 @@ $parity = expand(json_decode(file_get_contents(__DIR__ . '/../../openresty/test/
 // A section the file lost would otherwise run no checks and pass.
 foreach (['constants', 'forwardAll', 'withheld', 'exclusionList', 'privateCacheControl', 'cookies', 'payParams', 'mcp', 'answers',
     'results', 'exclusionOverflow', 'unreadableAnswers', 'edgeModes', 'recordableName', 'debugHeaders', 'settings',
-    'checkEndpoint', 'crossSite', 'relayedCheck'] as $section) {
+    'checkEndpoint', 'crossSite', 'relayedCheck', 'checkAssetName', 'checkAssetUrl', 'refusedCheckAsset'] as $section) {
     if (empty($parity->{$section})) {
         echo "parity.json has no $section section\n";
         exit(1);
@@ -299,6 +299,34 @@ foreach ([
 }
 
 check('checkRelayRefusal: 405 says what it allows', relay_header(P::checkRelayRefusal(405), 'allow') === 'POST');
+check("checkRelayRefusal: 405 names the asset relay's own method", relay_header(P::checkRelayRefusal(405, 'GET'), 'allow') === 'GET');
+check('checkRelayRefusal: a missing asset is not-found, never cached',
+    P::checkRelayRefusal(404)['body'] === '{"error":"not-found"}' && relay_header(P::checkRelayRefusal(404), 'cache-control') === 'no-store');
+
+same('constants: CHECK_ASSET_MAX_BYTES', P::CHECK_ASSET_MAX_BYTES, $c->CHECK_ASSET_MAX_BYTES);
+same('constants: CHECK_ASSET_CACHE_CONTROL', P::CHECK_ASSET_CACHE_CONTROL, $c->CHECK_ASSET_CACHE_CONTROL);
+
+foreach ($parity->checkAssetName as $case) {
+    same('checkAssetNameOf: ' . $case->target, P::checkAssetNameOf($case->target), $case->out);
+}
+
+foreach ($parity->checkAssetUrl as $case) {
+    same('checkAssetUrlOf: ' . $case->checkUrl, P::checkAssetUrlOf($case->checkUrl, $case->name), $case->out);
+}
+
+foreach ($parity->refusedCheckAsset as $case) {
+    same('refusedCheckAsset: ' . $case->name . ' ' . $case->status . ' ' . var_export($case->type, true),
+        P::refusedCheckAsset($case->name, $case->status, $case->type), $case->out);
+}
+
+$asset = P::checkAssetAnswer('text/javascript', "\0\xFF()=>{}\r\n");
+check('checkAssetAnswer: the body byte for byte, cached for a year, never sniffed, no cookie',
+    $asset['status'] === 200 && $asset['body'] === "\0\xFF()=>{}\r\n"
+        && relay_header($asset, 'content-type') === 'text/javascript'
+        && relay_header($asset, 'cache-control') === 'public, max-age=31536000, immutable'
+        && relay_header($asset, 'x-content-type-options') === 'nosniff'
+        && relay_header($asset, 'x-d3-edge') === 'check'
+        && count($asset['headers']) === 4 && $asset['set_cookies'] === []);
 
 foreach ($parity->recordableName as $case) {
     same('recordableName: ' . $case->name, P::recordableName($case->name), $case->out);

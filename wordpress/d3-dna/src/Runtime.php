@@ -122,6 +122,10 @@ final class Runtime
             });
         }
 
+        // So is the check script's own file, served on this host for the site's `script-src 'self'`.
+        $asset = $checkUrl === null ? null : Protocol::checkAssetNameOf($target);
+        if ($asset !== null) self::relayCheckAsset($checkUrl, $asset);
+
         $body = self::readBody($method, $byName['content-type'] ?? null);
         list($payload, $mcp) = $extract($body);
         $payload['requestId'] = $requestId;
@@ -709,6 +713,59 @@ final class Runtime
         if ($status === 401 || $status === 403) self::logEvery('check relay key', 10, "the check relay was refused (HTTP $status): check DNA_API_KEY");
 
         self::sendRelay(Protocol::relayedCheckAnswer($status, $type, $cookies, $body));
+    }
+
+    /**
+     * relayCheckAsset: serves the check script's file itself, never WordPress. Ends the request. No key and no
+     * cookie: the asset is public and the name is the visitor's choice. The body is read up to its cap, never on.
+     */
+    private static function relayCheckAsset($checkUrl, $name)
+    {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') self::sendRelay(Protocol::checkRelayRefusal(405, 'GET'));
+        if (!function_exists('curl_init')) self::sendRelay(Protocol::checkRelayRefusal(503));
+
+        $body = '';
+        $type = null;
+        $oversized = false;
+        $ch = curl_init(Protocol::checkAssetUrlOf($checkUrl, $name));
+        curl_setopt_array($ch, self::curlOptions(Protocol::CHECK_RELAY_TIMEOUT_MS) + [
+            CURLOPT_HTTPGET => true,
+            CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$type, &$oversized) {
+                $colon = strpos($line, ':');
+                if ($colon !== false) {
+                    $header = strtolower(Protocol::trim(substr($line, 0, $colon)));
+                    $value = Protocol::trim(substr($line, $colon + 1));
+                    if ($header === 'content-type') $type = $value;
+                    if ($header === 'content-length' && (int) $value > Protocol::CHECK_ASSET_MAX_BYTES) {
+                        $oversized = true;
+                        return 0;
+                    }
+                }
+                return strlen($line);
+            },
+            CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$body, &$oversized) {
+                if (strlen($body) + strlen($data) > Protocol::CHECK_ASSET_MAX_BYTES) {
+                    $oversized = true;
+                    return 0;
+                }
+                $body .= $data;
+                return strlen($data);
+            },
+        ]);
+        $ok = curl_exec($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $error = curl_error($ch);
+        self::closeCurl($ch);
+
+        // CURLOPT_FOLLOWLOCATION is off, so a redirect arrives as a 3xx and is refused with the rest.
+        $refused = ($ok === false || $status === 0) ? 503 : Protocol::refusedCheckAsset($name, $status, $type);
+        if ($refused !== null) {
+            $why = $oversized ? 'past its cap' : ($error !== '' ? $error : "HTTP $status " . (string) $type);
+            self::logEvery('check asset', 10, "the check asset relay refused an answer ($why)");
+            self::sendRelay(Protocol::checkRelayRefusal($refused));
+        }
+
+        self::sendRelay(Protocol::checkAssetAnswer($type, $body));
     }
 
     private static function sendRelay(array $answer)

@@ -63,7 +63,9 @@
       "x-mcp-header": "Dna-Key"
     },
     "CHECK_RELAY_PATH": "/.well-known/d3/check",
-    "CHECK_RELAY_MAX_BODY_BYTES": 32768
+    "CHECK_RELAY_MAX_BODY_BYTES": 32768,
+    "CHECK_ASSET_MAX_BYTES": 524288,
+    "CHECK_ASSET_CACHE_CONTROL": "public, max-age=31536000, immutable"
   },
   "checkEndpoint": [
     {
@@ -200,6 +202,188 @@
         "setCookies": [],
         "body": "{\"error\":\"check-unavailable\"}"
       }
+    }
+  ],
+  "checkAssetName": [
+    {
+      "target": "/.well-known/d3/check-6.0.0.js",
+      "out": "check-6.0.0.js"
+    },
+    {
+      "target": "/.well-known/d3/check-6.0.0.css?v=1",
+      "out": "check-6.0.0.css"
+    },
+    {
+      "target": "/.well-known/d3/check-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.js",
+      "out": "check-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.js"
+    },
+    {
+      "target": "/.well-known/d3/check-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.js",
+      "out": null
+    },
+    {
+      "target": "/.well-known/d3/check.js",
+      "out": null
+    },
+    {
+      "target": "/.well-known/d3/check-../x.js",
+      "out": null
+    },
+    {
+      "target": "/.well-known/d3/check-6.0.0.html",
+      "out": null
+    },
+    {
+      "target": "/.well-known/d3/check-%2F..%2Fx.js",
+      "out": null
+    },
+    {
+      "target": "/.well-known/d3/check-6%2E0.js",
+      "out": null
+    },
+    {
+      "target": "/.well-known/d3/CHECK-6.0.0.js",
+      "out": null
+    },
+    {
+      "target": "/.well-known/d3/check-6.0.0.JS",
+      "out": null
+    },
+    {
+      "target": "/.well-known/d3/check-6.0.0.js/",
+      "out": null
+    },
+    {
+      "target": "/.well-known/d3/x/check-6.0.0.js",
+      "out": null
+    },
+    {
+      "target": "/.well-known/d3/check",
+      "out": null
+    },
+    {
+      "target": "/assets/check-6.0.0.js",
+      "out": null
+    },
+    {
+      "target": "/page?next=/.well-known/d3/check-6.0.0.js",
+      "out": null
+    }
+  ],
+  "checkAssetUrl": [
+    {
+      "checkUrl": "https://edge-api.d3.com/v1/check",
+      "name": "check-6.0.0.js",
+      "out": "https://edge-api.d3.com/v1/check/assets/check-6.0.0.js"
+    },
+    {
+      "checkUrl": "https://gw.example:8443/tenant-a/v1/check",
+      "name": "check-6.0.0.css",
+      "out": "https://gw.example:8443/tenant-a/v1/check/assets/check-6.0.0.css"
+    }
+  ],
+  "refusedCheckAsset": [
+    {
+      "name": "check-6.0.0.js",
+      "status": 200,
+      "type": "text/javascript",
+      "out": null
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 200,
+      "type": "text/javascript; charset=utf-8",
+      "out": null
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 200,
+      "type": "Text/JavaScript;charset=UTF-8",
+      "out": null
+    },
+    {
+      "name": "check-6.0.0.css",
+      "status": 200,
+      "type": "text/css",
+      "out": null
+    },
+    {
+      "name": "check-6.0.0.css",
+      "status": 200,
+      "type": "text/css; charset=utf-8",
+      "out": null
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 200,
+      "type": "text/css",
+      "out": 503
+    },
+    {
+      "name": "check-6.0.0.css",
+      "status": 200,
+      "type": "text/javascript",
+      "out": 503
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 200,
+      "type": "application/javascript",
+      "out": 503
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 200,
+      "type": "text/html",
+      "out": 503
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 200,
+      "type": "text/javascript; charset=utf-8; x=y",
+      "out": 503
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 200,
+      "type": "text/javascriptx",
+      "out": 503
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 200,
+      "type": null,
+      "out": 503
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 404,
+      "type": "application/json",
+      "out": 404
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 302,
+      "type": "text/javascript",
+      "out": 503
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 304,
+      "type": "text/javascript",
+      "out": 503
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 401,
+      "type": "text/javascript",
+      "out": 503
+    },
+    {
+      "name": "check-6.0.0.js",
+      "status": 500,
+      "type": "text/javascript",
+      "out": 503
     }
   ],
   "forwardAll": [

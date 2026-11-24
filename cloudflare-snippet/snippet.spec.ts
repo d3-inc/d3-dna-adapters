@@ -154,6 +154,67 @@ describe('the check relay', () => {
   });
 });
 
+describe("the check script's assets", () => {
+  const ASSET_URL = 'https://edge-api.d3.com/v1/check/assets/check-6.0.0.js';
+  const SCRIPT = 'window.d3check=1;';
+
+  function stubAssets() {
+    const log = { assetCalls: [] as Request[], other: [] as string[] };
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      if (request.url === ASSET_URL) {
+        log.assetCalls.push(request);
+        return Promise.resolve(
+          new Response(SCRIPT, {
+            headers: { 'content-type': 'text/javascript', 'set-cookie': 'session=hijacked; Path=/' },
+          })
+        );
+      }
+
+      log.other.push(request.url);
+      return Promise.resolve(Response.json({ action: 'pass' }));
+    });
+    return log;
+  }
+
+  const fetched = (init: RequestInit = {}) =>
+    siteRequest({
+      url: 'https://ai.d3.com/.well-known/d3/check-6.0.0.js',
+      headers: { 'user-agent': 'Mozilla/5.0 Chrome/150', cookie: 'sid=s' },
+      ...init,
+    });
+
+  it("serves the check worker's script keyless, sampled out or not, and never asks the origin", async () => {
+    const log = stubAssets();
+    const res = await run(fetched(), { sampleRate: 0 });
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(SCRIPT);
+    expect(res.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(res.headers.get('x-d3-edge')).toBe('check');
+    expect(res.headers.getSetCookie()).toEqual([]);
+    expect(log.other).toEqual([]);
+    expect(log.assetCalls[0]?.headers.get('authorization')).toBeNull();
+    expect(log.assetCalls[0]?.headers.get('cookie')).toBeNull();
+  });
+
+  it('answers 405 to a post on an asset path, and fetches nothing', async () => {
+    const log = stubAssets();
+    const res = await run(fetched({ method: 'POST', body: 'x' }));
+    expect(res.status).toBe(405);
+    expect(res.headers.get('allow')).toBe('GET');
+    expect(log.assetCalls).toHaveLength(0);
+    expect(log.other).toEqual([]);
+  });
+
+  it('takes the path to a decision where the endpoint has no check path beside it', async () => {
+    const log = stubAssets();
+    await run(fetched(), { endpoint: 'https://gw.example/decide' });
+    expect(log.assetCalls).toHaveLength(0);
+    expect(log.other).toContain('https://gw.example/decide');
+  });
+});
+
 describe('enforcement', () => {
   it('should proxy to origin on pass and tag the response', async () => {
     const log = stubOutbound({ action: 'pass', policyAction: 'log-only' });

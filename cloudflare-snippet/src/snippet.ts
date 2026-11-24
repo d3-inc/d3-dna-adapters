@@ -30,9 +30,12 @@ import {
 import { FORWARDED_MAX_NAMES } from '../../packages/protocol/src/adapter/forwarding.constants';
 import {
   DEFAULT_CHECK_RELAY_TIMEOUT_MS,
+  checkAssetNameOf,
   checkEndpointOf,
   checkRelayRefusal,
   isCheckRelayPath,
+  readCappedBody,
+  relayCheckAsset,
   relayCheckPost,
 } from '../../packages/protocol/src/adapter/check-relay';
 import {
@@ -110,6 +113,10 @@ export function createSnippet(config: SnippetConfig): { fetch(request: Request):
   const apiKey = config.apiKey || config.adapterKey;
   const endpoint = dnaEndpoint(config);
   const exclude = exclusionsOf(config);
+  const checkUrl = endpoint ? checkEndpointOf(endpoint) : null;
+  const relayFetch: typeof fetch = (input, init) => fetch(input, init);
+  const logError = (message: string, detail?: Record<string, unknown>) =>
+    console.error(`d3-edge ${message}`, detail);
   return {
     // Unlike the Worker adapter there is no outcome report: Snippets have no
     // waitUntil, so the request is logged at decision time and nothing more.
@@ -119,7 +126,6 @@ export function createSnippet(config: SnippetConfig): { fetch(request: Request):
       // The check script's post is ours to answer, sampled or not: it never reaches the origin.
       // Revision 2 still: this file's build record lists the relay beside it.
       if (isCheckRelayPath(request.url)) {
-        const checkUrl = checkEndpointOf(endpoint);
         if (checkUrl === null) return checkRelayRefusal(503);
 
         return relayCheckPost(request, {
@@ -127,9 +133,19 @@ export function createSnippet(config: SnippetConfig): { fetch(request: Request):
           bearer: apiKey,
           adapterName: DNA_ADAPTER,
           timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
-          fetch: (input, init) => fetch(input, init),
+          fetch: relayFetch,
           payloadOf: (posted) => extractPayload(posted, exclude),
-          logError: (message, detail) => console.error(`d3-edge ${message}`, detail),
+          logError,
+        });
+      }
+
+      // So is the check script's own file, served on this host for the site's `script-src 'self'`.
+      if (checkUrl !== null && checkAssetNameOf(request.url) !== null) {
+        return relayCheckAsset(request, {
+          url: checkUrl,
+          timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
+          fetch: relayFetch,
+          logError,
         });
       }
 
@@ -230,8 +246,8 @@ async function extractPayload(request: Request, exclude: ForwardExclusions): Pro
   // unverified rather than carrying a digest nothing checked.
   const canHaveBody = request.method !== 'GET' && request.method !== 'HEAD';
   if (canHaveBody && request.body !== null) {
-    const body = await readBodyUpTo(request, MAX_HASHED_BODY_BYTES);
-    if (body === null) {
+    const body = await readCappedBody(request.clone(), MAX_HASHED_BODY_BYTES);
+    if (!body.ok) {
       // Named, not just removed: unnamed, the endpoint reads a signature over
       // `content-digest` as covering a header the agent never sent, and the
       // record blames the agent for a cap of ours. `delete` alone is true
@@ -240,8 +256,8 @@ async function extractPayload(request: Request, exclude: ForwardExclusions): Pro
         delete headers['content-digest'];
         nameDropped(forwarded, 'content-digest');
       }
-    } else if (body.byteLength > 0 || 'content-digest' in headers) {
-      headers['content-digest'] = await sha256ContentDigest(body);
+    } else if (body.bytes.byteLength > 0 || 'content-digest' in headers) {
+      headers['content-digest'] = await sha256ContentDigest(body.bytes.buffer);
     }
   } else if ('content-digest' in headers) {
     // An empty body must not smuggle a forged digest past this.
@@ -275,39 +291,6 @@ async function extractPayload(request: Request, exclude: ForwardExclusions): Pro
 function nameDropped(forwarded: ForwardedRequest, name: string): void {
   if (forwarded.droppedHeaders.length < FORWARDED_MAX_NAMES) forwarded.droppedHeaders.push(name);
   else forwarded.droppedUnlisted.headers = true;
-}
-
-/**
- * Reads a clone of the body, giving up (null) past maxBytes — Content-Length can
- * lie, so the cap is enforced on actual bytes, not the header.
- */
-async function readBodyUpTo(request: Request, maxBytes: number): Promise<ArrayBuffer | null> {
-  const reader = request.clone().body!.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    total += value.byteLength;
-    if (total > maxBytes) {
-      // Best-effort, not awaited: cancelling a cloned body's reader only settles
-      // once the clone's other branch is consumed on some runtimes.
-      reader.cancel().catch(() => {});
-      return null;
-    }
-
-    chunks.push(value);
-  }
-
-  const body = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  return body.buffer;
 }
 
 declare const CONFIG: SnippetConfig;

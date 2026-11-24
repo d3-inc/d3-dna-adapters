@@ -113,19 +113,31 @@ export {
   RELAYS_CHECK_SINCE,
 } from './adapter/forwarding.constants';
 export {
+  CHECK_ASSET_CACHE_CONTROL,
+  CHECK_ASSET_MAX_BYTES,
   CHECK_RELAY_EDGE_MODE,
   CHECK_RELAY_MAX_BODY_BYTES,
   CHECK_RELAY_PATH,
   DEFAULT_CHECK_RELAY_TIMEOUT_MS,
+  checkAssetNameOf,
+  checkAssetUrlOf,
   checkEndpointOf,
   checkRelayRefusal,
+  isCheckAssetType,
   isCheckRelayPath,
   isCrossSitePost,
   readCappedBody,
+  refusedCheckAsset,
+  relayCheckAsset,
   relayCheckPost,
   relayedCheckResponse,
 } from './adapter/check-relay';
-export type { CappedBody, CheckRelayBody, CheckRelayOptions } from './adapter/check-relay';
+export type {
+  CappedBody,
+  CheckAssetRelayOptions,
+  CheckRelayBody,
+  CheckRelayOptions,
+} from './adapter/check-relay';
 export {
   MCP_DNA_KEY_META,
   MCP_KEY_ARGUMENT,

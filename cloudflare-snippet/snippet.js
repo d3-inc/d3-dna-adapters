@@ -426,11 +426,11 @@ function checkEndpointOf(decisionUrl) {
   url.hash = '';
   return url.toString();
 }
-async function readCappedBody(request, maxBytes) {
-  const declared = Number(request.headers.get('content-length') ?? Number.NaN);
+async function readCappedBody(message, maxBytes) {
+  const declared = Number(message.headers.get('content-length') ?? Number.NaN);
   if (Number.isFinite(declared) && declared > maxBytes) return { ok: false };
-  if (request.body === null) return { ok: true, bytes: new Uint8Array(0) };
-  const reader = request.body.getReader();
+  if (message.body === null) return { ok: true, bytes: new Uint8Array(0) };
+  const reader = message.body.getReader();
   const chunks = [];
   let total = 0;
   for (;;) {
@@ -438,7 +438,7 @@ async function readCappedBody(request, maxBytes) {
     if (done) break;
     total += value.byteLength;
     if (total > maxBytes) {
-      await reader.cancel();
+      reader.cancel().catch(() => {});
       return { ok: false };
     }
     chunks.push(value);
@@ -465,6 +465,7 @@ function isCrossSitePost(request) {
 var REFUSALS = {
   400: 'malformed',
   403: 'cross-site',
+  404: 'not-found',
   405: 'method-not-allowed',
   413: 'too-large',
   503: 'check-unavailable',
@@ -474,10 +475,24 @@ var RELAY_HEADERS = {
   'x-content-type-options': 'nosniff',
   'x-d3-edge': CHECK_RELAY_EDGE_MODE,
 };
-function checkRelayRefusal(status) {
+function checkRelayRefusal(status, allowed = 'POST') {
   const headers = { ...RELAY_HEADERS };
-  if (status === 405) headers.allow = 'POST';
+  if (status === 405) headers.allow = allowed;
   return Response.json({ error: REFUSALS[status] }, { status, headers });
+}
+async function withinBudget(timeoutMs, work) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const spent = new Promise((_resolve, reject) =>
+    controller.signal.addEventListener('abort', () => reject(new Error('check relay budget spent')))
+  );
+  const running = work(controller.signal);
+  running.catch(() => {});
+  try {
+    return await Promise.race([running, spent]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 function cookieNameOf(setCookie) {
   const eq = setCookie.indexOf('=');
@@ -499,45 +514,87 @@ function relayedCheckResponse(upstream) {
 async function relayCheckPost(request, opts) {
   if (request.method !== 'POST') return checkRelayRefusal(405);
   if (isCrossSitePost(request)) return checkRelayRefusal(403);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
   try {
-    const body = await Promise.race([
-      readCappedBody(request, CHECK_RELAY_MAX_BODY_BYTES),
-      new Promise((_resolve, reject) =>
-        controller.signal.addEventListener('abort', () => reject(new Error('check relay budget spent')))
-      ),
-    ]);
-    if (!body.ok) return checkRelayRefusal(413);
-    const answer = utf8Of(body.bytes);
-    if (answer === null || answer === '') return checkRelayRefusal(400);
-    const payload = await opts.payloadOf(
-      new Request(request.url, { method: 'POST', headers: request.headers, body: body.bytes })
-    );
-    const relayed = { payload, answer };
-    const upstream = await opts.fetch(opts.url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(opts.bearer === void 0 ? {} : { authorization: `Bearer ${opts.bearer}` }),
-        ...(opts.adapterName === void 0 ? {} : { [DNA_ADAPTER_HEADER]: opts.adapterName }),
-      },
-      body: JSON.stringify(relayed),
-      // A redirect would carry the key to wherever it points.
-      redirect: 'manual',
-      signal: controller.signal,
+    return await withinBudget(opts.timeoutMs, async (signal) => {
+      const body = await readCappedBody(request, CHECK_RELAY_MAX_BODY_BYTES);
+      if (!body.ok) return checkRelayRefusal(413);
+      const answer = utf8Of(body.bytes);
+      if (answer === null || answer === '') return checkRelayRefusal(400);
+      const payload = await opts.payloadOf(
+        new Request(request.url, { method: 'POST', headers: request.headers, body: body.bytes })
+      );
+      const relayed = { payload, answer };
+      const upstream = await opts.fetch(opts.url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(opts.bearer === void 0 ? {} : { authorization: `Bearer ${opts.bearer}` }),
+          ...(opts.adapterName === void 0 ? {} : { [DNA_ADAPTER_HEADER]: opts.adapterName }),
+        },
+        body: JSON.stringify(relayed),
+        // A redirect would carry the key to wherever it points.
+        redirect: 'manual',
+        signal,
+      });
+      if (upstream.status >= 300 && upstream.status < 400) return checkRelayRefusal(503);
+      if (upstream.status === 401 || upstream.status === 403) {
+        opts.logError(`check relay rejected: HTTP ${upstream.status} — check DNA_API_KEY / key status`);
+      }
+      const text = await upstream.text();
+      return relayedCheckResponse(new Response(text, { status: upstream.status, headers: upstream.headers }));
     });
-    if (upstream.status >= 300 && upstream.status < 400) return checkRelayRefusal(503);
-    if (upstream.status === 401 || upstream.status === 403) {
-      opts.logError(`check relay rejected: HTTP ${upstream.status} — check DNA_API_KEY / key status`);
-    }
-    const text = await upstream.text();
-    return relayedCheckResponse(new Response(text, { status: upstream.status, headers: upstream.headers }));
   } catch (err) {
     opts.logError('check relay failed', { err });
     return checkRelayRefusal(503);
-  } finally {
-    clearTimeout(timer);
+  }
+}
+var CHECK_ASSET_PATH = /^\/\.well-known\/d3\/(check-[0-9A-Za-z.-]{1,32}\.(?:js|css))$/;
+var CHECK_ASSET_MAX_BYTES = 512 * 1024;
+var CHECK_ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+function checkAssetNameOf(url) {
+  return CHECK_ASSET_PATH.exec(new URL(url).pathname)?.[1] ?? null;
+}
+function checkAssetUrlOf(checkUrl, name) {
+  return `${checkUrl}/assets/${name}`;
+}
+function isCheckAssetType(name, contentType) {
+  const type = name.endsWith('.css') ? 'css' : 'javascript';
+  return new RegExp(`^text/${type}\\s*(;\\s*charset=[\\w-]+\\s*)?$`, 'i').test(contentType ?? '');
+}
+function refusedCheckAsset(name, status, contentType) {
+  if (status === 404) return 404;
+  return status === 200 && isCheckAssetType(name, contentType) ? null : 503;
+}
+async function relayCheckAsset(request, opts) {
+  if (request.method !== 'GET') return checkRelayRefusal(405, 'GET');
+  const name = checkAssetNameOf(request.url);
+  if (name === null) return checkRelayRefusal(404);
+  try {
+    return await withinBudget(opts.timeoutMs, async (signal) => {
+      const upstream = await opts.fetch(checkAssetUrlOf(opts.url, name), {
+        method: 'GET',
+        redirect: 'manual',
+        signal,
+      });
+      const contentType = upstream.headers.get('content-type') ?? '';
+      const refused = refusedCheckAsset(name, upstream.status, contentType);
+      const body = refused === null ? await readCappedBody(upstream, CHECK_ASSET_MAX_BYTES) : { ok: false };
+      if (!body.ok) {
+        opts.logError(`check asset refused: HTTP ${upstream.status} ${contentType}`);
+        return checkRelayRefusal(refused ?? 503);
+      }
+      return new Response(body.bytes, {
+        headers: {
+          'content-type': contentType,
+          'cache-control': CHECK_ASSET_CACHE_CONTROL,
+          'x-content-type-options': 'nosniff',
+          'x-d3-edge': CHECK_RELAY_EDGE_MODE,
+        },
+      });
+    });
+  } catch (err) {
+    opts.logError('check asset relay failed', { err });
+    return checkRelayRefusal(503);
   }
 }
 
@@ -668,22 +725,32 @@ function createSnippet(config) {
   const apiKey = config.apiKey || config.adapterKey;
   const endpoint = dnaEndpoint(config);
   const exclude = exclusionsOf(config);
+  const checkUrl = endpoint ? checkEndpointOf(endpoint) : null;
+  const relayFetch = (input, init) => fetch(input, init);
+  const logError = (message, detail) => console.error(`d3-edge ${message}`, detail);
   return {
     // Unlike the Worker adapter there is no outcome report: Snippets have no
     // waitUntil, so the request is logged at decision time and nothing more.
     async fetch(request) {
       if (!endpoint) return withEdgeHeader(await fetch(request), 'disabled');
       if (isCheckRelayPath(request.url)) {
-        const checkUrl = checkEndpointOf(endpoint);
         if (checkUrl === null) return checkRelayRefusal(503);
         return relayCheckPost(request, {
           url: checkUrl,
           bearer: apiKey,
           adapterName: DNA_ADAPTER,
           timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
-          fetch: (input, init) => fetch(input, init),
+          fetch: relayFetch,
           payloadOf: (posted) => extractPayload(posted, exclude),
-          logError: (message, detail) => console.error(`d3-edge ${message}`, detail),
+          logError,
+        });
+      }
+      if (checkUrl !== null && checkAssetNameOf(request.url) !== null) {
+        return relayCheckAsset(request, {
+          url: checkUrl,
+          timeoutMs: DEFAULT_CHECK_RELAY_TIMEOUT_MS,
+          fetch: relayFetch,
+          logError,
         });
       }
       const paying = requestPresentsPayment(request);
@@ -743,14 +810,14 @@ async function extractPayload(request, exclude) {
   forwardCookie(headers, cookie, PERSON_PASS_COOKIE, PERSON_PASS_HEADER, PERSON_PASS_MAX_LENGTH);
   const canHaveBody = request.method !== 'GET' && request.method !== 'HEAD';
   if (canHaveBody && request.body !== null) {
-    const body = await readBodyUpTo(request, MAX_HASHED_BODY_BYTES);
-    if (body === null) {
+    const body = await readCappedBody(request.clone(), MAX_HASHED_BODY_BYTES);
+    if (!body.ok) {
       if ('content-digest' in headers) {
         delete headers['content-digest'];
         nameDropped(forwarded, 'content-digest');
       }
-    } else if (body.byteLength > 0 || 'content-digest' in headers) {
-      headers['content-digest'] = await sha256ContentDigest(body);
+    } else if (body.bytes.byteLength > 0 || 'content-digest' in headers) {
+      headers['content-digest'] = await sha256ContentDigest(body.bytes.buffer);
     }
   } else if ('content-digest' in headers) {
     headers['content-digest'] = await sha256ContentDigest(new ArrayBuffer(0));
@@ -775,28 +842,6 @@ async function extractPayload(request, exclude) {
 function nameDropped(forwarded, name) {
   if (forwarded.droppedHeaders.length < FORWARDED_MAX_NAMES) forwarded.droppedHeaders.push(name);
   else forwarded.droppedUnlisted.headers = true;
-}
-async function readBodyUpTo(request, maxBytes) {
-  const reader = request.clone().body.getReader();
-  const chunks = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      reader.cancel().catch(() => {});
-      return null;
-    }
-    chunks.push(value);
-  }
-  const body = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return body.buffer;
 }
 var snippet_default = createSnippet(CONFIG);
 export { createSnippet, snippet_default as default, dnaEndpoint };

@@ -1,9 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { RequestPayload } from '../types';
 import {
+  CHECK_ASSET_MAX_BYTES,
   CHECK_RELAY_MAX_BODY_BYTES,
   CHECK_RELAY_PATH,
+  checkAssetNameOf,
+  checkAssetUrlOf,
   checkEndpointOf,
+  checkRelayRefusal,
+  isCheckAssetType,
+  refusedCheckAsset,
+  relayCheckAsset,
+  type CheckAssetRelayOptions,
   isCheckRelayPath,
   isCrossSitePost,
   readCappedBody,
@@ -312,5 +320,265 @@ describe('relayCheckPost', () => {
     const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response(null)));
     await relayCheckPost(post(ANSWER), options(fetchImpl, { bearer: undefined }));
     expect(fetchImpl.mock.calls[0]![1]?.headers).not.toHaveProperty('authorization');
+  });
+});
+
+describe('checkRelayRefusal', () => {
+  it("names the refusing relay's own method on a 405, and no other refusal names one", () => {
+    expect(checkRelayRefusal(405).headers.get('allow')).toBe('POST');
+    expect(checkRelayRefusal(405, 'GET').headers.get('allow')).toBe('GET');
+    expect(checkRelayRefusal(404, 'GET').headers.get('allow')).toBeNull();
+  });
+
+  it('answers a missing asset as not-found, never cached', async () => {
+    const refusal = checkRelayRefusal(404);
+    expect(await refusal.json()).toEqual({ error: 'not-found' });
+    expect(refusal.headers.get('cache-control')).toBe('no-store');
+  });
+});
+
+const ASSET = 'check-6.0.0.js';
+const ASSET_URL = `${CHECK_URL}/assets/${ASSET}`;
+const SCRIPT = new Uint8Array([0xef, 0xbb, 0xbf, 0x28, 0x29, 0x3d, 0x3e, 0x7b, 0x7d, 0x0d, 0x0a, 0x00, 0xff]);
+
+describe('checkAssetNameOf', () => {
+  it('is a versioned script or stylesheet under /.well-known/d3/, whatever the query', () => {
+    expect(checkAssetNameOf(`${SITE}/.well-known/d3/${ASSET}`)).toBe(ASSET);
+    expect(checkAssetNameOf(`${SITE}/.well-known/d3/check-6.0.0.css?v=1`)).toBe('check-6.0.0.css');
+    expect(checkAssetNameOf(`${SITE}/.well-known/d3/check-${'a'.repeat(32)}.js`)).toBe(
+      `check-${'a'.repeat(32)}.js`
+    );
+  });
+
+  it('is nothing for a name outside the pattern, so no other path reaches the check worker', () => {
+    for (const path of [
+      '/.well-known/d3/check.js',
+      '/.well-known/d3/check-../x.js',
+      '/.well-known/d3/check-6.0.0.html',
+      '/.well-known/d3/check-6.0.0.js/',
+      '/.well-known/d3/check-%2F..%2Fx.js',
+      '/.well-known/d3/check-6%2E0.js',
+      '/.well-known/d3/CHECK-6.0.0.js',
+      '/.well-known/d3/check-6.0.0.JS',
+      `/.well-known/d3/check-${'a'.repeat(33)}.js`,
+      '/.well-known/d3/x/check-6.0.0.js',
+      '/.well-known/d3/check',
+      '/assets/check-6.0.0.js',
+      `/page?next=/.well-known/d3/${ASSET}`,
+    ]) {
+      expect(checkAssetNameOf(`${SITE}${path}`), path).toBeNull();
+    }
+  });
+});
+
+describe('checkAssetUrlOf', () => {
+  it('is the asset under the check endpoint, prefix kept', () => {
+    expect(checkAssetUrlOf(CHECK_URL, ASSET)).toBe('https://edge-api.d3.com/v1/check/assets/check-6.0.0.js');
+    expect(checkAssetUrlOf('https://gw.example:8443/tenant-a/v1/check', 'check-6.0.0.css')).toBe(
+      'https://gw.example:8443/tenant-a/v1/check/assets/check-6.0.0.css'
+    );
+    expect(checkAssetUrlOf('https://check-worker.invalid/v1/check', ASSET)).toBe(
+      'https://check-worker.invalid/v1/check/assets/check-6.0.0.js'
+    );
+  });
+});
+
+describe('isCheckAssetType', () => {
+  it('takes a script only as JavaScript and a stylesheet only as CSS', () => {
+    expect(isCheckAssetType(ASSET, 'text/javascript')).toBe(true);
+    expect(isCheckAssetType(ASSET, 'text/javascript; charset=utf-8')).toBe(true);
+    expect(isCheckAssetType(ASSET, 'Text/JavaScript;charset=UTF-8')).toBe(true);
+    expect(isCheckAssetType('check-6.0.0.css', 'text/css; charset=utf-8')).toBe(true);
+
+    expect(isCheckAssetType(ASSET, 'text/css')).toBe(false);
+    expect(isCheckAssetType('check-6.0.0.css', 'text/javascript')).toBe(false);
+    expect(isCheckAssetType(ASSET, 'application/javascript')).toBe(false);
+    expect(isCheckAssetType(ASSET, 'text/html')).toBe(false);
+    expect(isCheckAssetType(ASSET, 'text/javascript; charset=utf-8; x=y')).toBe(false);
+    expect(isCheckAssetType(ASSET, 'text/javascriptx')).toBe(false);
+    expect(isCheckAssetType(ASSET, null)).toBe(false);
+  });
+});
+
+describe('refusedCheckAsset', () => {
+  it('passes on only a 200 of the right type, a 404 as a 404, and anything else as a 503', () => {
+    expect(refusedCheckAsset(ASSET, 200, 'text/javascript')).toBeNull();
+    expect(refusedCheckAsset(ASSET, 404, 'application/json')).toBe(404);
+    for (const status of [201, 204, 301, 302, 304, 307, 400, 401, 403, 500, 503]) {
+      expect(refusedCheckAsset(ASSET, status, 'text/javascript'), String(status)).toBe(503);
+    }
+
+    expect(refusedCheckAsset(ASSET, 200, 'text/css')).toBe(503);
+    expect(refusedCheckAsset(ASSET, 200, null)).toBe(503);
+  });
+});
+
+describe('relayCheckAsset', () => {
+  const get = (name = ASSET, init: RequestInit = {}) =>
+    new Request(`${SITE}/.well-known/d3/${name}?x=1`, init);
+  const script = (body: BodyInit | null = SCRIPT, init: ResponseInit = {}) =>
+    new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/javascript; charset=utf-8' },
+      ...init,
+    });
+
+  function assetOptions(fetchImpl: typeof fetch, over: Partial<CheckAssetRelayOptions> = {}) {
+    return { url: CHECK_URL, timeoutMs: 1000, fetch: fetchImpl, logError: () => {}, ...over };
+  }
+
+  it('answers 405 to another method, allowing GET, and fetches nothing', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    for (const method of ['POST', 'HEAD', 'PUT', 'DELETE']) {
+      const response = await relayCheckAsset(get(ASSET, { method }), assetOptions(fetchImpl));
+      expect(response.status, method).toBe(405);
+      expect(response.headers.get('allow')).toBe('GET');
+    }
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 to a name outside the pattern, and fetches nothing', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    expect((await relayCheckAsset(get('check.js'), assetOptions(fetchImpl))).status).toBe(404);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("sends no key, no cookie, no body and none of the visitor's headers, and follows no redirect", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(script()));
+    await relayCheckAsset(
+      get(ASSET, { headers: { authorization: 'Bearer visitor', cookie: 'sid=s; __Host-d3check=c' } }),
+      assetOptions(fetchImpl)
+    );
+
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe(ASSET_URL);
+    expect(init?.method).toBe('GET');
+    expect(init?.redirect).toBe('manual');
+    expect(init?.body).toBeUndefined();
+    const sent = new Headers(init?.headers);
+    expect(sent.get('authorization')).toBeNull();
+    expect(sent.get('cookie')).toBeNull();
+    expect([...sent.keys()]).toEqual([]);
+  });
+
+  it('answers 503 to the wrong type, a script served as CSS, or no type', async () => {
+    for (const type of ['text/html', 'text/css', 'application/json', null]) {
+      const headers: Record<string, string> = type === null ? {} : { 'content-type': type };
+      const response = await relayCheckAsset(
+        get(),
+        assetOptions(() => Promise.resolve(new Response('alert(1)', { status: 200, headers })))
+      );
+      expect(response.status, String(type)).toBe(503);
+      expect(await response.json()).toEqual({ error: 'check-unavailable' });
+    }
+  });
+
+  it("answers the check worker's 404 as a 404, and a redirect or an error as a 503", async () => {
+    const answering = (status: number, headers: Record<string, string> = {}) =>
+      relayCheckAsset(
+        get(),
+        assetOptions(() => Promise.resolve(new Response(null, { status, headers })))
+      );
+
+    const missing = await answering(404, { 'content-type': 'text/javascript' });
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ error: 'not-found' });
+    expect(missing.headers.get('cache-control')).toBe('no-store');
+
+    expect((await answering(302, { location: 'https://elsewhere.example/x.js' })).status).toBe(503);
+    expect((await answering(500, { 'content-type': 'text/javascript' })).status).toBe(503);
+  });
+
+  it('answers 503 to a body past the cap, declared or streamed, and reads no further', async () => {
+    const declared = await relayCheckAsset(
+      get(),
+      assetOptions(() =>
+        Promise.resolve(
+          script('x', {
+            headers: {
+              'content-type': 'text/javascript',
+              'content-length': String(CHECK_ASSET_MAX_BYTES + 1),
+            },
+          })
+        )
+      )
+    );
+    expect(declared.status).toBe(503);
+
+    let pulled = 0;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new Uint8Array(64 * 1024));
+      },
+    });
+    const streamed = await relayCheckAsset(
+      get(),
+      assetOptions(() => Promise.resolve(script(endless)))
+    );
+    expect(streamed.status).toBe(503);
+    expect(pulled).toBeLessThanOrEqual(CHECK_ASSET_MAX_BYTES / (64 * 1024) + 2);
+  });
+
+  it('answers 503 when the check worker outlasts its budget, before or mid-body', async () => {
+    const hang: typeof fetch = (_input, init) =>
+      new Promise((_resolve, reject) =>
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      );
+    expect((await relayCheckAsset(get(), assetOptions(hang, { timeoutMs: 10 }))).status).toBe(503);
+
+    const stalled = new ReadableStream<Uint8Array>({ pull: () => new Promise(() => {}) });
+    const midBody = await relayCheckAsset(
+      get(),
+      assetOptions(() => Promise.resolve(script(stalled)), { timeoutMs: 10 })
+    );
+    expect(midBody.status).toBe(503);
+  });
+
+  it('answers 503 when the check worker cannot be reached', async () => {
+    const logError = vi.fn();
+    const response = await relayCheckAsset(
+      get(),
+      assetOptions(() => Promise.reject(new Error('unreachable')), { logError })
+    );
+    expect(response.status).toBe(503);
+    expect(logError).toHaveBeenCalled();
+  });
+
+  it("drops every header of the check worker's but the type, cookies included", async () => {
+    const headers = new Headers({ 'content-type': 'text/javascript', 'x-internal': 'secret', etag: '"e"' });
+    headers.append('set-cookie', '__Host-d3check=sealed; Path=/');
+    headers.append('set-cookie', 'session=hijacked; Path=/');
+    const response = await relayCheckAsset(
+      get(),
+      assetOptions(() => Promise.resolve(new Response(SCRIPT, { status: 200, headers })))
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.getSetCookie()).toEqual([]);
+    expect(response.headers.get('x-internal')).toBeNull();
+    expect(response.headers.get('etag')).toBeNull();
+  });
+
+  it('serves the body byte for byte, so its SRI hash still matches', async () => {
+    const response = await relayCheckAsset(
+      get(),
+      assetOptions(() => Promise.resolve(script()))
+    );
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(SCRIPT);
+  });
+
+  it('serves it as the validated type, cached for a year, never sniffed, tagged as the check', async () => {
+    const response = await relayCheckAsset(
+      get(),
+      assetOptions(() => Promise.resolve(script()))
+    );
+    expect(response.status).toBe(200);
+    expect(Object.fromEntries(response.headers)).toEqual({
+      'content-type': 'text/javascript; charset=utf-8',
+      'cache-control': 'public, max-age=31536000, immutable',
+      'x-content-type-options': 'nosniff',
+      'x-d3-edge': 'check',
+    });
   });
 });
