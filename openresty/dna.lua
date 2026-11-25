@@ -43,7 +43,7 @@ local MCP_KEY_ARGUMENT_MEMORY_S  = 300
 local MCP_KEY_ARGUMENT_MAX_HOSTS = 10000
 
 M.DEFAULT_ENDPOINT           = "https://edge-api.d3.com/v1/decision"
-M.DEFAULT_TIMEOUT_MS         = 150
+M.DEFAULT_TIMEOUT_MS         = 500
 M.DEFAULT_PAYMENT_TIMEOUT_MS = 10000
 
 local PAY_SESSION_COOKIE  = "__Host-d3pay"
@@ -301,7 +301,7 @@ function M.dna_endpoint(endpoint, has_dna_api_key, enabled)
   return has_dna_api_key and M.DEFAULT_ENDPOINT or nil
 end
 
--- readAdapterSettings, but the unpaid budget defaults to 150 ms, not 2 s (ADR 0090).
+-- readAdapterSettings, but the unpaid budget defaults to 500 ms, not 2 s.
 function M.settings(getenv)
   local names = M.SETTING_NAMES
   local read = function(list) return select(2, first_setting(getenv, list, false)) end
@@ -1314,7 +1314,7 @@ end
 
 -- Our build of this install, by its own version. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter).
 -- Only the full install sends it: web_bot_auth_verify.lua runs revision 1, a different build.
-local DNA_ADAPTER = "openresty:1.0.1"
+local DNA_ADAPTER = "openresty:1.0.2"
 
 local function post_decision(settings, payload, budget_ms)
   local httpc = http.new()

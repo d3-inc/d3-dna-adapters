@@ -4,7 +4,7 @@ const CONFIG = {
   // false turns DNA off without removing the key: pure passthrough.
   enabled: true,
   // Hard budget for the decision call, in milliseconds.
-  timeoutMs: 150,
+  timeoutMs: 500,
   // Budget for a request presenting a payment: settlement happens inside the call.
   paymentTimeoutMs: 10000,
   // 'open' passes traffic when the decision call fails; 'closed' blocks instead.

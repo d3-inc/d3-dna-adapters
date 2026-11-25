@@ -101,7 +101,7 @@ describe('enforcement', () => {
 
     const call = log.policyCalls[0];
     expect(call.headers.get('authorization')).toBe(`Bearer ${KEY}`);
-    expect(call.headers.get('dna-adapter')).toBe('snippet:2.0.0');
+    expect(call.headers.get('dna-adapter')).toBe('snippet:2.0.1');
     expect(call.payload).toMatchObject({
       method: 'GET',
       url: '/page?x=1',
@@ -577,6 +577,13 @@ describe('snippet-specific behavior', () => {
 
   it('should export a default handler wired to the pasteable CONFIG', () => {
     expect(snippetDefault.fetch).toBeTypeOf('function');
+  });
+
+  it('should give the decision call 500 ms by default, enough to outlast a cold worker', async () => {
+    stubOutbound({ action: 'pass' });
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    await snippetDefault.fetch(siteRequest());
+    expect(timeout).toHaveBeenCalledWith(500);
   });
 
   it('should stay a single dependency-free file under the 32 KB Snippets limit', () => {

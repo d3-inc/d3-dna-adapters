@@ -192,9 +192,9 @@ end
 for _, case in ipairs(parity.settings) do
   local s = dna.settings(function(name) return case.env[name] end)
   local want = case.out
-  -- The one deliberate difference (ADR 0090): the unpaid budget defaults to 150 ms.
+  -- The one deliberate difference: the unpaid budget defaults to 500 ms.
   local timeout_set = case.env.DNA_TIMEOUT_MS or case.env.POLICY_TIMEOUT_MS
-  if not (timeout_set and tonumber(timeout_set) and tonumber(timeout_set) > 0) then want.timeoutMs = 150 end
+  if not (timeout_set and tonumber(timeout_set) and tonumber(timeout_set) > 0) then want.timeoutMs = 500 end
   same("readAdapterSettings: " .. case.name, {
     endpoint = s.endpoint, apiKey = s.api_key, failMode = s.fail_mode, timeoutMs = s.timeout_ms,
     paymentTimeoutMs = s.payment_timeout_ms, debugLogRawPayload = s.debug_log_raw_payload, exclude = s.exclude,
