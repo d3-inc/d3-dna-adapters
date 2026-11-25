@@ -88,6 +88,15 @@ file lives in
 [d3-dna-adapters](https://github.com/d3-inc/d3-dna-adapters/tree/main/cloudflare-snippet),
 tested there.
 
+## Sampling
+
+`DNA_SAMPLE_RATE` sends only a share of requests for a decision, as 1/n
+(`0.25` sends 1 in 4; `0.3` is read as 1 in 3). The rest go straight to the
+origin, credentials stripped, tagged `x-d3-edge: unsampled`. A request
+presenting a payment, in a header or an MCP call's `_meta`, and a signed one
+are always sent. Each call states its rate in `x-d3-sample-rate`, so DNA
+scales the dashboard counts back up ([protocol](../../PROTOCOL.md#sampling)).
+
 ## What reaches DNA, and the origin
 
 From 0.10.0 every request header and cookie reaches DNA so rules can read them,

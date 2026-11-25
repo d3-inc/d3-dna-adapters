@@ -410,10 +410,10 @@ with no call. D3 scales counts back up only if it knows that share:
   `1 / round(1 / rate)`, so each call counts a whole number of requests;
   anything else is dropped and read as `1`.
 
-| Dialect                                   | Where the rate rides                                                                                       |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| [Decision `POST`](#the-call)              | A request header on the `POST`, beside `Authorization`. Not a payload field.                               |
-| [Forward-auth](#the-forward-auth-dialect) | `?sample_rate=` on the side-request's URI. Never a header: the proxy copies the visitor's headers onto it. |
+| Dialect                                   | Where the rate rides                                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| [Decision `POST`](#the-call)              | `x-d3-sample-rate` on the `POST`, beside `Authorization`, e.g. `x-d3-sample-rate: 0.25`. Not a payload field. |
+| [Forward-auth](#the-forward-auth-dialect) | `?sample_rate=` on the side-request's URI. Never a header: the proxy copies the visitor's headers onto it.    |
 
 Which requests skip the draw:
 

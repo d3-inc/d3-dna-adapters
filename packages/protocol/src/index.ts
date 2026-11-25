@@ -90,6 +90,7 @@ export type { AdapterEndpoint, AdapterName, AdapterType } from './adapter/adapte
 export { ADAPTER_MECHANISMS, isAdapterMechanism } from './adapter/mechanisms';
 export type { AdapterMechanism } from './adapter/mechanisms';
 export { DEFAULT_DNA_ENDPOINT, readAdapterSettings } from './adapter/adapter-settings';
+export { drawSampleRate, SAMPLE_RATE_HEADER } from './adapter/sampling';
 export {
   FORWARDED_MAX_TOTAL_LENGTH,
   FORWARDED_VALUE_MAX_LENGTH,

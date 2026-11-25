@@ -517,6 +517,9 @@ function withPaymentHeaders(response, payment) {
   return copy;
 }
 
+// packages/protocol/src/adapter/sampling.ts
+var SAMPLE_RATE_HEADER = 'x-d3-sample-rate';
+
 // cloudflare-snippet/src/snippet.ts
 var DEFAULT_ENDPOINT = 'https://edge-api.d3.com/v1/decision';
 var ADAPTER_SET = 2;
@@ -549,7 +552,7 @@ function createSnippet(config) {
             authorization: `Bearer ${apiKey}`,
             'dna-adapter': DNA_ADAPTER,
             // Absent reads as 1 at the endpoint, so a site that doesn't sample sends nothing new.
-            ...(config.sampleRate < 1 ? { 'x-d3-sample-rate': String(sampleRate) } : {}),
+            ...(config.sampleRate < 1 ? { [SAMPLE_RATE_HEADER]: String(sampleRate) } : {}),
           },
           body: JSON.stringify(await extractPayload(request, exclude)),
           signal: AbortSignal.timeout(paying ? config.paymentTimeoutMs : config.timeoutMs),

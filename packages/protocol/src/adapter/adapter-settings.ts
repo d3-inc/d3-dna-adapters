@@ -21,6 +21,7 @@ const ADAPTER_SETTING_NAMES = {
   debugLogRawPayload: ['DNA_DEBUG_LOG_RAW_PAYLOAD', 'DEBUG_LOG_RAW_PAYLOAD'],
   excludeHeaders: ['DNA_EXCLUDE_HEADERS'],
   excludeCookies: ['DNA_EXCLUDE_COOKIES'],
+  sampleRate: ['DNA_SAMPLE_RATE'],
 } as const;
 
 type SettingNames = typeof ADAPTER_SETTING_NAMES;
@@ -39,6 +40,8 @@ export interface AdapterSettings {
   debugLogRawPayload: boolean;
   /** Comma-separated in the environment; header names compare lowercase, cookie names as sent. */
   exclude: ForwardExclusions;
+  /** The share of requests sent for a decision, as 1/n; `1` sends every one. */
+  sampleRate: number;
 }
 
 interface FoundSetting {
@@ -85,6 +88,7 @@ export function readAdapterSettings(...sources: SettingLookup[]): AdapterSetting
     paymentTimeoutMs: positiveNumber(read(names.paymentTimeoutMs), DEFAULT_PAYMENT_TIMEOUT_MS),
     debugLogRawPayload: read(debugNames) === 'true',
     exclude,
+    sampleRate: sampleRate(read(names.sampleRate)),
   };
 }
 
@@ -137,4 +141,11 @@ function firstMatching(
 function positiveNumber(raw: string | undefined, fallback: number): number {
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+// An unusable rate sends everything: a typo must not silently drop traffic. 1/n, at most 1/1000, because the
+// endpoint counts each call a whole number of times and reads a rate below 0.001 as 1.
+function sampleRate(raw: string | undefined): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 && n <= 1 ? 1 / Math.min(Math.round(1 / n), 1000) : 1;
 }

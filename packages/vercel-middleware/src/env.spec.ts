@@ -88,3 +88,12 @@ describe('resolveConfig budgets', () => {
     expect(cfg.paymentTimeoutMs).toBeGreaterThan(cfg.timeoutMs * 4);
   });
 });
+
+describe('resolveConfig sample rate', () => {
+  it('reads the rate by config or by env, the config winning, and sends everything by default', () => {
+    expect(resolveConfig({}).sampleRate).toBe(1);
+    vi.stubEnv('DNA_SAMPLE_RATE', '0.5');
+    expect(resolveConfig({}).sampleRate).toBe(0.5);
+    expect(resolveConfig({ sampleRate: 0.1 }).sampleRate).toBe(0.1);
+  });
+});

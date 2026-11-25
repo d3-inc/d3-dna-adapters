@@ -966,6 +966,16 @@ describe('forwarding and MCP carriage (ADR 0081)', () => {
     expect(log.originCalls).toHaveLength(1);
   });
 
+  it('never samples out a call whose payment rides in its body, and states rate 1 for it', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.9);
+    const log = stubOutbound({ action: 'pass' }, '{}', { 'content-type': 'application/json' });
+    await run(mcpCall({ name: 'get_report', _meta: { 'dna.d3.com/key': 'dna_k_1' } }), {
+      DNA_SAMPLE_RATE: '0.25',
+    });
+    expect(log.policyCalls[0].headers.get('x-d3-sample-rate')).toBe('1');
+    expect(log.originCalls[0].headers.get('payment-authorization')).toBeNull();
+  });
+
   it('gives a lifted key past its cap no payment budget, so a failed decision falls open without it', async () => {
     const log = stubOutbound({ status: 500 }, '{}', { 'content-type': 'application/json' });
     const res = await run(mcpCall({ name: 'get_report', _meta: { 'dna.d3.com/key': 'k'.repeat(5000) } }));
@@ -1089,5 +1099,53 @@ describe('forwarding and MCP carriage (ADR 0081)', () => {
     });
     expect(res.status).toBe(502);
     expect(res.headers.get('x-d3-edge')).toBe('fail-closed');
+  });
+});
+
+describe('sampling', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('should send a request the draw hits, stating its rate', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.1);
+    const log = stubOutbound({ action: 'pass' });
+    const res = await run(siteRequest(), { DNA_SAMPLE_RATE: '0.25' });
+    expect(res.headers.get('x-d3-edge')).toBe('pass');
+    expect(log.policyCalls[0].headers.get('x-d3-sample-rate')).toBe('0.25');
+  });
+
+  it('should send a request the draw misses straight to the origin, credentials stripped, unreported', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.9);
+    const log = stubOutbound({ action: 'block' });
+    const res = await run(siteRequest({ headers: { 'payment-signature': 'x'.repeat(20_000) } }), {
+      DNA_SAMPLE_RATE: '0.25',
+    });
+    expect(res.headers.get('x-d3-edge')).toBe('unsampled');
+    expect(log.policyCalls).toHaveLength(0);
+    expect(log.reportCalls).toHaveLength(0);
+    expect(log.originCalls[0].headers.get('payment-signature')).toBeNull();
+  });
+
+  it('should always send a signed request, at rate 1', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.9);
+    const log = stubOutbound({ action: 'pass' });
+    await run(siteRequest({ headers: { 'signature-input': 'sig1=()' } }), { DNA_SAMPLE_RATE: '0.25' });
+    expect(log.policyCalls[0].headers.get('x-d3-sample-rate')).toBe('1');
+  });
+
+  it('should always send a paying request, at rate 1', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.9);
+    const log = stubOutbound({ action: 'pass' });
+    await run(siteRequest({ headers: { 'payment-signature': 'eyJ4NDAyVmVyc2lvbiI6Mn0=' } }), {
+      DNA_SAMPLE_RATE: '0.25',
+    });
+    expect(log.policyCalls[0].headers.get('x-d3-sample-rate')).toBe('1');
+  });
+
+  it('should state no rate when it does not sample', async () => {
+    const log = stubOutbound({ action: 'pass' });
+    await run(siteRequest());
+    expect(log.policyCalls[0].headers.has('x-d3-sample-rate')).toBe(false);
   });
 });

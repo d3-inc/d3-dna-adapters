@@ -26,6 +26,8 @@ export interface Env {
   DNA_EXCLUDE_HEADERS?: string;
   /** Cookies kept back from DNA by name, comma-separated; every other cookie is forwarded. */
   DNA_EXCLUDE_COOKIES?: string;
+  /** Share of requests sent for a decision, as 1/n (default 1); payments and signed requests are always sent. */
+  DNA_SAMPLE_RATE?: string;
   /** @deprecated DNA_ENDPOINT. Unlike DNA_API_KEY, the old key names need this set to switch DNA on. */
   POLICY_WORKER_URL?: string;
   /** @deprecated DNA_API_KEY */

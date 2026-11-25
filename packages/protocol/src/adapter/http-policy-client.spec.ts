@@ -77,6 +77,18 @@ describe('createHttpPolicyClient', () => {
     expect(unnamed.calls[0].init.headers as Record<string, string>).not.toHaveProperty('dna-adapter');
   });
 
+  it('states the sample rate on a decision call, and nothing when it has none', async () => {
+    const sampled = stubFetch(Response.json({ action: 'pass' }));
+    const unsampled = stubFetch(Response.json({ action: 'pass' }));
+    await createHttpPolicyClient({ url: URL, timeoutMs: 1000, sampleRate: 0.25 }, sampled.impl).getDecision(
+      PAYLOAD
+    );
+    await createHttpPolicyClient({ url: URL, timeoutMs: 1000 }, unsampled.impl).getDecision(PAYLOAD);
+
+    expect((sampled.calls[0].init.headers as Record<string, string>)['x-d3-sample-rate']).toBe('0.25');
+    expect(unsampled.calls[0].init.headers as Record<string, string>).not.toHaveProperty('x-d3-sample-rate');
+  });
+
   it('omits the authorization header when no secret is configured', async () => {
     const { impl, calls } = stubFetch(Response.json({ action: 'pass' }));
     await createHttpPolicyClient({ url: URL, timeoutMs: 1000 }, impl).getDecision(PAYLOAD);

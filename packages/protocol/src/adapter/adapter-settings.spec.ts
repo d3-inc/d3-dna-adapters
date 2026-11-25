@@ -102,6 +102,7 @@ describe('readAdapterSettings', () => {
       failMode: 'closed',
       debugLogRawPayload: true,
       exclude: { headers: [], cookies: [] },
+      sampleRate: 1,
     });
   });
 
@@ -140,6 +141,7 @@ describe('readAdapterSettings', () => {
       failMode: 'open',
       debugLogRawPayload: false,
       exclude: { headers: [], cookies: [] },
+      sampleRate: 1,
     });
   });
 
@@ -235,5 +237,24 @@ describe('readAdapterSettings: generic legacy names', () => {
   it('should read FAIL_MODE everywhere, so a half-finished migration never loosens fail-closed', () => {
     expect(readAdapterSettings(from({ DNA_API_KEY: KEY, FAIL_MODE: 'closed' })).failMode).toBe('closed');
     expect(readAdapterSettings(from({ DNA_ENDPOINT: CUSTOM, FAIL_MODE: 'closed' })).failMode).toBe('closed');
+  });
+});
+
+describe('readAdapterSettings: sample rate', () => {
+  it('should read a rate in (0, 1]', () => {
+    expect(readAdapterSettings(from({ DNA_SAMPLE_RATE: '0.25' })).sampleRate).toBe(0.25);
+    expect(readAdapterSettings(from({ DNA_SAMPLE_RATE: '1' })).sampleRate).toBe(1);
+  });
+
+  it('should round a rate to 1/n, no lower than 1/1000, so each sent request stands for a whole number', () => {
+    expect(readAdapterSettings(from({ DNA_SAMPLE_RATE: '0.6' })).sampleRate).toBe(0.5);
+    expect(readAdapterSettings(from({ DNA_SAMPLE_RATE: '0.3' })).sampleRate).toBe(1 / 3);
+    expect(readAdapterSettings(from({ DNA_SAMPLE_RATE: '0.0001' })).sampleRate).toBe(0.001);
+  });
+
+  it('should send everything on a missing or unusable rate', () => {
+    for (const raw of [undefined, '', '0', '-0.5', '1.5', 'abc', 'Infinity']) {
+      expect(readAdapterSettings(from({ DNA_SAMPLE_RATE: raw })).sampleRate, String(raw)).toBe(1);
+    }
   });
 });

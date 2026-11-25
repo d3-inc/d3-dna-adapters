@@ -46,6 +46,7 @@ import {
   PERSON_PASS_HEADER,
   PERSON_PASS_MAX_LENGTH,
 } from '../../packages/protocol/src/pay-session';
+import { SAMPLE_RATE_HEADER } from '../../packages/protocol/src/adapter/sampling';
 import type { ClientDecision, RequestPayload } from '../../packages/protocol/src/types';
 import { requestPresentsPayment, stripPaymentHeaders } from '../../packages/protocol/src/x402/payment-header';
 
@@ -129,7 +130,7 @@ export function createSnippet(config: SnippetConfig): { fetch(request: Request):
             authorization: `Bearer ${apiKey}`,
             'dna-adapter': DNA_ADAPTER,
             // Absent reads as 1 at the endpoint, so a site that doesn't sample sends nothing new.
-            ...(config.sampleRate < 1 ? { 'x-d3-sample-rate': String(sampleRate) } : {}),
+            ...(config.sampleRate < 1 ? { [SAMPLE_RATE_HEADER]: String(sampleRate) } : {}),
           },
           body: JSON.stringify(await extractPayload(request, exclude)),
           signal: AbortSignal.timeout(paying ? config.paymentTimeoutMs : config.timeoutMs),

@@ -27,6 +27,8 @@ export interface D3MiddlewareConfig {
   excludeHeaders?: string | string[];
   /** Cookies kept back from DNA by name; every other cookie is forwarded. */
   excludeCookies?: string | string[];
+  /** Share of requests sent for a decision, as 1/n (default 1); payments and signed requests are always sent. */
+  sampleRate?: number;
   /** @deprecated `endpoint`. Unlike `apiKey`, the old key names need this set to switch DNA on. */
   policyWorkerUrl?: string;
   /** @deprecated `apiKey` */
@@ -55,6 +57,7 @@ function configLookup(config: D3MiddlewareConfig): SettingLookup {
     DNA_DEBUG_LOG_RAW_PAYLOAD: config.debugLogRawPayload?.toString(),
     DNA_EXCLUDE_HEADERS: listSetting(config.excludeHeaders),
     DNA_EXCLUDE_COOKIES: listSetting(config.excludeCookies),
+    DNA_SAMPLE_RATE: config.sampleRate?.toString(),
   };
   return (name) => byName[name];
 }

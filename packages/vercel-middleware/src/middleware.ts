@@ -2,6 +2,7 @@ import {
   buildPaymentResponse,
   builtAnswerOf,
   createHttpPolicyClient,
+  drawSampleRate,
   edgeLogger,
   extractPayload,
   FORWARDS_ALL_SINCE,
@@ -58,14 +59,13 @@ export function createD3Middleware(config?: D3MiddlewareConfig, deps: Middleware
   return async function d3Middleware(request: Request): Promise<Response> {
     // Stripped even here: a browser holding our cookies from before DNA was
     // turned off is no reason to hand them to the site's origin.
-    if (!cfg.endpoint) {
-      const clean = stripPaymentHeaders(request);
-      const init = { headers: { 'x-d3-edge': 'disabled' }, request: { headers: clean.headers } };
-      return clean.url === request.url ? nextFn(init) : rewriteFn(clean.url, init);
-    }
+    if (!cfg.endpoint) return continueStripped(request, 'disabled');
 
     const endpoint = cfg.endpoint;
     const paying = requestPresentsPayment(request);
+    const sampleRate = drawSampleRate(request, cfg.sampleRate, paying);
+    if (sampleRate === null) return continueStripped(request, 'unsampled');
+
     // Config resolved once at construction; only the choice between its two
     // budgets is per request.
     const client = createHttpPolicyClient(
@@ -74,6 +74,7 @@ export function createD3Middleware(config?: D3MiddlewareConfig, deps: Middleware
         bearer: cfg.apiKey,
         timeoutMs: paying ? cfg.paymentTimeoutMs : cfg.timeoutMs,
         adapterName: MIDDLEWARE_ADAPTER_NAME,
+        sampleRate: cfg.sampleRate < 1 ? sampleRate : undefined,
       },
       deps.fetchImpl
     );
@@ -140,12 +141,7 @@ export function createD3Middleware(config?: D3MiddlewareConfig, deps: Middleware
 
       // Stripped here too: an endpoint we could not reach is no reason to hand
       // the origin a credential, or put a browser-check answer in its access log.
-      const clean = stripPaymentHeaders(request);
-      const init = { headers: { 'x-d3-edge': 'fail-open' }, request: { headers: clean.headers } };
-      return reportOutcome(
-        'fail-open',
-        clean.url === request.url ? nextFn(init) : rewriteFn(clean.url, init)
-      );
+      return reportOutcome('fail-open', continueStripped(request, 'fail-open'));
     }
 
     if (decision.action === 'block') return reportBuilt('block', blockResponse(decision, 'block'));
@@ -157,13 +153,16 @@ export function createD3Middleware(config?: D3MiddlewareConfig, deps: Middleware
       return reportBuilt(mode, buildPaymentResponse(decision.payment, mode));
     }
 
-    // Unconditional, unlike the budget above: `requestPresentsPayment` is false
-    // for an oversized value, and that value must still not reach the origin.
+    return reportOutcome('pass', withPaymentHeaders(continueStripped(request, 'pass'), decision.payment));
+  };
+
+  // Unconditional, unlike the budget: `requestPresentsPayment` is false for an
+  // oversized value, and that value must still not reach the origin.
+  function continueStripped(request: Request, mode: string): Response {
     const clean = stripPaymentHeaders(request);
-    const init = { headers: { 'x-d3-edge': 'pass' }, request: { headers: clean.headers } };
+    const init = { headers: { 'x-d3-edge': mode }, request: { headers: clean.headers } };
     // A redeemed handoff rides the query string, and `next()` cannot drop it: only a
     // rewrite changes the URL the site is served on.
-    const continued = clean.url === request.url ? nextFn(init) : rewriteFn(clean.url, init);
-    return reportOutcome('pass', withPaymentHeaders(continued, decision.payment));
-  };
+    return clean.url === request.url ? nextFn(init) : rewriteFn(clean.url, init);
+  }
 }

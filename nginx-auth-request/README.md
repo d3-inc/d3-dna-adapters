@@ -97,9 +97,11 @@ Bot-auth enforcement here is unaffected.
 - To ramp by volume, uncomment the `split_clients` recipe in
   [`d3-edge.conf`](./d3-edge.conf): an unsampled request passes without
   a call, and each sampled call states its rate on the subrequest URI
-  ([protocol](../PROTOCOL.md#sampling)). Keep the percentage and the
-  rate equal.
+  ([protocol](../PROTOCOL.md#sampling)). Choose a percentage whose share
+  is 1/n, and keep the rate equal to it (25% with `0.25`, 10% with `0.1`).
 - Verify server-side: `curl -sI -H 'signature-input: x'
 https://example.com/` and watch the request appear in your
   [dashboard](https://dashboard.d3.com) — a passed response looks
-  exactly like your site without the recipe.
+  exactly like your site without the recipe. While ramping, a single
+  request can be sampled out: repeat it, or verify before uncommenting
+  the split.

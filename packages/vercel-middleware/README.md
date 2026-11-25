@@ -32,6 +32,15 @@ reporting); `DNA_ENABLED=false` does the same with the key in place. The
 [docs](https://ai.d3.com/docs/sdks/vercel#configuration) list every setting and
 map the earlier `POLICY_*` names, which are still read.
 
+## Sampling
+
+`DNA_SAMPLE_RATE` (`sampleRate`) sends only a share of requests for a
+decision, as 1/n (`0.25` sends 1 in 4; `0.3` is read as 1 in 3). The rest
+continue to the site, credentials stripped, tagged `x-d3-edge: unsampled`. A
+request presenting a payment and a signed one are always sent. Each call
+states its rate in `x-d3-sample-rate`, so DNA scales the dashboard counts back
+up ([protocol](../../PROTOCOL.md#sampling)).
+
 ## What reaches DNA, and the origin
 
 From 0.9.0 every request header and cookie reaches DNA so rules can read them,
