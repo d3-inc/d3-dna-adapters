@@ -11,7 +11,7 @@ const CONFIG = {
   // false turns DNA off without removing the key: pure passthrough.
   enabled: true,
   // Hard budget for the decision call, in milliseconds.
-  timeoutMs: 150,
+  timeoutMs: 500,
   // Budget for a request presenting a payment: settlement happens inside the call.
   paymentTimeoutMs: 10000,
   // 'open' passes traffic when the decision call fails; 'closed' blocks instead.
@@ -520,7 +520,7 @@ function withPaymentHeaders(response, payment) {
 // cloudflare-snippet/src/snippet.ts
 var DEFAULT_ENDPOINT = 'https://edge-api.d3.com/v1/decision';
 var ADAPTER_SET = 2;
-var DNA_ADAPTER = 'snippet:2.0.0';
+var DNA_ADAPTER = 'snippet:2.0.1';
 var MAX_HASHED_BODY_BYTES = 1e6;
 function dnaEndpoint(config) {
   if (String(config.enabled).trim().toLowerCase() === 'false') return void 0;

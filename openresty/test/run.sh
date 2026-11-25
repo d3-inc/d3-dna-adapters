@@ -34,7 +34,7 @@ ORIGIN_PORT=3010 node ../../test/origin.mjs & pids+=($!)
 MOCK_PORT=9010 node mock-decision.mjs & mock=$!; pids+=($mock)
 up 127.0.0.1:3010; up 127.0.0.1:9010/__log
 
-# Short budgets keep the timeout checks quick; production defaults are 150 ms and 10 s.
+# Short budgets keep the timeout checks quick; production defaults are 500 ms and 10 s.
 # LUA_DIR swaps the install's files, and HTTP_LIB=0 leaves lua-resty-http out.
 start() {
   local lib='opm get ledgetech/lua-resty-http >/dev/null 2>&1 && '

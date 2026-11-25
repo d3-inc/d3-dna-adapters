@@ -81,7 +81,7 @@ Each needs its `env` line, which `dna.main.conf` already has:
 | `DNA_API_KEY`               | unset                                 | Your org's key. **Unset means pure passthrough**: nothing is asked.                                          |
 | `DNA_ENABLED`               | unset                                 | `false` turns DNA off without removing the key.                                                              |
 | `DNA_FAIL_MODE`             | `open`                                | `open`: serve the page when DNA can't answer. `closed`: answer `403` instead.                                |
-| `DNA_TIMEOUT_MS`            | `150`                                 | The limit on each step of asking DNA: connecting, sending, and each read.                                    |
+| `DNA_TIMEOUT_MS`            | `500`                                 | The limit on each step of asking DNA: connecting, sending, and each read.                                    |
 | `DNA_PAYMENT_TIMEOUT_MS`    | `10000`                               | The budget for a request that pays: settlement happens inside it.                                            |
 | `DNA_EXCLUDE_HEADERS`       | unset                                 | Comma-separated header names that never leave your server. Up to 128: past that, a warning in the error log. |
 | `DNA_EXCLUDE_COOKIES`       | unset                                 | Comma-separated cookie names that never leave your server. Up to 128, likewise.                              |

@@ -30,7 +30,7 @@ variables where they exist:
 | `apiKey`             | `DNA_API_KEY`            | —                                     | Your org's key, bearer for the decision call. Unset means pure passthrough.         |
 | `enabled`            | `DNA_ENABLED`            | `true`                                | `false` turns DNA off without removing the key: pure passthrough.                   |
 | `failMode`           | `DNA_FAIL_MODE`          | `open`                                | `open`: pass traffic when the call fails. `closed`: block instead.                  |
-| `timeoutMs`          | `DNA_TIMEOUT_MS`         | `150`                                 | Hard budget for the decision call.                                                  |
+| `timeoutMs`          | `DNA_TIMEOUT_MS`         | `500`                                 | Hard budget for the decision call.                                                  |
 | `paymentTimeoutMs`   | `DNA_PAYMENT_TIMEOUT_MS` | `10000`                               | Budget for a request presenting a payment — settlement happens inside it.           |
 | `endpoint`           | `DNA_ENDPOINT`           | `https://edge-api.d3.com/v1/decision` | Decision endpoint, not in `CONFIG` by default. Add it only if we give you another.  |
 | `sampleRate`         | —                        | `1`                                   | Fraction of requests that get a decision call. Unsampled requests return untouched. |
