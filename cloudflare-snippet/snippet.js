@@ -523,7 +523,7 @@ var SAMPLE_RATE_HEADER = 'x-d3-sample-rate';
 // cloudflare-snippet/src/snippet.ts
 var DEFAULT_ENDPOINT = 'https://edge-api.d3.com/v1/decision';
 var ADAPTER_SET = 2;
-var DNA_ADAPTER = 'snippet:2.0.1';
+var DNA_ADAPTER = 'snippet:2.1.0';
 var MAX_HASHED_BODY_BYTES = 1e6;
 function dnaEndpoint(config) {
   if (String(config.enabled).trim().toLowerCase() === 'false') return void 0;
