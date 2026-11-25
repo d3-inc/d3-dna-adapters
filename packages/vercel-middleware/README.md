@@ -1,0 +1,67 @@
+# @d3-inc/d3-dna-vercel-middleware
+
+The [DNA](https://ai.d3.com) middleware for Vercel, as Routing Middleware. On
+every request it extracts the signature headers, user agent, and IP, asks the DNA policy endpoint for a decision, and passes or blocks
+accordingly — failing open if the policy call errors or times out, so an
+outage never takes down your site.
+
+## Install
+
+```sh
+npm i @d3-inc/d3-dna-vercel-middleware
+```
+
+Versions up to 0.8.0 were published as `@d3-inc/d3-edge-vercel-middleware`. To switch, change the package
+name in `package.json` and in your import; nothing else changes.
+
+## Usage
+
+```ts
+// middleware.ts (project root)
+import { createD3Middleware, config } from '@d3-inc/d3-dna-vercel-middleware';
+
+export default createD3Middleware();
+export { config };
+```
+
+Set one project environment variable, `DNA_API_KEY`, to your org's API key
+(`d3_k_…`, from the API keys page of your DNA dashboard).
+
+Without it the middleware is a pure passthrough (no enforcement, no
+reporting); `DNA_ENABLED=false` does the same with the key in place. The
+[docs](https://ai.d3.com/docs/sdks/vercel#configuration) list every setting and
+map the earlier `POLICY_*` names, which are still read.
+
+## What reaches DNA, and the origin
+
+From 0.9.0 every request header and cookie reaches DNA so rules can read them,
+except `Authorization`, `Proxy-Authorization` and anything listed in
+`DNA_EXCLUDE_HEADERS` or `DNA_EXCLUDE_COOKIES` (`excludeHeaders`,
+`excludeCookies`). DNA reads them
+for rules and doesn't store them. Our two cookies travel under their own
+headers: `__Host-d3pay` (a DNA session) and `__Host-d3person` (a browser-check
+pass). Keep each list to 128 names: past that the middleware logs a warning,
+and a rule on a header or cookie a request lacks is skipped.
+
+The site sees neither cookie, nor a payment header, nor a `d3pay_handoff`,
+`d3pay_check` or `d3pay_browser` query parameter: the middleware strips them
+before `next()` (rewriting when the URL changed), on a pass and on fail-open,
+and appends `Set-Cookie` and `Payment-Receipt` to the response on the way back.
+With DNA switched off the request continues as it arrived.
+
+An MCP route takes `withD3Mcp(handler)` instead, outside the middleware's
+matcher: it also lifts a payment out of the call's `_meta`, keeps it from the
+handler, and adds the receipt to the result.
+
+The policy call carries the visitor's country, read with `geolocation()` from
+Vercel's own header, and from 0.7.0 the browser's client hints and
+`accept-language`; they are logged on the request record and decide nothing.
+
+## Docs
+
+Full documentation, including config options and the decision model:
+[ai.d3.com/docs](https://ai.d3.com/docs).
+
+## License
+
+Apache-2.0

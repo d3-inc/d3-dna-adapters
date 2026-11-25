@@ -1,0 +1,217 @@
+import { describe, expect, it } from 'vitest';
+import { PAYMENT_AUTHORIZATION_MAX_LENGTH, PAY_SESSION_MAX_LENGTH } from '../pay-session';
+import {
+  X402_MAX_PAYMENT_HEADER_LENGTH,
+  base64Utf8,
+  edgeRequestPresentsPayment,
+  hasPaymentHeader,
+  requestPresentsPayment,
+  stripPaymentHeaders,
+} from './payment-header';
+
+describe('edgeRequestPresentsPayment', () => {
+  const plain = new Request('https://ai.d3.com/mcp', { method: 'POST' });
+
+  it('counts a lifted credential the payload carries, and not one dropped past its cap', () => {
+    expect(edgeRequestPresentsPayment(plain, { headers: { 'payment-authorization': 'Payment k' } })).toBe(
+      true
+    );
+    expect(edgeRequestPresentsPayment(plain, { headers: {} })).toBe(false);
+  });
+
+  it('counts a credential on the request itself', () => {
+    const paying = new Request('https://ai.d3.com/mcp', { headers: { 'payment-signature': 'abc' } });
+    expect(edgeRequestPresentsPayment(paying, { headers: {} })).toBe(true);
+  });
+});
+
+describe('base64Utf8', () => {
+  it('encodes a name btoa alone would throw on', () => {
+    // A token names itself, so a non-ASCII one is a 500 waiting to happen.
+    expect(() => btoa('Tether₮')).toThrow();
+    expect(base64Utf8('Tether₮')).toBe('VGV0aGVy4oKu');
+  });
+
+  it('round-trips through the decoder a caller would use', () => {
+    const value = JSON.stringify({ name: 'Tether₮' });
+    const decoded = new TextDecoder().decode(
+      Uint8Array.from(atob(base64Utf8(value)), (c) => c.charCodeAt(0))
+    );
+    expect(decoded).toBe(value);
+  });
+});
+
+const SESSION = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+describe('hasPaymentHeader', () => {
+  it('is true for either x402 header or the pay credential alone, under their caps', () => {
+    expect(hasPaymentHeader({ 'payment-signature': 'eyJ4IjoxfQ==' })).toBe(true);
+    expect(hasPaymentHeader(new Headers({ 'x-payment': 'eyJ4IjoxfQ==' }))).toBe(true);
+    expect(hasPaymentHeader({ 'payment-authorization': `Payment ${SESSION}` })).toBe(true);
+  });
+
+  it('is true for our cookie on a real request and for the forwarded header on a payload', () => {
+    expect(hasPaymentHeader(new Headers({ cookie: `theme=dark; __Host-d3pay=${SESSION}` }))).toBe(true);
+    expect(hasPaymentHeader({ 'd3pay-session': SESSION })).toBe(true);
+  });
+
+  it('is false for nothing, an empty value, a stranger cookie, the browser-check pass, and a value past its own cap', () => {
+    expect(hasPaymentHeader({})).toBe(false);
+    expect(hasPaymentHeader(new Headers({ cookie: '__Host-d3person=1.sig' }))).toBe(false);
+    expect(hasPaymentHeader({ 'd3pay-person': '1.sig' })).toBe(false);
+    expect(hasPaymentHeader({ 'payment-authorization': '' })).toBe(false);
+    expect(hasPaymentHeader(new Headers({ cookie: 'session=abc; d3pay=x' }))).toBe(false);
+    expect(
+      hasPaymentHeader(new Headers({ cookie: `__Host-d3pay=${'x'.repeat(PAY_SESSION_MAX_LENGTH + 1)}` }))
+    ).toBe(false);
+    expect(
+      hasPaymentHeader({ 'payment-authorization': 'x'.repeat(PAYMENT_AUTHORIZATION_MAX_LENGTH + 1) })
+    ).toBe(false);
+    expect(hasPaymentHeader({ 'payment-signature': 'x'.repeat(X402_MAX_PAYMENT_HEADER_LENGTH + 1) })).toBe(
+      false
+    );
+  });
+});
+
+describe('requestPresentsPayment', () => {
+  const handoff = `${'a'.repeat(22)}.${'b'.repeat(43)}`;
+
+  it('sees a credential in a header, in our cookie and on the URL alike', () => {
+    expect(
+      requestPresentsPayment(new Request('https://ai.d3.com/p', { headers: { 'x-payment': 'abc' } }))
+    ).toBe(true);
+    expect(
+      requestPresentsPayment(
+        new Request('https://ai.d3.com/p', { headers: { cookie: `__Host-d3pay=${SESSION}` } })
+      )
+    ).toBe(true);
+    // The redemption's only credential: missed here, it is answered on the
+    // unpaid budget and blocked when the charge overruns it.
+    expect(requestPresentsPayment(new Request(`https://ai.d3.com/p?d3pay_handoff=${handoff}`))).toBe(true);
+    expect(requestPresentsPayment(new Request(`https://ai.d3.com/p?a=1&d3pay_handoff=${handoff}&b=2`))).toBe(
+      true
+    );
+  });
+
+  it('is false for a plain request, a stranger cookie and a malformed handoff', () => {
+    expect(requestPresentsPayment(new Request('https://ai.d3.com/p'))).toBe(false);
+    expect(requestPresentsPayment(new Request('https://ai.d3.com/p', { headers: { cookie: 'a=1' } }))).toBe(
+      false
+    );
+    expect(requestPresentsPayment(new Request('https://ai.d3.com/p?d3pay_handoff=nope'))).toBe(false);
+  });
+});
+
+describe('stripPaymentHeaders', () => {
+  it('removes every payment header and keeps the rest', () => {
+    const request = new Request('https://ai.d3.com/premium', {
+      headers: {
+        'payment-authorization': `Payment ${SESSION}`,
+        'payment-signature': 'abc',
+        'x-payment': 'def',
+        'd3pay-session': SESSION,
+        'user-agent': 'agent',
+      },
+    });
+    const stripped = stripPaymentHeaders(request);
+    expect(stripped.headers.get('payment-authorization')).toBeNull();
+    expect(stripped.headers.get('payment-signature')).toBeNull();
+    expect(stripped.headers.get('x-payment')).toBeNull();
+    expect(stripped.headers.get('d3pay-session')).toBeNull();
+    expect(stripped.headers.get('user-agent')).toBe('agent');
+    expect(stripped.url).toBe(request.url);
+  });
+
+  // The visitor id is the one cookie of ours a browser carries with no
+  // credential beside it, and a presence check for the credentials alone left
+  // it on the request the origin received.
+  it('removes the visitor id even when it is the only cookie of ours', () => {
+    const stripped = stripPaymentHeaders(
+      new Request('https://ai.d3.com/premium', {
+        headers: { cookie: '__Secure-d3visitor=token; plan=pro' },
+      })
+    );
+
+    expect(stripped.headers.get('cookie')).toBe('plan=pro');
+  });
+
+  // One bad escape must not hide the rest of the name.
+  it('removes a parameter whose name only decodes in part', () => {
+    const stripped = stripPaymentHeaders(
+      new Request('https://ai.d3.com/premium?d3pay%5Flater%FF=secret&keep=1')
+    );
+
+    expect(stripped.url).toBe('https://ai.d3.com/premium?keep=1');
+  });
+
+  it('removes a parameter wearing our prefix, not only the three we read', () => {
+    const stripped = stripPaymentHeaders(
+      new Request('https://ai.d3.com/premium?d3pay_later=x&keep=1&d3pay_handoff=y')
+    );
+
+    expect(stripped.url).toBe('https://ai.d3.com/premium?keep=1');
+  });
+
+  it('removes only our cookies from the Cookie header, and the header when they were alone', () => {
+    const shared = stripPaymentHeaders(
+      new Request('https://ai.d3.com/premium', {
+        headers: { cookie: `theme=dark; __Host-d3pay=${SESSION}; __Host-d3person=1.sig; a=b` },
+      })
+    );
+    expect(shared.headers.get('cookie')).toBe('theme=dark; a=b');
+
+    const person = stripPaymentHeaders(
+      new Request('https://ai.d3.com/premium', { headers: { cookie: '__Host-d3person=1.sig' } })
+    );
+    expect(person.headers.get('cookie')).toBeNull();
+
+    const alone = stripPaymentHeaders(
+      new Request('https://ai.d3.com/premium', { headers: { cookie: `__Host-d3pay=${SESSION}` } })
+    );
+    expect(alone.headers.get('cookie')).toBeNull();
+  });
+
+  it('removes the browser-check pass header, which is a credential even though it is not a payment', () => {
+    const stripped = stripPaymentHeaders(
+      new Request('https://ai.d3.com/premium', {
+        headers: { 'd3pay-person': '1760000000000.sig', 'user-agent': 'agent' },
+      })
+    );
+    expect(stripped.headers.get('d3pay-person')).toBeNull();
+    expect(stripped.headers.get('user-agent')).toBe('agent');
+  });
+
+  it('removes the mirrored DNA key, which a revision 2 middleware also passes', () => {
+    const stripped = stripPaymentHeaders(
+      new Request('https://ai.d3.com/mcp', {
+        headers: { 'mcp-param-dna-key': 'dna_k_1', 'user-agent': 'agent' },
+      })
+    );
+    expect(stripped.headers.get('mcp-param-dna-key')).toBeNull();
+    expect(stripped.headers.get('user-agent')).toBe('agent');
+  });
+
+  it('returns the request itself when there is nothing to strip', () => {
+    const request = new Request('https://ai.d3.com/page', {
+      headers: { 'user-agent': 'agent', cookie: 'session=abc' },
+    });
+    expect(stripPaymentHeaders(request)).toBe(request);
+  });
+});
+
+describe('stripPaymentHeaders and the URL', () => {
+  it('drops a redeemed handoff and a browser check from the query string, keeping everything else', () => {
+    const clean = stripPaymentHeaders(
+      new Request('https://ai.d3.com/premium?lang=en&d3pay_handoff=abc.def&d3pay_check=approved.1.sig&page=2')
+    );
+    expect(clean.url).toBe('https://ai.d3.com/premium?lang=en&page=2');
+    expect(stripPaymentHeaders(new Request('https://ai.d3.com/premium?d3pay_browser=abc&page=2')).url).toBe(
+      'https://ai.d3.com/premium?page=2'
+    );
+  });
+
+  it('is the same request when there is nothing to strip', () => {
+    const request = new Request('https://ai.d3.com/premium?lang=en');
+    expect(stripPaymentHeaders(request)).toBe(request);
+  });
+});

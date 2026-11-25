@@ -12,7 +12,8 @@ that contract. If you are installing an existing adapter you don't need
 it; read it to write a new one, or to understand exactly what leaves
 your infrastructure.
 
-Nothing here is negotiated or versioned per adapter. The endpoint accepts
+Nothing here is negotiated. Each decision call [names the adapter build
+that sent it](#naming-your-adapter), and the endpoint accepts
 unknown payload fields and adapters must ignore unknown response fields,
 so the contract grows additively — but a field that exists means what it
 says here.
@@ -23,6 +24,7 @@ says here.
 POST https://edge-api.d3.com/v1/decision
 Authorization: Bearer <your adapter key>
 Content-Type: application/json
+dna-adapter: <type>:<version>
 ```
 
 The key is per-org, created in the dashboard, and carries the org that
@@ -35,18 +37,60 @@ only blocking call an adapter makes. An adapter that enforces [paid
 routes](#paid-routes) keeps a second, much larger budget for the
 requests that present a payment.
 
+### Naming your adapter
+
+`dna-adapter` names the build that sent the call, on both dialects. The
+endpoint records it, and for one of our types below looks up what that
+build can do. Any other adapter sends a type of its own, such as
+`my-proxy:1.0.0`.
+
+| Type                | Integration                                                        | Calls              |
+| ------------------- | ------------------------------------------------------------------ | ------------------ |
+| `cloudflare`        | `@d3-inc/d3-dna-cloudflare-adapter`                                | `/v1/decision`     |
+| `vercel-middleware` | `@d3-inc/d3-dna-vercel-middleware`'s middleware                    | `/v1/decision`     |
+| `vercel-mcp`        | `@d3-inc/d3-dna-vercel-middleware`'s `withD3Mcp`                   | `/v1/decision`     |
+| `snippet`           | [`cloudflare-snippet/snippet.js`](./cloudflare-snippet/snippet.js) | `/v1/decision`     |
+| `openresty`         | [`openresty/`](./openresty/)                                       | `/v1/decision`     |
+| `wordpress`         | [`wordpress/`](./wordpress/)                                       | `/v1/decision`     |
+| `caddy`             | [`caddy/dna.caddy`](./caddy/dna.caddy)                             | `/v1/forward-auth` |
+| `nginx`             | [`nginx-auth-request/`](./nginx-auth-request/)                     | `/v1/forward-auth` |
+
+The version is semver and orders by its precedence: a pre-release sits
+below its release, and build metadata is ignored. A published package
+sends the version its release tag sets, without the tag's `v`. A build
+from source sends the nearest release tag reachable from its commit,
+without the `v`, then `+` and the commit's short hash of 7 to 12
+characters (`0.10.1+5ac94a8`). A recipe hardcodes its version.
+
+The endpoint ignores the header, with no error, when the value is over 64
+characters, has no colon, has a type using anything but `a-z`, `0-9` and
+`-`, or has a version that is not semver (`v1.0.0` is not). It also
+ignores one of our types on an endpoint that type does not call. It reads
+such a call, one naming a type it does not know, or a version older than
+every one it knows, by its [`adapterSet`](#declaring-what-you-can-do)
+alone, so send both.
+
+A copy of this repository that changes what an adapter does must send a
+type of its own. Sending ours makes the endpoint answer for what our
+build can do, and that site's visitors pay for it.
+
 ## Request
 
-| Field       | Type                  | Required | Meaning                                                                       |
-| ----------- | --------------------- | -------- | ----------------------------------------------------------------------------- |
-| `method`    | string                | yes      | The agent's HTTP method.                                                      |
-| `url`       | string                | yes      | Request target: path plus query, e.g. `/search?q=1`. Not an absolute URL.     |
-| `host`      | string                | yes      | The `Host` / authority the agent addressed.                                   |
-| `headers`   | object                | yes      | Lowercase-keyed subset of the agent's headers — see below.                     |
-| `requestId` | string (≤64)          | no       | Your correlation id. Links this decision to an outcome report and to logs.     |
-| `ip`        | string                | no       | The agent's IP. Used for fingerprint matching, then hashed or dropped.        |
-| `timestamp` | ISO-8601 or epoch sec | no       | When you observed the request. Informational.                                 |
-| `adapterSet`| positive integer      | no       | What you do with the answer — see **Declaring what you can do**. Absent means nothing. |
+| Field                              | Type                            | Required | Meaning                                                                                |
+| ---------------------------------- | ------------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `method`                           | string                          | yes      | The agent's HTTP method.                                                               |
+| `url`                              | string                          | yes      | Request target: path plus query, e.g. `/search?q=1`. Not an absolute URL.              |
+| `host`                             | string                          | yes      | The `Host` / authority the agent addressed.                                            |
+| `headers`                          | object                          | yes      | Lowercase-keyed subset of the agent's headers — see below.                             |
+| `requestId`                        | string (≤64)                    | no       | Your correlation id. Links this decision to an outcome report and to logs.             |
+| `ip`                               | string                          | no       | The agent's IP. Used for fingerprint matching, then hashed or dropped.                 |
+| `timestamp`                        | ISO-8601 or epoch sec           | no       | When you observed the request. Informational.                                          |
+| `adapterSet`                       | positive integer                | no       | What you do with the answer — see **Declaring what you can do**. Absent means nothing. |
+| `cookies`                          | object                          | no       | From revision 2: every cookie by name — see **Forwarding everything**.                 |
+| `droppedHeaders`, `droppedCookies` | string[]                        | no       | Names sent but dropped for length.                                                     |
+| `droppedUnlisted`                  | `{ headers, cookies }` booleans | no       | More drops than a list holds: any unlisted name may have been sent.                    |
+| `excluded`                         | `{ headers, cookies }` string[] | no       | The names the site keeps back, so they read as withheld, not absent.                   |
+| `mcp`                              | `{ method?, tool?, source }`    | no       | From revision 3: the MCP call, read from the body or the `Mcp-*` headers.              |
 
 `url` carries the query because signatures may cover `@query`; strip
 nothing. `host` must be the authority the agent used, not your origin's
@@ -62,30 +106,77 @@ signature  signature-input  signature-agent  user-agent
 content-digest  sec-purpose  x-purpose  purpose
 ```
 
-Forwarding more is harmless but pointless; forwarding fewer breaks
-verification. Do not forward cookies, `authorization`, or anything else
-the agent sent — the endpoint has no use for them.
+Forwarding fewer breaks verification. Below revision 2, forward nothing
+else: no cookies, no `authorization`.
+
+### Forwarding everything
+
+From revision 2 an adapter forwards every header and cookie so rules can
+read them, minus three sets:
+
+- **Never sent:** `authorization`, `proxy-authorization`, `cookie` (cookies
+  go by name in `cookies`), the hop headers, `mcp-param-dna-key`, and the
+  platform's own credentials (`x-vercel-oidc-token`, `cf-access-*`).
+- **The site's exclusions:** `DNA_EXCLUDE_HEADERS` and `DNA_EXCLUDE_COOKIES`,
+  echoed by name in `excluded`.
+- **Our two cookies,** which ride headers of their own (below).
+
+A value without a cap of its own stops at 2048 chars, and those values
+together at 16 384; past either, the longest go first and each is named in
+`droppedHeaders` or `droppedCookies`. [Our own cookies](#our-names) are
+outside both, since a jar full of a site's cookies would otherwise decide
+whether ours arrived. Past 128 names a list stops and
+`droppedUnlisted` says so; an exclusion list past 128 is echoed capped, with
+`droppedUnlisted` set, and every name on it is still withheld. The endpoint
+then reads every unlisted name of that kind as withheld, so a rule on one the
+request lacks is skipped; an adapter warns once when a site's list is that
+long. The endpoint reads these values for rules and does not store them.
 
 An adapter that enforces [paid routes](#paid-routes) forwards four more
 groups, each with a length past which the value is dropped rather than
 sent:
 
-| Header                                                     | Cap    | Why                                             |
-| ---------------------------------------------------------- | ------ | ----------------------------------------------- |
-| `accept`                                                    | 256    | Agent or browser — picks the `402` or the `302`  |
-| `sec-fetch-mode`, `sec-fetch-dest`, `upgrade-insecure-requests` | 32 | The same, for a navigating browser              |
-| `payment-signature`, `x-payment`                            | 4096   | x402, two names because v2 renamed the header   |
-| `payment-authorization`                                     | 128    | A D3 Pay handoff or session, for a cookie-less agent |
+| Header                                                          | Cap  | Why                                             |
+| --------------------------------------------------------------- | ---- | ----------------------------------------------- |
+| `accept`                                                        | 256  | Agent or browser — picks the `402` or the `302` |
+| `sec-fetch-mode`, `sec-fetch-dest`, `upgrade-insecure-requests` | 32   | The same, for a navigating browser              |
+| `payment-signature`, `x-payment`                                | 4096 | x402, two names because v2 renamed the header   |
+| `payment-authorization`                                         | 4096 | An MPP credential or a D3 Pay credential        |
 
 Plus `d3pay-session`, which is not a client header at all — see
 [the credential](#the-credential).
+
+### Our names
+
+Every cookie named `__Host-d3` or `__Secure-d3` followed by a lowercase
+letter, and every URL parameter named `d3pay_*`, is ours, for example
+`__Host-d3pay`, `__Host-d3person`, `__Secure-d3visitor`, `__Host-d3visitor` and
+`d3pay_handoff`.
+Names compare exactly: a cookie's trimmed, a parameter's percent-decoded, case
+included. A site's own cookie or parameter in that space reads as ours, so a
+site must not name its own that way.
+
+Two things follow, and an adapter owes both. **None of them reaches the
+origin** — the cookie leaves the `Cookie` header and the parameter leaves the
+URL, on a pass and on fail-open alike, whether or not a credential is beside
+it. And they **ride outside the shared caps** above, so a site's own cookies
+can never crowd one out: the browser sends `Path=/` cookies last, which is
+where a freshly set one of ours sits.
+
+The prefix is a label no browser enforces, so any script on the site can mint a
+name wearing it. An adapter therefore keeps a place for the three we set — each
+under the 2048-char value cap, and named in `droppedCookies` if it is longer —
+and forwards at most eight other names wearing the prefix, up to 4096 chars of
+name and value between them. The rest are dropped and **not** named: a list of
+them would overflow `droppedCookies`, which the endpoint reads as any cookie of
+ours possibly being missing.
 
 ### `content-digest` is yours to compute, never to relay
 
 RFC 9421 signatures cover headers, never body bytes. A signed request
 binds its body only indirectly, through an RFC 9530 `Content-Digest`
 header that the signature covers. So the digest the client sends is a
-*claim*: relaying it verbatim would let a tampered body verify.
+_claim_: relaying it verbatim would let a tampered body verify.
 
 An adapter computes the digest itself over the bytes it actually
 received, and overwrites whatever the client claimed:
@@ -106,14 +197,14 @@ agent traffic.
 
 `200` with a JSON decision:
 
-| Field          | Type                          | Meaning                                                       |
-| -------------- | ----------------------------- | ------------------------------------------------------------- |
-| `action`       | `"pass"` \| `"block"`         | What to do. The only field an adapter must handle.             |
-| `policyAction` | `"allow"`/`"block"`/`"log-only"` | What the matched rule asked for. `log-only` yields `pass`. |
-| `ruleId`       | string                        | The rule that decided. Absent when the org default decided.   |
-| `verdict`      | object                        | How the agent was classified — see below.                     |
-| `failOpen`     | boolean                       | Set when the endpoint itself fell back rather than evaluating. |
-| `payment`      | object                        | An answer to send instead of reaching the origin — [paid routes](#paid-routes). |
+| Field          | Type                             | Meaning                                                                         |
+| -------------- | -------------------------------- | ------------------------------------------------------------------------------- |
+| `action`       | `"pass"` \| `"block"`            | What to do. The only field an adapter must handle.                              |
+| `policyAction` | `"allow"`/`"block"`/`"log-only"` | What the matched rule asked for. `log-only` yields `pass`.                      |
+| `ruleId`       | string                           | The rule that decided. Absent when the org default decided.                     |
+| `verdict`      | object                           | How the agent was classified — see below.                                       |
+| `failOpen`     | boolean                          | Set when the endpoint itself fell back rather than evaluating.                  |
+| `payment`      | object                           | An answer to send instead of reaching the origin — [paid routes](#paid-routes). |
 
 Treat any `action` that is neither `pass` nor `block` as a failure and
 apply your fail mode. Do not invent a default.
@@ -123,12 +214,13 @@ apply your fail mode. Do not invent a default.
 Rich, and mostly for logging and response headers rather than
 enforcement. The fields adapters generally surface:
 
-| Field      | Meaning                                                                            |
-| ---------- | ---------------------------------------------------------------------------------- |
-| `tier`     | `proven` \| `claimed` \| `derived` \| `spoofed` \| `unverified`, strongest first.  |
-| `identity` | Canonical agent name when known, else the claimed `Signature-Agent` hostname.      |
-| `reason`   | `ok`, or why verification did not reach `proven` (`expired`, `unknown-key`, …).    |
-| `purpose`  | The purposes we assert this agent serves.                                          |
+| Field           | Meaning                                                                                            |
+| --------------- | -------------------------------------------------------------------------------------------------- |
+| `tier`          | `proven` \| `claimed` \| `derived` \| `spoofed` \| `unverified`, strongest first.                  |
+| `identity`      | Canonical agent name when known, else the claimed `Signature-Agent` hostname. Absent on `spoofed`. |
+| `impersonating` | On `spoofed` only: the agent whose name the request used.                                          |
+| `reason`        | `ok`, or why verification did not reach `proven` (`expired`, `unknown-key`, …).                    |
+| `purpose`       | The purposes we assert this agent serves.                                                          |
 
 Unsigned traffic is classified, not rejected: no signature means a
 `derived`, `spoofed`, or `unverified` verdict, and policy decides from
@@ -155,16 +247,21 @@ this repo implements identically.
    opt-in, never as the default.
 2. **Bound the call.** A hard timeout, not a socket default. If the
    platform cannot enforce one, it cannot host a correct adapter.
-3. **Ship a kill switch.** An unset decision endpoint means pure
-   passthrough, with no call and no dependency on us.
+3. **Ship a kill switch.** An unset decision endpoint means no call and no
+   dependency on us. Our headers, cookies and URL params still come off, by
+   name. The body goes as sent: a switch that still parses and rewrites
+   bodies may not switch a fault off. So an MCP key in `_meta` or
+   `dna_account_key` reaches the origin of a site with DNA off, and an agent
+   learns those routes only from an unpaid result, which an off adapter
+   never sends.
 4. **Block with `403`** and a JSON body:
    ```json
    { "blocked": true, "ruleId": "…", "tier": "…", "identity": "…" }
    ```
 5. **Tag every response** with `x-d3-edge`: `pass`, `block`, `fail-open`,
-   `fail-closed`, or `disabled` — plus `payment-required` and
-   `payment-redirect` on an adapter that enforces [paid
-   routes](#paid-routes).
+   `fail-closed`, or `disabled` — plus `payment-required`,
+   `payment-redirect` and `payment-stub` on an adapter that enforces
+   [paid routes](#paid-routes).
 
 Passed traffic then flows to the origin without touching our
 infrastructure.
@@ -189,18 +286,27 @@ A payment rides in one of three places, and an adapter that reads only
 some of them is wrong in a way that is hard to see — the missing case
 gets the hot-path budget, overruns it, and comes back a block:
 
-| Where                                         | Shape                                        |
-| --------------------------------------------- | -------------------------------------------- |
-| `Payment-Authorization: Payment <token>`      | ≤128 chars. For an agent with no cookie jar.  |
-| `Payment-Signature` / `X-Payment`             | ≤4096 chars. x402.                            |
-| `Cookie: __Host-d3pay=<token>`                | ≤64 chars. The site's own first-party cookie. |
-| `?d3pay_handoff=<id>.<sig>` on the URL        | 22 base64url chars, `.`, 43 more. A redemption. |
+| Where                                    | Shape                                                                                                                                               |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Payment-Authorization: Payment <token>` | ≤4096 chars. For an agent with no cookie jar.                                                                                                       |
+| `Payment-Signature` / `X-Payment`        | ≤4096 chars. x402.                                                                                                                                  |
+| `Cookie: __Host-d3pay=<token>`           | ≤64 chars. The site's own first-party cookie.                                                                                                       |
+| `?d3pay_handoff=<id>.<sig>` on the URL   | 22 base64url chars, `.`, 43 more. A redemption.                                                                                                     |
+| An MCP call's `_meta`, from revision 3   | `x402/payment` (forwarded base64 as `payment-signature`) or `dna.d3.com/key` (as `payment-authorization`). Removed from the body before the origin. |
 
 The cookie is forwarded **by name, as a header of our own**:
 `d3pay-session: <value>`. The raw `Cookie` header is the site's and
-never travels — this is the one exception to "do not forward cookies"
-above, and it is not really one, because what leaves is a single value
-the visitor obtained from us.
+never travels.
+
+An MCP call too large to read (over 1 MiB) whose body names one of these
+`_meta` keys or the `dna_account_key` argument cannot be stripped, so it is
+answered `413 { "error": "mcp_call_too_large" }` and reaches neither the
+endpoint nor the origin. So is a body that is JSON-RPC at its top level but
+was not read as one call (a batch, or a call sent under another content type)
+and carries one of them where a call does: it is answered
+`400 { "error": "mcp_call_unreadable", "detail": … }`, the endpoint's own
+answer for such a call. A body that only holds a call inside it, such as an
+upload or a document, is left alone, and a compressed body is not searched.
 
 Presence is checked against the caps and nothing else. A value past its
 cap is not a payment.
@@ -217,9 +323,11 @@ it, so the endpoint will not start one unless you say you can.
 full. Send nothing if you honour none — that is the safe answer, and the
 one the endpoint assumes.
 
-| Revision | You assert that you                                                                                                                                    |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Revision | You assert that you                                                                                                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1        | forward `Cookie: __Host-d3person` as `d3pay-person`; append the answer's `Set-Cookie` to the origin's response rather than replacing it; and strip `d3pay_browser` from the URL before the origin |
+| 2        | all of 1, and [forward everything](#forwarding-everything) but the never-sent, the site's exclusions and our two cookies                                                                          |
+| 3        | all of 2, and lift an MCP call's payment out of `_meta`, strip it before the origin, answer a `json-rpc` instruction, and put `meta` and the key argument on a JSON-RPC result                    |
 
 All or nothing. A copy of this repository that drops any one of the three
 must not claim `1` — the cost falls on that site's own visitors, who get
@@ -240,11 +348,13 @@ someone who just paid.
 
 `decision.payment` is an instruction, not a decision to make:
 
-| Field     | Meaning                                                            |
-| --------- | ------------------------------------------------------------------ |
-| `status`  | Answer with this instead of reaching the origin. Absent ⇒ pass on.  |
-| `headers` | Headers to put on the answer, or on the origin's response.          |
-| `body`    | Already serialized. Ignored when `status` is absent.                |
+| Field      | Meaning                                                                                        |
+| ---------- | ---------------------------------------------------------------------------------------------- |
+| `status`   | Answer with this instead of reaching the origin. Absent ⇒ pass on.                             |
+| `headers`  | Headers to put on the answer, or on the origin's response.                                     |
+| `body`     | Already serialized. Ignored when `status` is absent.                                           |
+| `bodyKind` | `json-rpc`: answer `200` with `{ jsonrpc, id, result: body }`, `id` from the call. Revision 3. |
+| `meta`     | On a pass, merged into a JSON-RPC result's `_meta`: the receipt. Revision 3.                   |
 
 Send it verbatim, plus `cache-control: no-store` and your `x-d3-edge`
 tag. Two rules the adapter owns:
@@ -300,17 +410,17 @@ with no call. D3 scales counts back up only if it knows that share:
   `1 / round(1 / rate)`, so each call counts a whole number of requests;
   anything else is dropped and read as `1`.
 
-| Dialect                                       | Where the rate rides                                            |
-| --------------------------------------------- | --------------------------------------------------------------- |
-| [Decision `POST`](#the-call)                  | A request header on the `POST`, beside `Authorization`. Not a payload field. |
-| [Forward-auth](#the-forward-auth-dialect)     | `?sample_rate=` on the side-request's URI. Never a header: the proxy copies the visitor's headers onto it. |
+| Dialect                                   | Where the rate rides                                                                                       |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| [Decision `POST`](#the-call)              | A request header on the `POST`, beside `Authorization`. Not a payload field.                               |
+| [Forward-auth](#the-forward-auth-dialect) | `?sample_rate=` on the side-request's URI. Never a header: the proxy copies the visitor's headers onto it. |
 
 Which requests skip the draw:
 
-| Request                                  | Sent             | Why                                                     |
-| ---------------------------------------- | ---------------- | ------------------------------------------------------- |
-| Presenting a payment                     | Always — a must  | Unsampled, someone paid for a page served to everybody free. |
-| Carrying `Signature` / `Signature-Input` | Recommended      | The traffic D3 Edge exists for, at tiny volume.          |
+| Request                                  | Sent            | Why                                                          |
+| ---------------------------------------- | --------------- | ------------------------------------------------------------ |
+| Presenting a payment                     | Always — a must | Unsampled, someone paid for a page served to everybody free. |
+| Carrying `Signature` / `Signature-Input` | Recommended     | The traffic D3 Edge exists for, at tiny volume.              |
 
 Sampling still costs a site with prices: an unsampled request on a
 priced route is served free. That is inherent to ramping, and it argues
@@ -346,6 +456,7 @@ those proxies config-file installs with no adapter code at all:
 ```
 GET https://edge-api.d3.com/v1/forward-auth
 x-d3-adapter-key: <your adapter key>
+dna-adapter: <type>:<version>
 ```
 
 The key rides in `x-d3-adapter-key`, never `Authorization` — proxies
@@ -366,25 +477,54 @@ describe a different request than the one they made:
 | `X-Forwarded-*` | `X-Forwarded-Method`, `X-Forwarded-Host`, `X-Forwarded-Uri` | Caddy, Traefik; nginx recipes |
 | `X-Original-*`  | `X-Original-URL` (absolute) + `X-Original-Method`           | ingress-nginx convention      |
 
-A recipe that builds the tuple by hand sets the `X-Forwarded-*` headers.
+A recipe that builds the tuple by hand sets the `X-Forwarded-*` headers. Once
+`X-Forwarded-Uri` arrives, the endpoint reads that convention alone: a tuple
+missing its host or method is malformed, never completed from an `X-Original-*`
+a visitor could have set. An `X-Forwarded-Uri` with a scheme
+(`http://host/path`, or `http:/path`, which Go also accepts) is read by
+its path and query, the page the proxy serves.
 
 The client IP comes only from a recipe-pinned `x-d3-real-ip`; raw
 `X-Forwarded-For` is client-spoofable and deliberately never read, and
 `X-Real-IP` cannot be used — Cloudflare-fronted endpoints rewrite it to
 the connecting IP, which is the enforcement point's own egress. The client's own headers — the signature set from [Which
 headers to forward](#which-headers-to-forward) — arrive because the proxy
-copies them onto the side-request; recipes must strip `Cookie`,
-`Authorization`, `Proxy-Authorization`, and any inbound `x-d3-*`.
+copies them onto the side-request; below revision 2, recipes must strip
+`Cookie`, `Authorization`, `Proxy-Authorization`, and any inbound `x-d3-*`.
+A recipe must set `dna-adapter` itself, overwriting any copy the visitor
+sent.
 `requestId` is generated server-side, and there are no outcome reports —
 there is no adapter code to send one.
 
+### Revision 2
+
+A proxy declares its revision in `x-d3-adapter-set`, the header form of
+[`adapterSet`](#declaring-what-you-can-do). Declare at most `2`: revision 3
+rewrites bodies, which no forward-auth hook can. From `2` the endpoint:
+
+- reads every header and cookie on the side-request but `Authorization`,
+  `Proxy-Authorization`, the proxy's own headers (the tuple, `Via`,
+  `X-Forwarded-For`), and those the endpoint's CDN adds (`cf-*`,
+  `cdn-loop`, `x-real-ip`);
+- drops on arrival the names the proxy lists, comma-separated, in
+  `x-d3-excluded-headers` and `x-d3-excluded-cookies`, and reads them as
+  withheld, as an [exclusion](#forwarding-everything) reads;
+- reads `d3pay-session` and `d3pay-person`, which the proxy sets from the
+  `__Host-d3pay` and `__Host-d3person` cookies;
+- answers a gate, below.
+
+The proxy sets `x-d3-adapter-set`, both exclusion lists and both `d3pay-*`
+headers itself, overwriting any copy the visitor sent. A
+visitor's own exclusion list would mark a header withheld and skip the rule
+condition that should hold it.
+
 ### Response
 
-The status code is the whole answer:
+Below revision 2, the status code is the whole answer:
 
-| Status | Meaning                                                                                                             |
-| ------ | -------------------------------------------------------------------------------------------------------------------- |
-| `200`  | Continue. `x-d3-edge: pass` — or `x-d3-edge: fail-open` plus an `x-d3-reason` when the endpoint fell back (see below). |
+| Status | Meaning                                                                                                                                                                                                                  |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `200`  | Continue. `x-d3-edge: pass` — or `x-d3-edge: fail-open` plus an `x-d3-reason` when the endpoint fell back (see below).                                                                                                   |
 | `403`  | Deny. The JSON block body from [What an adapter must do](#what-an-adapter-must-do), plus `x-d3-rule-id` / `x-d3-tier` headers — nginx discards a deny body; Caddy, Traefik, and Envoy return it to the visitor verbatim. |
 
 Nothing else is ever returned on purpose. In particular, **a dead,
@@ -397,18 +537,36 @@ Fail-open moves server-side in this dialect; the proxy-side recipe still
 needs its own fail-open for the case where the endpoint is unreachable
 (each recipe documents its pattern).
 
-### No paid routes
+### Paid routes from revision 2
 
-The status code is the whole answer, so there is nowhere to put a
-`402` body, a session cookie, or a receipt. The endpoint knows which
-dialect it is answering and **evaluates paid routes only for the JSON
-one**: a priced route reached through forward-auth is answered `200` or
-`403` like any other, never paywalled and never charged.
+Below revision 2 the endpoint evaluates no gate: a priced route reached
+through forward-auth is answered `200` or `403` like any other, never
+paywalled and never charged.
 
-This is deliberate, not an oversight to work around in a recipe. A
-dialect that dropped the instruction would serve a priced route free —
-and, worse, settle a presented payment and throw the receipt away. If
-you price routes, enforce them with an adapter that runs code.
+From revision 2 it answers a gate as the JSON dialect's
+[payment instruction](#the-answer) would, already rendered. The proxy
+returns it whole, status, body and headers:
+
+| Answer                                 | The proxy                                                                                                                                                                                                                                                                                      |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `402`, `x-d3-edge: payment-required`   | Returns it: a price, or the browser check                                                                                                                                                                                                                                                      |
+| `3xx`, `x-d3-edge: payment-redirect`   | Returns it, with no body                                                                                                                                                                                                                                                                       |
+| `200`, `x-d3-edge: payment-stub`       | Returns it in place of the page, and never calls the origin                                                                                                                                                                                                                                    |
+| `502`, `x-d3-edge: fail-closed`        | Returns it: a payment could not be taken                                                                                                                                                                                                                                                       |
+| `403`, `x-d3-edge: block`, HTML        | Returns it: a block rule's browser check, which lets the visitor through once it passes                                                                                                                                                                                                        |
+| `200`, `x-d3-edge: pass`, with headers | Calls the origin, then puts the answer's headers on the origin's response, as in [Passing clean, returning rich](#passing-clean-returning-rich). An answer's `Cache-Control: no-store` replaces the origin's, and no other value from it does; a paid page without it is narrowed to `private` |
+
+[Failing closed](#failing-closed-exactly-here) and the
+[budget](#the-budget) apply as written: a request presenting a payment
+gets the longer timeout, and never falls open. Declare `2` only if your
+recipe does all of this and keeps DNA's credentials from the origin.
+
+A visitor can send `x-d3-adapter-set: 2` through a recipe that doesn't
+set it, and that recipe reads any `2xx` as allow. So on this dialect no
+answer that refuses the page is a `2xx`: a block rule's check, a `200`
+on the JSON dialect, comes here as a `403`. The one other `2xx`,
+`payment-stub`, only replaces a page that would otherwise be served
+free.
 
 ### The body is usually unattested
 
@@ -424,8 +582,10 @@ receives and verifies fully.
 ## Writing a new adapter
 
 The shortest correct implementation in this repo is
-[`cloudflare-snippet/snippet.js`](./cloudflare-snippet/snippet.js) — one
-self-contained file, no imports, all of the above in about 160 lines.
-Read it as the reference, then port. If you build one for a platform we
+[`cloudflare-snippet/src/snippet.ts`](./cloudflare-snippet/src/snippet.ts)
+— all of the above over the helpers in
+`packages/protocol`. Read it as the reference, then port. The pasted
+`snippet.js` beside it is that source bundled into one self-contained
+file, so read the source rather than the artifact. If you build one for a platform we
 don't cover, we'd like to hear about it:
 [hello@d3.com](mailto:hello@d3.com).

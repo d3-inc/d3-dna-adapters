@@ -5,13 +5,110 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The recipe check below compares against the base branch.
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - run: npm ci
-      - run: npm test
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          cache: true
+      - run: pnpm install --frozen-lockfile
+      # Before the rest: a stale snippet.js means every check below ran against
+      # a file that is not what cloudflare-snippet/src/ builds.
+      - run: pnpm check:snippet
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      # A changed recipe names a higher version, or the worker reads it by an older build's row (ADR 0092).
+      # Here, not in a job of its own: `test` is the check a merge requires.
+      - if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-recipe-versions.ts "origin/$BASE_REF"
+      # The worker grants a build no mechanism this record does not prove. On a push there is no base.
+      - env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-proven-mechanisms.ts ${BASE_REF:+"origin/$BASE_REF"}
+      # tsup's declaration build is the check that the published types still compile.
+      - run: pnpm build
+
+  caddy:
+    name: caddy ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest Caddy dna.caddy supports and the newest, by checksum: moving
+        # either is a deliberate edit here and in caddy/README.md.
+        include:
+          - version: 2.11.7
+            sha512: a7a433a1b133efc3c8d10eb0b99d52a24b5ef5c322dc77f5282182b1c0402139ab83f3a99f0c52409df77d20123fb0b523edad8a66d8f5e49136197bf61ef0e7
+          - version: 2.11.8
+            sha512: c863699eee84c6b410573de2ec67af81d07eb054f9020bb98f3c6cb256fea4be2fd1acfbd39110c649c3338282593bba3d3ed6424d91b7f5675e8b877a8999e9
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - env:
+          CADDY_VERSION: ${{ matrix.version }}
+          CADDY_SHA512: ${{ matrix.sha512 }}
+        # Outside the checkout: its caddy/ directory would block the binary's name.
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl -fsSL -o caddy.tar.gz "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz"
+          echo "${CADDY_SHA512}  caddy.tar.gz" | sha512sum -c -
+          tar -xzf caddy.tar.gz caddy
+          sudo install caddy /usr/local/bin/caddy
+      - run: bash caddy/test/run.sh
+
+  # The check the ruleset requires: the matrix jobs carry their Caddy version in their names.
+  caddy-all:
+    name: caddy
+    needs: caddy
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULT: ${{ needs.caddy.result }}
+        run: test "$RESULT" = success
+
+  openresty:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # OpenResty runs in Docker, pinned by digest in run.sh: moving it is a deliberate edit there.
+      - run: bash openresty/test/run.sh
+
+  wordpress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # WordPress, PHP and MariaDB run in Docker, pinned by digest in run.sh: moving one is a deliberate edit there.
+      - run: bash wordpress/test/run.sh
+      # The release zip, built and checked as a wordpress-v* tag builds it.
+      - run: bash wordpress/release.sh

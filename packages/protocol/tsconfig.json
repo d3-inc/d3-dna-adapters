@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Web-standard libs only — no @cloudflare/* types. This is design
+    // invariant #3 (portable core) made mechanical.
+    "lib": ["ES2022", "WebWorker"],
+    "types": [],
+    // Not ours to fix: tsup's dts build hard-codes `baseUrl: compilerOptions.baseUrl || "."`
+    // (tsup/dist/rollup.js), so TS 6 raises TS5101 on a `baseUrl` this repo never sets and
+    // the declaration build dies. Drop this the moment tsup stops injecting it — TS 7
+    // removes `baseUrl` outright, so it stops being silenceable then.
+    "ignoreDeprecations": "6.0"
+  },
+  "include": ["src", "vitest.config.ts"]
+}
