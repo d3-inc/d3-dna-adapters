@@ -270,6 +270,8 @@ foreach ($parity->settings as $case) {
     // The one deliberate difference: the unpaid budget defaults to DEFAULT_TIMEOUT_MS.
     $timeoutSet = $env['DNA_TIMEOUT_MS'] ?? $env['POLICY_TIMEOUT_MS'] ?? null;
     if (!(is_numeric($timeoutSet) && (float) $timeoutSet > 0)) $want['timeoutMs'] = P::DEFAULT_TIMEOUT_MS;
+    // And this port does not sample: every request is sent, so it states no rate.
+    unset($want['sampleRate']);
     same('readAdapterSettings: ' . $case->name, [
         'endpoint' => $s['endpoint'], 'apiKey' => $s['api_key'], 'failMode' => $s['fail_mode'],
         'timeoutMs' => $s['timeout_ms'], 'paymentTimeoutMs' => $s['payment_timeout_ms'],

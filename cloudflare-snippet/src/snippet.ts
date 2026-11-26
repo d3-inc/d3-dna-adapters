@@ -46,6 +46,7 @@ import {
   PERSON_PASS_HEADER,
   PERSON_PASS_MAX_LENGTH,
 } from '../../packages/protocol/src/pay-session';
+import { SAMPLE_RATE_HEADER } from '../../packages/protocol/src/adapter/sampling';
 import type { ClientDecision, RequestPayload } from '../../packages/protocol/src/types';
 import { requestPresentsPayment, stripPaymentHeaders } from '../../packages/protocol/src/x402/payment-header';
 
@@ -64,7 +65,7 @@ export interface SnippetConfig {
   paymentTimeoutMs: number;
   /** `open` passes traffic when the decision call fails. A request presenting a payment never falls open. */
   failMode: 'open' | 'closed';
-  /** Fraction of requests that get a decision call. A request presenting a payment is always sampled. */
+  /** Fraction of requests that get a decision call, as 1/n. A request presenting a payment is always sampled. Below 1, each call sends `x-d3-sample-rate`. */
   sampleRate: number;
   alwaysSampleSigned: boolean;
   /** Comma-separated names DNA is never sent; it reads each as kept back rather than absent. */
@@ -83,7 +84,7 @@ const DEFAULT_ENDPOINT = 'https://edge-api.d3.com/v1/decision';
 const ADAPTER_SET = 2;
 
 /** Our build of this file, by its own version. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter). */
-const DNA_ADAPTER = 'snippet:2.0.1';
+const DNA_ADAPTER = 'snippet:2.1.0';
 
 /** Snippets get 2 MB of memory, so only bodies up to this size are hashed. */
 const MAX_HASHED_BODY_BYTES = 1_000_000;
@@ -117,7 +118,8 @@ export function createSnippet(config: SnippetConfig): { fetch(request: Request):
       // Still stripped, though: a credential or a browser-check answer must not
       // reach the origin because a draw went the other way, and the stripper
       // returns the request untouched when there is nothing on it.
-      if (!paying && !isSampled(request, config)) return fetch(stripPaymentHeaders(request));
+      const sampleRate = drawSampleRate(request, config, paying);
+      if (sampleRate === null) return fetch(stripPaymentHeaders(request));
 
       let decision: ClientDecision;
       try {
@@ -127,6 +129,8 @@ export function createSnippet(config: SnippetConfig): { fetch(request: Request):
             'content-type': 'application/json',
             authorization: `Bearer ${apiKey}`,
             'dna-adapter': DNA_ADAPTER,
+            // Absent reads as 1 at the endpoint, so a site that doesn't sample sends nothing new.
+            ...(config.sampleRate < 1 ? { [SAMPLE_RATE_HEADER]: String(sampleRate) } : {}),
           },
           body: JSON.stringify(await extractPayload(request, exclude)),
           signal: AbortSignal.timeout(paying ? config.paymentTimeoutMs : config.timeoutMs),
@@ -177,12 +181,20 @@ function exclusionsOf(config: SnippetConfig): ForwardExclusions {
   return headers.length === 0 && cookies.length === 0 ? NO_EXCLUSIONS : { headers, cookies };
 }
 
-function isSampled(request: Request, config: SnippetConfig): boolean {
-  if (Math.random() < config.sampleRate) return true;
+// null means sampled out. An always-sent request reports 1: it stands only for itself.
+function drawSampleRate(request: Request, config: SnippetConfig, paying: boolean): number | null {
+  if (paying) return 1;
 
-  return (
-    config.alwaysSampleSigned && (request.headers.has('signature') || request.headers.has('signature-input'))
-  );
+  if (config.alwaysSampleSigned && isSigned(request)) return 1;
+
+  // 1/n, at most 1/1000: the endpoint counts a call a whole number of times and reads a rate below 0.001 as 1.
+  const rate =
+    config.sampleRate > 0 ? 1 / Math.min(Math.round(1 / config.sampleRate), 1000) : config.sampleRate;
+  return Math.random() < rate ? rate : null;
+}
+
+function isSigned(request: Request): boolean {
+  return request.headers.has('signature') || request.headers.has('signature-input');
 }
 
 /**

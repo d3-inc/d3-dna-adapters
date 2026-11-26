@@ -1,5 +1,6 @@
 import { edgeLogger } from '../logging/logger';
 import { DNA_ADAPTER_HEADER } from './adapter-name';
+import { SAMPLE_RATE_HEADER } from './sampling';
 import type { BuiltAnswer, ClientDecision, PolicyClient, RequestPayload, ResponseReport } from '../types';
 
 const log = edgeLogger('policy-client');
@@ -13,6 +14,8 @@ export interface HttpPolicyClientOptions {
   timeoutMs: number;
   /** This build's `dna-adapter` value (`adapterNameOf`); absent, the call names no build. */
   adapterName?: string;
+  /** The rate this request was drawn at; absent on a site that does not sample, which the worker reads as 1. */
+  sampleRate?: number;
 }
 
 const REPORT_TIMEOUT_MS = 3000;
@@ -51,6 +54,7 @@ export function createHttpPolicyClient(
           headers: {
             ...jsonHeaders(opts.bearer),
             ...(opts.adapterName === undefined ? {} : { [DNA_ADAPTER_HEADER]: opts.adapterName }),
+            ...(opts.sampleRate === undefined ? {} : { [SAMPLE_RATE_HEADER]: String(opts.sampleRate) }),
           },
           body: JSON.stringify(payload),
           signal: controller.signal,

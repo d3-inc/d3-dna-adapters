@@ -517,10 +517,13 @@ function withPaymentHeaders(response, payment) {
   return copy;
 }
 
+// packages/protocol/src/adapter/sampling.ts
+var SAMPLE_RATE_HEADER = 'x-d3-sample-rate';
+
 // cloudflare-snippet/src/snippet.ts
 var DEFAULT_ENDPOINT = 'https://edge-api.d3.com/v1/decision';
 var ADAPTER_SET = 2;
-var DNA_ADAPTER = 'snippet:2.0.1';
+var DNA_ADAPTER = 'snippet:2.1.0';
 var MAX_HASHED_BODY_BYTES = 1e6;
 function dnaEndpoint(config) {
   if (String(config.enabled).trim().toLowerCase() === 'false') return void 0;
@@ -538,7 +541,8 @@ function createSnippet(config) {
     async fetch(request) {
       if (!endpoint) return withEdgeHeader(await fetch(request), 'disabled');
       const paying = requestPresentsPayment(request);
-      if (!paying && !isSampled(request, config)) return fetch(stripPaymentHeaders(request));
+      const sampleRate = drawSampleRate(request, config, paying);
+      if (sampleRate === null) return fetch(stripPaymentHeaders(request));
       let decision;
       try {
         const res = await fetch(endpoint, {
@@ -547,6 +551,8 @@ function createSnippet(config) {
             'content-type': 'application/json',
             authorization: `Bearer ${apiKey}`,
             'dna-adapter': DNA_ADAPTER,
+            // Absent reads as 1 at the endpoint, so a site that doesn't sample sends nothing new.
+            ...(config.sampleRate < 1 ? { [SAMPLE_RATE_HEADER]: String(sampleRate) } : {}),
           },
           body: JSON.stringify(await extractPayload(request, exclude)),
           signal: AbortSignal.timeout(paying ? config.paymentTimeoutMs : config.timeoutMs),
@@ -579,11 +585,15 @@ function exclusionsOf(config) {
   if (overflow !== void 0) console.warn(`d3-edge: ${overflow}`);
   return headers.length === 0 && cookies.length === 0 ? NO_EXCLUSIONS : { headers, cookies };
 }
-function isSampled(request, config) {
-  if (Math.random() < config.sampleRate) return true;
-  return (
-    config.alwaysSampleSigned && (request.headers.has('signature') || request.headers.has('signature-input'))
-  );
+function drawSampleRate(request, config, paying) {
+  if (paying) return 1;
+  if (config.alwaysSampleSigned && isSigned(request)) return 1;
+  const rate =
+    config.sampleRate > 0 ? 1 / Math.min(Math.round(1 / config.sampleRate), 1e3) : config.sampleRate;
+  return Math.random() < rate ? rate : null;
+}
+function isSigned(request) {
+  return request.headers.has('signature') || request.headers.has('signature-input');
 }
 async function extractPayload(request, exclude) {
   const url = new URL(request.url);

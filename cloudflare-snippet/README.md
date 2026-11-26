@@ -25,18 +25,18 @@ response carries an `x-d3-edge` header once it is.
 `CONFIG` at the top of the file, mapping onto the worker adapters'
 variables where they exist:
 
-| Constant             | Worker equivalent        | Default                               | What it does                                                                        |
-| -------------------- | ------------------------ | ------------------------------------- | ----------------------------------------------------------------------------------- |
-| `apiKey`             | `DNA_API_KEY`            | —                                     | Your org's key, bearer for the decision call. Unset means pure passthrough.         |
-| `enabled`            | `DNA_ENABLED`            | `true`                                | `false` turns DNA off without removing the key: pure passthrough.                   |
-| `failMode`           | `DNA_FAIL_MODE`          | `open`                                | `open`: pass traffic when the call fails. `closed`: block instead.                  |
-| `timeoutMs`          | `DNA_TIMEOUT_MS`         | `500`                                 | Hard budget for the decision call.                                                  |
-| `paymentTimeoutMs`   | `DNA_PAYMENT_TIMEOUT_MS` | `10000`                               | Budget for a request presenting a payment — settlement happens inside it.           |
-| `endpoint`           | `DNA_ENDPOINT`           | `https://edge-api.d3.com/v1/decision` | Decision endpoint, not in `CONFIG` by default. Add it only if we give you another.  |
-| `sampleRate`         | —                        | `1`                                   | Fraction of requests that get a decision call. Unsampled requests return untouched. |
-| `alwaysSampleSigned` | —                        | `false`                               | Call on every request carrying signature headers, whatever `sampleRate` says.       |
-| `excludeHeaders`     | `DNA_EXCLUDE_HEADERS`    | `''`                                  | Comma-separated header names DNA is never sent — see What DNA is sent.              |
-| `excludeCookies`     | `DNA_EXCLUDE_COOKIES`    | `''`                                  | Comma-separated cookie names DNA is never sent.                                     |
+| Constant             | Worker equivalent        | Default                               | What it does                                                                                                     |
+| -------------------- | ------------------------ | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `apiKey`             | `DNA_API_KEY`            | —                                     | Your org's key, bearer for the decision call. Unset means pure passthrough.                                      |
+| `enabled`            | `DNA_ENABLED`            | `true`                                | `false` turns DNA off without removing the key: pure passthrough.                                                |
+| `failMode`           | `DNA_FAIL_MODE`          | `open`                                | `open`: pass traffic when the call fails. `closed`: block instead.                                               |
+| `timeoutMs`          | `DNA_TIMEOUT_MS`         | `500`                                 | Hard budget for the decision call.                                                                               |
+| `paymentTimeoutMs`   | `DNA_PAYMENT_TIMEOUT_MS` | `10000`                               | Budget for a request presenting a payment — settlement happens inside it.                                        |
+| `endpoint`           | `DNA_ENDPOINT`           | `https://edge-api.d3.com/v1/decision` | Decision endpoint, not in `CONFIG` by default. Add it only if we give you another.                               |
+| `sampleRate`         | —                        | `1`                                   | Fraction of requests that get a decision call, as 1/n and at least `0.001`. Unsampled requests return untouched. |
+| `alwaysSampleSigned` | —                        | `false`                               | Call on every request carrying signature headers, whatever `sampleRate` says.                                    |
+| `excludeHeaders`     | `DNA_EXCLUDE_HEADERS`    | `''`                                  | Comma-separated header names DNA is never sent — see What DNA is sent.                                           |
+| `excludeCookies`     | `DNA_EXCLUDE_COOKIES`    | `''`                                  | Comma-separated cookie names DNA is never sent.                                                                  |
 
 A `CONFIG` from an earlier copy of this file still works pasted into this
 one: `adapterKey` is read as `apiKey`, and `policyWorkerUrl` as `endpoint`.
@@ -169,6 +169,9 @@ routes.
   `alwaysSampleSigned: true` and send
   `curl -sI -H 'signature-input: x' https://www.example.com/` — that
   request is guaranteed a decision call and comes back tagged.
+- Below `1`, each decision call carries `x-d3-sample-rate` — the rate, or
+  `1` for a paying or (with `alwaysSampleSigned`) signed request — so the
+  dashboard can scale counts back up ([protocol](../PROTOCOL.md#sampling)).
 - The snippet makes one call per sampled request — the decision call. There is
   no after-response outcome report (Snippets have no `waitUntil`);
   requests are classified and logged at decision time.

@@ -5254,7 +5254,8 @@
         "exclude": {
           "headers": [],
           "cookies": []
-        }
+        },
+        "sampleRate": 1
       }
     },
     {
@@ -5272,7 +5273,8 @@
         "exclude": {
           "headers": [],
           "cookies": []
-        }
+        },
+        "sampleRate": 1
       }
     },
     {
@@ -5289,7 +5291,8 @@
         "exclude": {
           "headers": [],
           "cookies": []
-        }
+        },
+        "sampleRate": 1
       }
     },
     {
@@ -5307,7 +5310,8 @@
         "exclude": {
           "headers": [],
           "cookies": []
-        }
+        },
+        "sampleRate": 1
       }
     },
     {
@@ -5325,7 +5329,8 @@
         "exclude": {
           "headers": [],
           "cookies": []
-        }
+        },
+        "sampleRate": 1
       }
     },
     {
@@ -5356,7 +5361,8 @@
             "Sid",
             "sid"
           ]
-        }
+        },
+        "sampleRate": 1
       }
     },
     {
@@ -5376,7 +5382,8 @@
         "exclude": {
           "headers": [],
           "cookies": []
-        }
+        },
+        "sampleRate": 1
       }
     },
     {
@@ -5398,7 +5405,8 @@
         "exclude": {
           "headers": [],
           "cookies": []
-        }
+        },
+        "sampleRate": 1
       }
     },
     {
@@ -5417,7 +5425,8 @@
         "exclude": {
           "headers": [],
           "cookies": []
-        }
+        },
+        "sampleRate": 1
       }
     },
     {
@@ -5438,7 +5447,8 @@
         "exclude": {
           "headers": [],
           "cookies": []
-        }
+        },
+        "sampleRate": 1
       }
     }
   ]

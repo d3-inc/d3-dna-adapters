@@ -1,5 +1,5 @@
 import { FORWARDS_ALL_SINCE, type ClientDecision, type ResponseReport } from '@d3-inc/d3-dna-protocol';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { D3MiddlewareConfig } from './env';
 import { createD3Middleware, type MiddlewareDeps } from './middleware';
 
@@ -570,5 +570,50 @@ describe('the request the site receives', () => {
       'user-agent': 'TestBot/1.0',
       'x-d3-tier': 'verified',
     });
+  });
+});
+
+describe('sampling', () => {
+  const SAMPLED: D3MiddlewareConfig = { ...BASE_CONFIG, sampleRate: 0.25 };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('sends a request the draw hits, stating its rate', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.1);
+    const h = harness({ action: 'pass' });
+    await createD3Middleware(SAMPLED, h.deps)(siteRequest());
+    expect(h.policyCalls[0].headers['x-d3-sample-rate']).toBe('0.25');
+  });
+
+  it('continues a request the draw misses without a decision or a report, credentials stripped', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.9);
+    const h = harness({ action: 'block' });
+    const request = new Request('https://ai.d3.com/page', { headers: { 'x-payment': 'b'.repeat(8192) } });
+    const res = await createD3Middleware(SAMPLED, h.deps)(request);
+    await h.flushReports();
+
+    expect(res.headers.get('x-d3-edge')).toBe('unsampled');
+    expect(h.policyCalls).toHaveLength(0);
+    expect(h.reportCalls).toHaveLength(0);
+    expect(h.nextCalls[0]?.request?.headers?.get('x-payment')).toBeNull();
+  });
+
+  it('always sends a signed or paying request, at rate 1', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.9);
+    const h = harness({ action: 'pass' });
+    const mw = createD3Middleware(SAMPLED, h.deps);
+    await mw(new Request('https://ai.d3.com/page', { headers: { signature: 'sig1=:abc:' } }));
+    await mw(
+      new Request('https://ai.d3.com/page', { headers: { 'payment-signature': 'eyJ4NDAyVmVyc2lvbiI6Mn0=' } })
+    );
+    expect(h.policyCalls.map((c) => c.headers['x-d3-sample-rate'])).toEqual(['1', '1']);
+  });
+
+  it('states no rate when it does not sample', async () => {
+    const h = harness({ action: 'pass' });
+    await createD3Middleware(BASE_CONFIG, h.deps)(siteRequest());
+    expect(h.policyCalls[0].headers).not.toHaveProperty('x-d3-sample-rate');
   });
 });

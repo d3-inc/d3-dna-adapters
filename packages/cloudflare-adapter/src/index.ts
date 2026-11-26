@@ -5,6 +5,7 @@ import {
   builtAnswerOf,
   configureEdgeLogging,
   createHttpPolicyClient,
+  drawSampleRate,
   edgeLogger,
   edgeRequestPresentsPayment,
   extractEdgeRequest,
@@ -83,12 +84,14 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
     // apart, and it never decodes one (ADR 0032 decision 1); one lifted from an
     // MCP call's body counts when the payload carries it.
     const paying = edgeRequestPresentsPayment(request, payload);
+    const sampleRate = drawSampleRate(request, settings.sampleRate, paying);
     const client = createHttpPolicyClient(
       {
         url: policy.url,
         bearer: policy.bearer,
         timeoutMs: paying ? settings.paymentTimeoutMs : settings.timeoutMs,
         adapterName: ADAPTER_NAME,
+        sampleRate: settings.sampleRate < 1 && sampleRate !== null ? sampleRate : undefined,
       },
       policy.fetch
     );
@@ -138,6 +141,9 @@ function createEnforcedFetch<E extends Env>(originFetch: OriginFetch<E>): FetchH
     if (mcp?.unreadableCredential) {
       return reportBuilt('fail-closed', unreadableCallResponse(mcp.unreadableReason));
     }
+
+    // No decision and no report: an unsampled request costs what the adapter costs uninstalled.
+    if (sampleRate === null) return withEdgeHeader(await originFetch(forOrigin(), env, ctx), 'unsampled');
 
     let decision: ClientDecision;
     // I/O unfreezes the Workers clock, so Date.now() advances across the fetch.
