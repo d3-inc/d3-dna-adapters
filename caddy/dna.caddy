@@ -7,6 +7,8 @@
 # Sends DNA every header and cookie but Authorization and Proxy-Authorization;
 # DNA ignores the names in DNA_EXCLUDE_HEADERS and DNA_EXCLUDE_COOKIES. Serves
 # every rule: Let in, Block, Charge, Require a human, Charge or require a human.
+# Behind Cloudflare's proxy, DNA_TRUST_CLOUDFLARE=true sends the visitor's IP
+# from CF-Connecting-IP; read README.md first: a Cloudflare Worker can forge it.
 
 (dna_payment_unavailable) {
 	header Content-Type "application/json; charset=utf-8"
@@ -79,6 +81,19 @@ http://:8114 {
 		@no_host vars_regexp {http.request.host} ^\.*$
 		respond @no_host 400
 
+		# DNA verifies crawlers on this IP. A Worker can set CF-Connecting-IP to
+		# anything; Cloudflare marks its requests with CF-Worker (README.md).
+		vars d3_client_ip {client_ip}
+		@cloudflare_proxied {
+			expression `{env.DNA_TRUST_CLOUDFLARE} == "true"`
+			# https://www.cloudflare.com/ips/ — caddy/test/cloudflare-ranges.mjs checks this list.
+			remote_ip 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+			# One address only: no list, no empty value.
+			header_regexp CF-Connecting-IP ^[0-9A-Fa-f.:]+$
+			not header CF-Worker *
+		}
+		vars @cloudflare_proxied d3_client_ip {http.request.header.CF-Connecting-IP}
+
 		# The browser-check pass is not a payment, so it never buys this budget.
 		@paying expression `{http.request.header.Payment-Signature} != "" || {http.request.header.X-Payment} != "" || {http.request.header.Payment-Authorization} != "" || {http.request.cookie.__Host-d3pay} != "" || query({'d3pay_handoff': '*'})`
 		vars d3_gateway 127.0.0.1:8113
@@ -98,10 +113,10 @@ http://:8114 {
 			header_up X-Forwarded-Proto {scheme}
 			header_up x-d3-adapter-set 2
 			# Our build of this file, by its own version. A copy you change sends a type of its own (PROTOCOL.md, Naming your adapter).
-			header_up dna-adapter caddy:1.0.1
+			header_up dna-adapter caddy:1.1.0
 			header_up x-d3-adapter-key {env.DNA_API_KEY}
 			# The pinned client IP: the endpoint never trusts X-Forwarded-For.
-			header_up x-d3-real-ip {client_ip}
+			header_up x-d3-real-ip {vars.d3_client_ip}
 			# Our two cookies by name. The rest of the jar goes too: revision 2
 			# forwards every header and cookie but the site's exclusions. Ours leave
 			# the jar, so an oversized one never crosses twice.
