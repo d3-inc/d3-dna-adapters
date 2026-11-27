@@ -28,6 +28,9 @@ jobs:
       - run: node scripts/check-registry.ts
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      # Cloudflare can change its ranges between releases of dna.caddy.
+      - if: success() || failure()
+        run: node caddy/test/cloudflare-ranges.mjs
       # A failed scheduled run notifies only whoever last edited the cron line, so it opens an issue too.
       - if: failure()
         env:
@@ -38,5 +41,5 @@ jobs:
           if [ -n "$open" ]; then
             gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "Failed again: $RUN_URL"
           else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title 'Registry check failed' --body "The daily registry check found a version no reviewed release published, or an old repo name that stopped redirecting: $RUN_URL"
+            gh issue create --repo "$GITHUB_REPOSITORY" --title 'Registry check failed' --body "The daily registry check found a version no reviewed release published, an old repo name that stopped redirecting, or Cloudflare ranges dna.caddy no longer lists: $RUN_URL"
           fi

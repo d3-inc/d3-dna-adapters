@@ -15,10 +15,19 @@ up() { for _ in $(seq 1 40); do curl -s -o /dev/null "$1" && return 0; sleep 0.2
 node ../../test/origin.mjs & pids+=($!)
 node mock-worker.mjs & worker=$!; pids+=($worker)
 up 127.0.0.1:3000; up 127.0.0.1:9000/__log
-caddy run --config site.Caddyfile --adapter caddyfile >caddy.log 2>&1 & pids+=($!)
-up 127.0.0.1:8080; up 127.0.0.1:8085
+: >caddy.log
+start_caddy() {
+  caddy run --config site.Caddyfile --adapter caddyfile >>caddy.log 2>&1 & caddy=$!; pids+=($caddy)
+  up 127.0.0.1:8080; up 127.0.0.1:8085
+}
+start_caddy
 
 node run.mjs live; live=$?
+# The opt-in is read from Caddy's environment, so it takes a restart.
+kill "$caddy"; wait "$caddy" 2>/dev/null
+export DNA_TRUST_CLOUDFLARE=true
+start_caddy
+node run.mjs cloudflare; cloudflare=$?
 kill "$worker"; wait "$worker" 2>/dev/null
 node run.mjs dead; dead=$?
-exit $(( live || dead ))
+exit $(( live || cloudflare || dead ))

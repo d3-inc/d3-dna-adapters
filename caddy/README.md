@@ -119,6 +119,7 @@ To DNA:
 - Host, method and URL come from the request Caddy received, and the key and
   revision from `dna.caddy`. Behind a load balancer, set `trusted_proxies` and
   turn on `trusted_proxies_strict`, or a visitor can choose the IP DNA sees.
+  Behind Cloudflare, read [Behind Cloudflare](#behind-cloudflare).
 - No request body, so a signed `POST` or `PUT` gets a capped verdict
   (`claimed`, reason `body-unattested`); `GET` and `HEAD` are unaffected.
 
@@ -130,6 +131,41 @@ origin sees.
 A URL without those three reaches your origin byte for byte. One that carries
 them, which only happens on the way back from DNA, has the rest of its query
 rewritten in Caddy's encoding, sorted by name.
+
+## Behind Cloudflare
+
+Behind Cloudflare's proxy, every visitor connects from a Cloudflare address, so
+DNA sees Cloudflare as the visitor. A real crawler then fails its IP check and
+shows as an impersonator. Set `DNA_TRUST_CLOUDFLARE=true` in Caddy's
+environment to send DNA the visitor's address from `CF-Connecting-IP` instead.
+
+`dna.caddy` uses `CF-Connecting-IP` only when all of these hold:
+
+| Condition                                               | Why                                                                                                                |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| The connection comes from Cloudflare's published ranges | Anyone else can send the header                                                                                    |
+| The request has no `CF-Worker` header                   | A Cloudflare Worker can set `CF-Connecting-IP` to any address; Cloudflare adds `CF-Worker` to every Worker request |
+
+Otherwise DNA gets `{client_ip}`, the client address Caddy works out, as
+without the setting. Do not put Cloudflare's ranges in `trusted_proxies` with
+`client_ip_headers CF-Connecting-IP`: that trusts the header with no Worker
+check. Leave Pseudo IPv4 off: with "Overwrite Headers" Cloudflare puts a made-up
+address in `CF-Connecting-IP`, and IPv6 crawlers fail their IP check.
+
+The check rests on two things Cloudflare does but does not promise in its
+documentation: that a Worker cannot remove `CF-Worker`, and that its proxy
+replaces a `CF-Connecting-IP` the visitor sent. If either stops holding, anyone
+who can send a request through Cloudflare chooses the IP DNA verifies a crawler
+on. Only an origin that accepts nothing but your own zone's traffic removes that
+risk: zone-level Authenticated Origin Pulls with your own certificate, or a
+Cloudflare Tunnel. A firewall allowing Cloudflare's addresses, or global
+Authenticated Origin Pulls, admits every Cloudflare zone and Worker.
+
+Behind a PROXY protocol hop, `remote_ip` is the address the hop names, so allow
+only your own load balancer in `proxy_protocol`. Cloudflare's ranges are in the
+`remote_ip` line of `dna.caddy`; `node caddy/test/cloudflare-ranges.mjs` checks
+them against [cloudflare.com/ips](https://www.cloudflare.com/ips/), on every
+change and daily.
 
 ## Coverage
 

@@ -1,7 +1,9 @@
-// Revision-2 checks against real Caddy. `node run.mjs live` with the mock worker
+// Revision-2 checks against real Caddy: `node run.mjs live` with the mock worker
+// up, then `node run.mjs cloudflare` with Caddy restarted with DNA_TRUST_CLOUDFLARE=true,
 // up, `node run.mjs dead` with it stopped.
 import { request as httpRequest } from 'node:http';
 import { connect } from 'node:net';
+import { cloudflareRangeDrift } from './cloudflare-ranges.mjs';
 
 const BARE = 'http://127.0.0.1:8080';
 const FLEET = 'http://127.0.0.1:8085';
@@ -69,6 +71,31 @@ const hostless = (path) =>
     socket.on('end', () => resolve(Number(reply.split(' ')[1])));
     socket.on('error', reject);
   });
+
+const CLOUDFLARE_EDGE = '173.245.48.7';
+const VISITOR = '198.51.100.23';
+
+// A request as the fleet receives it: a PROXY protocol hop names the address that connected.
+const viaProxyHop = (source, headers = {}) =>
+  new Promise((resolve, reject) => {
+    const socket = connect(8086, '127.0.0.1', () => {
+      const lines = Object.entries({ host: 'site.test', 'x-test-scenario': 'pass', ...headers })
+        .map(([name, value]) => `${name}: ${value}\r\n`)
+        .join('');
+      socket.write(
+        `PROXY TCP4 ${source} 127.0.0.1 50000 8086\r\nGET /a HTTP/1.1\r\n${lines}connection: close\r\n\r\n`
+      );
+    });
+    let reply = '';
+    socket.on('data', (chunk) => (reply += chunk));
+    socket.on('end', () => resolve(Number(reply.split(' ')[1])));
+    socket.on('error', reject);
+  });
+
+const ipDnaSees = async (source, headers) => {
+  const status = await viaProxyHop(source, headers);
+  return { status, ip: (await lastSubrequest())?.headers['x-d3-real-ip'] };
+};
 
 const firstByte = async (path, scenario) => {
   const t0 = Date.now();
@@ -238,7 +265,7 @@ if (process.argv[2] === 'live') {
   );
   ok(
     "to DNA: names this file's build, never the visitor's dna-adapter",
-    sub.headers['dna-adapter'] === 'caddy:1.0.1',
+    sub.headers['dna-adapter'] === 'caddy:1.1.0',
     `dna-adapter=${sub.headers['dna-adapter']}`
   );
   ok(
@@ -471,6 +498,51 @@ if (process.argv[2] === 'live') {
   );
   r = await visit('/a', { scenario: 'paid_dna', headers: { ...PAYING, 'x-test-delay-ms': '4000' } });
   ok(`paying past its ceiling: 502 (${r.ms}ms)`, unavailable(r) && r.ms < 3800, `status=${r.res.status}`);
+}
+
+if (process.argv[2] === 'live') {
+  console.log('\n=== The client IP, without DNA_TRUST_CLOUDFLARE');
+  const r = await ipDnaSees(CLOUDFLARE_EDGE, { 'cf-connecting-ip': VISITOR });
+  ok(
+    'from Cloudflare: the address that connected, never CF-Connecting-IP',
+    r.ip === CLOUDFLARE_EDGE,
+    JSON.stringify(r)
+  );
+}
+
+if (process.argv[2] === 'cloudflare') {
+  console.log('\n=== The client IP, with DNA_TRUST_CLOUDFLARE=true');
+  let r = await ipDnaSees(CLOUDFLARE_EDGE, { 'cf-connecting-ip': VISITOR });
+  ok(
+    'from Cloudflare: the visitor in CF-Connecting-IP',
+    r.status === 200 && r.ip === VISITOR,
+    JSON.stringify(r)
+  );
+  r = await ipDnaSees(CLOUDFLARE_EDGE, { 'cf-connecting-ip': VISITOR, 'cf-worker': 'attacker.example' });
+  ok("a Worker's request: the address that connected", r.ip === CLOUDFLARE_EDGE, JSON.stringify(r));
+  r = await ipDnaSees(CLOUDFLARE_EDGE, { 'cf-connecting-ip': VISITOR, 'cf-worker': '' });
+  ok('an empty CF-Worker still marks a Worker', r.ip === CLOUDFLARE_EDGE, JSON.stringify(r));
+  r = await ipDnaSees(CLOUDFLARE_EDGE, { 'cf-connecting-ip': `${VISITOR}, 66.249.66.1` });
+  ok(
+    'a CF-Connecting-IP listing two addresses: the address that connected',
+    r.ip === CLOUDFLARE_EDGE,
+    JSON.stringify(r)
+  );
+  r = await ipDnaSees('203.0.113.9', { 'cf-connecting-ip': VISITOR });
+  ok('from outside Cloudflare: the address that connected', r.ip === '203.0.113.9', JSON.stringify(r));
+  r = await ipDnaSees(CLOUDFLARE_EDGE);
+  ok(
+    'from Cloudflare without CF-Connecting-IP: the address that connected',
+    r.ip === CLOUDFLARE_EDGE,
+    JSON.stringify(r)
+  );
+
+  const drift = await cloudflareRangeDrift();
+  ok(
+    "dna.caddy lists Cloudflare's published ranges",
+    !drift.missing.length && !drift.extra.length,
+    JSON.stringify(drift)
+  );
 }
 
 if (process.argv[2] === 'dead') {

@@ -5,11 +5,26 @@
 	servers {
 		trusted_proxies static 127.0.0.1/32
 	}
+	# As the landing-pages fleet takes it: a PROXY protocol hop names the address
+	# that connected, so a test can connect from Cloudflare's.
+	servers :8086 {
+		listener_wrappers {
+			proxy_protocol {
+				allow 127.0.0.1/32
+			}
+		}
+	}
 }
 import ../dna.caddy
 
 # A bare site.
 http://:8080 {
+	invoke dna
+	reverse_proxy http://127.0.0.1:3000
+}
+
+# Behind a PROXY protocol hop, as the fleet is.
+http://:8086 {
 	invoke dna
 	reverse_proxy http://127.0.0.1:3000
 }
